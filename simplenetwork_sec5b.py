@@ -345,31 +345,25 @@ class Node:
         total_size = len(data)
         offset = 0
 
-        # データの一意の識別子を生成
         original_data_id = str(uuid.uuid4())
 
         while offset < total_size:
-            # 最後のフラグメントかどうかを判断
             more_fragments = offset + payload_size < total_size
 
             fragment_data = data[offset:offset + payload_size]
             fragment_offset = offset
 
-            # フラグメントフラグの設定
             fragment_flags = {
                 "more_fragments": more_fragments,
                 "original_data_id": original_data_id  # データの一意の識別子を追加
             }
 
-            # パケット作成
             node_ip_address = self.ip_address.split('/')[0]
             packet = Packet(self.mac_address, destination_mac, node_ip_address, destination_ip, 64, fragment_flags, fragment_offset, header_size, len(fragment_data), self.network_event_scheduler)
             packet.payload = fragment_data
 
-            # パケットの送信
             self._send_packet(packet)
 
-            # offset を更新
             offset += payload_size
 
     def _send_packet(self, packet):
