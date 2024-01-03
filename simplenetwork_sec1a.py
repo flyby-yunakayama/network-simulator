@@ -97,3 +97,5 @@ class Packet:
 
     def __str__(self):
         return f"パケット(送信元: {self.source}, 宛先: {self.destination}, ペイロード: {self.payload})"
+
+network_graph = NetworkGraph()
