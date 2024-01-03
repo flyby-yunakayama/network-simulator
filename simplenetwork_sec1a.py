@@ -68,7 +68,7 @@ class Node:
         return f"ノード(ID: {self.node_id}, アドレス: {self.address}, 接続: {connected_nodes_str})"
 
 class Link:
-    def __init__(self, node_x, node_y, bandwidth=1, delay=0, packet_loss=0.0):
+    def __init__(self, node_x, node_y, bandwidth=10000, delay=0.001, packet_loss=0.0):
         self.node_x = node_x
         self.node_y = node_y
         self.bandwidth = bandwidth
@@ -91,82 +91,6 @@ class Link:
 
 class Packet:
     def __init__(self, source, destination, payload):
-        self.source = source
-        self.destination = destination
-        self.payload = payload
-
-    def __str__(self):
-        return f"パケット(送信元: {self.source}, 宛先: {self.destination}, ペイロード: {self.payload})"
-
-# ネットワークグラフのインスタンスを作成
-network_graph = NetworkGraph()
-
-# ノードとリンクの宣言
-node1 = Node(node_id=1, address="00:01")
-node2 = Node(node_id=2, address="00:02")
-link1 = Link(node1, node2)
-
-# グラフを描画
-network_graph.draw()
-
-class Node:
-    def __init__(self, node_id, address=None):
-        self.node_id = node_id
-        self.address = address
-        self.links = []
-
-    def add_link(self, link):
-        if link not in self.links:
-            self.links.append(link)
-
-    # パケットを送信するメソッドを追加
-    def send_packet(self, packet):
-        if packet.destination == self.address:
-            self.receive_packet(packet)
-        else:
-            for link in self.links:
-                next_node = link.node_x if self != link.node_x else link.node_y
-                print(f"ノード{self.node_id}からノード{next_node.node_id}へパケット転送")
-                link.transfer_packet(packet, self)
-                break
-
-    # パケットを受信するメソッドを追加
-    def receive_packet(self, packet):
-        print(f"ノード{self.node_id}がパケットを受信: {packet.payload}")
-
-    def __str__(self):
-        connected_nodes = [link.node_x.node_id if self != link.node_x else link.node_y.node_id for link in self.links]
-        connected_nodes_str = ', '.join(map(str, connected_nodes))
-        return f"ノード(ID: {self.node_id}, アドレス: {self.address}, 接続: {connected_nodes_str})"
-
-class Link:
-    def __init__(self, node_x, node_y, bandwidth=1, delay=0, packet_loss=0.0):
-        self.node_x = node_x
-        self.node_y = node_y
-        self.bandwidth = bandwidth
-        self.delay = delay
-        self.packet_loss = packet_loss
-
-        node_x.add_link(self)
-        node_y.add_link(self)
-
-    # 次のノードへパケットを渡すメソッドを追加
-    def transfer_packet(self, packet, from_node):
-        next_node = self.node_x if from_node != self.node_x else self.node_y
-        next_node.receive_packet(packet)
-
-    def __str__(self):
-        return f"リンク({self.node_x.node_id} ↔ {self.node_y.node_id}, 帯域幅: {self.bandwidth}, 遅延: {self.delay}, パケットロス率: {self.packet_loss})"
-
-class Packet:
-    def __init__(self, source, destination, payload):
-        """
-        ネットワーク内で送信されるパケットを表すPacketクラス。
-
-        :param source: パケットの送信元ノードのアドレス。
-        :param destination: パケットの宛先ノードのアドレス。
-        :param payload: パケットに含まれるデータ（ペイロード）。
-        """
         self.source = source
         self.destination = destination
         self.payload = payload
