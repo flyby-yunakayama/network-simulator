@@ -357,11 +357,12 @@ class Switch:
                     self.network_event_scheduler.log_packet_info(packet, "broadcast", self.node_id)
                     link.enqueue_packet(packet, self)
 
-
     def process_bpdu(self, bpdu, received_link):
+        # ルートIDの更新とルートパスコストの計算
         new_root_id = bpdu.payload["root_id"]
-        new_path_cost = bpdu.payload["path_cost"] + 1
-        
+        new_path_cost = bpdu.payload["path_cost"] + 1  # 受信リンクを通るコストを加算
+
+        # ルート情報が変更されたかどうかを確認
         root_info_changed = new_root_id != self.root_id or new_path_cost < self.root_path_cost
 
         if self.network_event_scheduler.stp_verbose:
@@ -369,31 +370,45 @@ class Switch:
             print(f"Time: {current_time} - {self.node_id} processing BPDU: new_root_id={new_root_id}, current_root_id={self.root_id}, new_path_cost={new_path_cost}, current_root_path_cost={self.root_path_cost}")
 
         if new_root_id < self.root_id or (new_root_id == self.root_id and new_path_cost < self.root_path_cost):
+            # ルート情報の更新
             self.root_id = new_root_id
             self.root_path_cost = new_path_cost
             self.is_root = False
 
-        self.update_link_states(received_link)
+        # リンク状態の更新（例：フォワーディング/ブロッキング）
+        self.update_link_states(received_link, new_path_cost)
 
+        # ルート情報が変更された場合のみBPDUを再送信
         if root_info_changed:
             self.send_bpdu()
 
-    def update_link_states(self, received_link):
+    def update_link_states(self, received_link, received_bpdu_path_cost):
         if self.is_root:
+            # ルートブリッジの場合、全てのポートをフォワーディング状態に設定
             for link in self.links:
                 self.link_states[link] = 'forwarding'
         else:
-            min_cost_link = min(self.links, key=lambda link: self.get_link_cost(link))
+            # 非ルートブリッジの場合、最小コストのリンクを選択してフォワーディングに設定
+            best_path_cost = float('inf')
+            best_link = None
+            best_link_id = None
+
             for link in self.links:
-                if link == min_cost_link or not self.is_link_between_switches(link):
+                if self.is_link_between_switches(link):
+                    link_path_cost = self.get_link_cost(link) + received_bpdu_path_cost
+                    link_id = min(link.node_x.node_id, link.node_y.node_id)
+                    if link_path_cost < best_path_cost or (link_path_cost == best_path_cost and link_id < best_link_id):
+                        best_path_cost = link_path_cost
+                        best_link = link
+                        best_link_id = link_id
+
+            for link in self.links:
+                if link == best_link or not self.is_link_between_switches(link):
                     self.link_states[link] = 'forwarding'
                 else:
                     self.link_states[link] = 'blocking'
 
-        if self.network_event_scheduler.stp_verbose:
-            if self.is_root:
-                print(f"{self.node_id} is root. All ports set to forwarding.")
-            else:
+            if self.network_event_scheduler.stp_verbose:
                 print(f"{self.node_id} link states updated: {self.link_states}")
 
     def is_link_between_switches(self, link):
