@@ -36,14 +36,15 @@ class NetworkGraph:
         plt.show()
 
 class Node:
-    def __init__(self, node_id, address):
+    def __init__(self, node_id, address, network_graph):
         self.node_id = node_id
         self.address = address
         self.links = []
+        self.network_graph = network_graph
 
         # グラフにノードを追加
         label = f'Node {node_id}\n{address}'
-        network_graph.add_node(node_id, label)
+        self.network_graph.add_node(node_id, label)
 
     def add_link(self, link):
         if link not in self.links:
@@ -68,19 +69,20 @@ class Node:
         return f"ノード(ID: {self.node_id}, アドレス: {self.address}, 接続: {connected_nodes_str})"
 
 class Link:
-    def __init__(self, node_x, node_y, bandwidth=10000, delay=0.001, packet_loss=0.0):
+    def __init__(self, node_x, node_y, network_graph, bandwidth=10000, delay=0.001, packet_loss=0.0):
         self.node_x = node_x
         self.node_y = node_y
         self.bandwidth = bandwidth
         self.delay = delay
         self.packet_loss = packet_loss
+        self.network_graph = network_graph
 
         node_x.add_link(self)
         node_y.add_link(self)
 
         # グラフにリンクを追加
         label = f'{bandwidth/1000000} Mbps, {delay} s'
-        network_graph.add_link(node_x.node_id, node_y.node_id, label, self.bandwidth, self.delay)
+        self.network_graph.add_link(node_x.node_id, node_y.node_id, label, self.bandwidth, self.delay)
 
     def transfer_packet(self, packet, from_node):
         next_node = self.node_x if from_node != self.node_x else self.node_y
@@ -97,5 +99,3 @@ class Packet:
 
     def __str__(self):
         return f"パケット(送信元: {self.source}, 宛先: {self.destination}, ペイロード: {self.payload})"
-
-network_graph = NetworkGraph()
