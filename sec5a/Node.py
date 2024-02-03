@@ -1,5 +1,5 @@
-import uuid
 import re
+from sec5a.Packet import Packet
 
 class Node:
     def __init__(self, node_id, mac_address, ip_address, network_event_scheduler, mtu=1500, default_route=None):
