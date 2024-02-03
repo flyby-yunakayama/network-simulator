@@ -1,7 +1,7 @@
 import heapq
 import random
 import ipaddress
-from sec6a.Packet import HelloPacket, LSAPacket
+from sec6c.Packet import HelloPacket, LSAPacket
 
 class Router:
     def __init__(self, node_id, ip_addresses, network_event_scheduler, hello_interval=10, lsa_interval=10, default_route = None):
@@ -14,9 +14,15 @@ class Router:
         self.default_route = default_route  # デフォルトルート
         self.neighbors = {}  # 隣接ルータの状態を格納
         self.hello_interval = hello_interval
+        self.lsa_sequence_number = 0  # LSAシーケンス番号の初期化
+        self.lsa_interval = lsa_interval  # LSA送信のインターバル
+        self.lsa_database = {}  # LSA情報を格納
+        self.is_topology_initialized = False
+        self.topology_database = {}  # トポロジデータベースの初期化
         label = f'Router {node_id}'
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=ip_addresses)
         self.schedule_hello_packet()
+        self.schedule_lsa()
 
     def print_interfaces(self):
         print(f"インターフェース情報（ルータ {self.node_id}）:")
@@ -73,6 +79,14 @@ class Router:
             self.send_hello_packet
         )
 
+    def schedule_lsa(self):
+        # LSA送信のスケジューリング
+        initial_delay = random.uniform(0.3, 0.5)
+        self.network_event_scheduler.schedule_event(
+            self.network_event_scheduler.current_time + initial_delay,
+            self.send_lsa
+        )
+
     def send_hello_packet(self):
         for link, interface_cidr in self.interfaces.items():
             network_address, mask_length = interface_cidr.split('/')
@@ -92,6 +106,68 @@ class Router:
             self.network_event_scheduler.current_time + self.hello_interval,
             self.send_hello_packet
         )
+
+    def send_lsa(self):
+        # シーケンス番号のインクリメント
+        seq_number = self.increment_lsa_sequence_number()
+
+        # リンク状態情報の取得
+        link_state_info = self.get_link_state_info()
+        
+        # 各インターフェースに対応する隣接ルータへLSAパケットを送信
+        for link, ip_address in self.interfaces.items():
+            source_ip = ip_address
+            lsa_packet = LSAPacket(
+                source_mac="00:00:00:00:00:00",  # ダミーMACアドレス
+                source_ip=source_ip,  # インターフェースのIPアドレス
+                router_id=self.node_id,
+                sequence_number=seq_number,  # インクリメントしたシーケンス番号
+                link_state_info=link_state_info,  # リンク状態情報
+                network_event_scheduler=self.network_event_scheduler
+            )
+            link.enqueue_packet(lsa_packet, self)
+
+        # 次回のLSA送信をスケジュール
+        self.network_event_scheduler.schedule_event(
+            self.network_event_scheduler.current_time + self.lsa_interval,
+            self.send_lsa
+        )
+
+    def flood_lsa(self, original_lsa_packet):
+        # リンク状態情報の取得
+        link_state_info = self.get_link_state_info()
+        
+        # 元のLSAパケットの送信元ルータIDを取得
+        original_sender_id = original_lsa_packet.payload["router_id"]
+        
+        # 各インターフェースをループしてLSAパケットを送信
+        for link, ip_address in self.interfaces.items():
+            # 送信元ルータを除外
+            if link.node_x.node_id != original_sender_id and link.node_y.node_id != original_sender_id:
+                lsa_packet = original_lsa_packet
+                link.enqueue_packet(lsa_packet, self)
+
+    def increment_lsa_sequence_number(self):
+        self.lsa_sequence_number += 1
+        return self.lsa_sequence_number
+
+    def get_link_state_info(self):
+        link_state_info = {}
+        for link, ip_address in self.interfaces.items():
+            link_state_info[link] = {
+                "ip_address": ip_address,
+                "cost": self.calculate_link_cost(link),
+                "state": self.get_link_state(link)
+            }
+        return link_state_info
+
+    def calculate_link_cost(self, link):
+        # リンクコストを計算する簡単なロジック
+        return 1 / link.bandwidth
+
+    def get_link_state(self, link):
+        # リンクの状態を取得するロジック（例: アクティブかどうか）
+        return "active" if link.is_active else "inactive"
 
     def forward_packet(self, packet):
         destination_ip = packet.header["destination_ip"]
@@ -120,6 +196,9 @@ class Router:
         if isinstance(packet, HelloPacket):
             self.receive_hello_packet(packet, received_link)
             return  # Helloパケットの場合、処理を終了
+        elif isinstance(packet, LSAPacket):
+            self.receive_lsa(packet)
+            return  # LSAパケットの場合、処理を終了
 
         # 一般のパケットの場合、TTLを減らす
         packet.header["ttl"] -= 1
@@ -191,6 +270,133 @@ class Router:
                 print(f"    最後のHello受信時刻: {last_hello_time}")
                 print(f"    隣接ルータへのリンク: {link}")
                 print(f"    追加情報: {neighbor_info}")
+
+    def receive_lsa(self, lsa_packet):
+        lsa_info = lsa_packet.payload["link_state_info"]
+
+        if not self.is_topology_initialized:
+            self.initialize_topology_database()
+            self.is_topology_initialized = True
+
+        if "sequence_number" in lsa_packet.payload:
+            seq_number = lsa_packet.payload["sequence_number"]
+            current_lsa_info = self.topology_database.get(lsa_packet.payload["router_id"], {})
+
+            if seq_number > current_lsa_info.get("sequence_number", -1):
+                # トポロジデータベースを更新
+                self.topology_database[lsa_packet.payload["router_id"]] = {
+                    "sequence_number": seq_number,
+                    "link_state_info": lsa_info
+                }
+
+                # ルーティングテーブルの再計算
+                self.update_routing_table_with_dijkstra()
+
+                # LSAを隣接ルータに再送信
+                self.flood_lsa(lsa_packet)
+
+            else:
+                # 既知のLSAは無視する
+                pass
+
+    def initialize_topology_database(self):
+        # 自身のルータのリンク状態情報を初期化
+        link_state_info = {}
+        for link, ip_address in self.interfaces.items():
+            link_state_info[link] = {
+                "ip_address": ip_address,  # インターフェースのIPアドレス
+                "cost": self.calculate_link_cost(link),
+                "state": "active"  # 初期状態はアクティブとする
+            }
+
+        # トポロジデータベースに自身のルータの情報を登録
+        self.topology_database = {
+            self.node_id: {'link_state_info': link_state_info}
+        }
+
+    def print_topology_database(self):
+        if self.network_event_scheduler.routing_verbose:
+            print(f"トポロジデータベース（ルータ {self.node_id}）:")
+            for router_id, router_info in self.topology_database.items():
+                print(f"  ルータID: {router_id}")
+                link_state_info = router_info.get("link_state_info", {})
+                for link, info in link_state_info.items():
+                    if isinstance(info, dict):
+                        print(f"    リンク: {link}")
+                        print(f"      IPアドレス: {info.get('ip_address')}")
+                        print(f"      コスト: {info.get('cost')}")
+                        print(f"      状態: {info.get('state')}")
+                    else:
+                        print(f"    不正なデータ型: {info}")
+
+    def calculate_shortest_paths(self, start_router_id):
+        # 最短経路コストの辞書を初期化
+        shortest_paths = {router_id: float('inf') for router_id in self.topology_database}
+        shortest_paths[start_router_id] = 0
+        previous_nodes = {router_id: None for router_id in self.topology_database}
+
+        # プライオリティキューを使用して最小コストのルータを探索
+        queue = [(0, start_router_id)]
+        while queue:
+            current_cost, current_router_id = heapq.heappop(queue)
+
+            # 現在のルータから到達可能なルータに対してコストを更新
+            if current_router_id in self.topology_database:
+                for link, link_info in self.topology_database[current_router_id]['link_state_info'].items():
+                    neighbor_router_id = self.get_neighbor_router_id(link, current_router_id)
+                    if neighbor_router_id and neighbor_router_id in self.topology_database:
+                        new_cost = current_cost + link_info['cost']
+                        if new_cost < shortest_paths[neighbor_router_id]:
+                            shortest_paths[neighbor_router_id] = new_cost
+                            previous_nodes[neighbor_router_id] = current_router_id
+                            heapq.heappush(queue, (new_cost, neighbor_router_id))
+
+        return shortest_paths, previous_nodes
+
+    def update_routing_table_with_dijkstra(self):
+        shortest_paths, previous_nodes = self.calculate_shortest_paths(self.node_id)
+        print(self.node_id)
+        print("Shortest paths:", shortest_paths)  # デバッグ情報の出力
+        print("Previous nodes:", previous_nodes)  # デバッグ情報の出力
+
+        # ルーティングテーブルを更新
+        for destination, cost in shortest_paths.items():
+            if destination != self.node_id:
+                destination_cidr = self.get_destination_cidr(destination)
+                next_hop = previous_nodes[destination]
+                link_to_next_hop = None
+
+                if next_hop == self.node_id:
+                    next_hop = None
+                    destination_router = self.topology_database.get(destination)
+                    if destination_router:
+                        ip_address_list = destination_router['link_state_info'].values()
+                        # 自身のインターフェースを検索し、ip_addressと同じネットワークに属するリンクを探す
+                        for ip_info in ip_address_list:
+                            for intf_link, intf_cidr in self.interfaces.items():
+                                if self.is_same_network(intf_cidr, ip_info['ip_address']):
+                                    link_to_next_hop = intf_link
+                                    break
+                            if link_to_next_hop:
+                                break
+                else:
+                    link_to_next_hop = self.get_link_to_neighbor(next_hop)
+
+                if destination_cidr and link_to_next_hop:
+                    self.add_route(destination_cidr, next_hop, link_to_next_hop)
+
+                print(f"Updating route to {destination} at {destination_cidr} via {next_hop} on link {link_to_next_hop}")  # ルート更新のデバッグ情報
+
+        # ルータ自身のインターフェースに接続されているネットワークに対するルートを追加
+        for link, interface_cidr in self.interfaces.items():
+            # 既存のルートがない場合、またはルートがNoneの場合のみ追加
+            if interface_cidr not in self.routing_table or self.routing_table[interface_cidr][0] is None:
+                self.add_route(interface_cidr, None, link)  # 直接接続されているため、next_hopはNone
+
+        # ルーティングテーブルの内容を出力
+        print("Updated Routing Table:")
+        for destination_cidr, (next_hop, link) in self.routing_table.items():
+            print(f"Destination: {destination_cidr}, Next hop: {next_hop}, Link: {link}")
 
     def get_destination_cidr(self, router_id):
         if router_id in self.topology_database:
