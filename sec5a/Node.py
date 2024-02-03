@@ -1,3 +1,4 @@
+import uuid
 import re
 
 class Node:
