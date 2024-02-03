@@ -1,3 +1,4 @@
+import heapq
 import random
 
 class Link:

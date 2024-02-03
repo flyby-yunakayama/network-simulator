@@ -1,3 +1,5 @@
+from sec2.Packet import Packet
+
 class Node:
     def __init__(self, node_id, address, network_event_scheduler):
         self.network_event_scheduler = network_event_scheduler
