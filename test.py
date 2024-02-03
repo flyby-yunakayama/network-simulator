@@ -1,4 +1,7 @@
-from simplenetwork_sec6a import NetworkEventScheduler, Node, Router, Link
+from sec6a.NetworkEventScheduler import NetworkEventScheduler
+from sec6a.Node import Node
+from sec6a.Router import Router
+from sec6a.Link import Link
 
 network_event_scheduler = NetworkEventScheduler(log_enabled=True, verbose=True, routing_verbose=True)
 
