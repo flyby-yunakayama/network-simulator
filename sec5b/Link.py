@@ -1,5 +1,6 @@
 import heapq
 import random
+from sec5b.Router import Router
 
 class Link:
     def __init__(self, node_x, node_y, bandwidth, delay, loss_rate, network_event_scheduler):
