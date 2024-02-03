@@ -1,7 +1,7 @@
 import heapq
 import random
 import ipaddress
-from sec6a.Packet import HelloPacket, LSAPacket
+from sec6a.Packet import HelloPacket
 
 class Router:
     def __init__(self, node_id, ip_addresses, network_event_scheduler, hello_interval=10, lsa_interval=10, default_route = None):
@@ -116,7 +116,7 @@ class Router:
         return network, subnet_mask
 
     def receive_packet(self, packet, received_link):
-        # 特定のパケットタイプ（HelloやLSA）を先に処理
+        # 特定のパケットタイプ（Hello）を先に処理
         if isinstance(packet, HelloPacket):
             self.receive_hello_packet(packet, received_link)
             return  # Helloパケットの場合、処理を終了
