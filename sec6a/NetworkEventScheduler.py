@@ -77,14 +77,6 @@ class NetworkEventScheduler:
                         return switch.link_states.get(link, 'unknown')
         return 'unknown'
 
-    def find_node_by_ip(self, ip_address):
-        for node_id, data in self.graph.nodes(data=True):
-            if ip_address in data.get('ip_addresses', []):
-                return node_id
-        return None
-
-
-
     def schedule_event(self, event_time, callback, *args):
         event = (event_time, self.event_id, callback, args)
         heapq.heappush(self.events, event)

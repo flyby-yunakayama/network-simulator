@@ -34,7 +34,7 @@ router1.print_interfaces()
 router1.print_topology_database()
 router1.print_routing_table()
 
-print(network_event_scheduler.find_node_by_ip("10.1.3.2/24"))
+node1.print_route("192.168.2.1/24")
 
 #link_state_info = router1.get_link_state_info()
 #print("Link State Information:", link_state_info)

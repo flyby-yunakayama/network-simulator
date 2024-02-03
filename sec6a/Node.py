@@ -1,6 +1,7 @@
 import uuid
 import re
 from ipaddress import ip_network
+from sec6a.Router import Router
 from sec6a.Packet import Packet
 
 class Node:
@@ -165,6 +166,40 @@ class Node:
 
         # 最初のパケットをスケジュール
         self.network_event_scheduler.schedule_event(start_time, generate_packet)
+
+    def print_route(self, destination_ip):
+        paths = []
+        neighbors = []
+        if self.default_route is not None:
+            next_link = self.default_route
+            neighbor = next_link.node_x if self != next_link.node_x else next_link.node_y
+            neighbors.append(neighbor)
+        else:
+            for link in self.links:
+                neighbor = link.node_x if self != link.node_x else link.node_y
+                neighbors.append(neighbor)
+
+        paths.append(self.node_id)
+
+        for neighbor in neighbors:
+            next_node = neighbor
+            while isinstance(next_node, Router):
+                paths.append(next_node.node_id)
+                next_hop_id, next_link = next_node.get_route(destination_ip)
+                next_hop = next_link.node_x if next_node != next_link.node_x else next_link.node_y
+                next_node = next_hop
+            else:
+                if(next_node.ip_address == destination_ip):
+                    paths.append(next_node.node_id)
+
+        print("----------------------------------------")
+        print("Forwarding path from ", self.ip_address, " to ", destination_ip)
+        for index, node in enumerate(paths):
+            if index == len(paths) - 1:
+                print(node)
+            else:
+                print(node, end=" -> ")
+        print("----------------------------------------")
 
     def __str__(self):
         connected_nodes = [link.node_x.node_id if self != link.node_x else link.node_y.node_id for link in self.links]
