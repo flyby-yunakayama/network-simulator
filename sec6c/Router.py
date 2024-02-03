@@ -9,7 +9,7 @@ class Router:
         self.node_id = node_id
         self.links = []
         self.available_ips = {ip: False for ip in ip_addresses} # CIDR表記のIPアドレスを辞書に変換し、使用状況をFalse（未使用）に初期化
-        self.interfaces = {}  # インターフェース（リンクとIPアドレスのマッピング）
+        self.interfaces = {}  # インタフェース（リンクとIPアドレスのマッピング）
         self.routing_table = {}  # ルーティングテーブル
         self.default_route = default_route  # デフォルトルート
         self.neighbors = {}  # 隣接ルータの状態を格納
@@ -25,7 +25,7 @@ class Router:
         self.schedule_lsa()
 
     def print_interfaces(self):
-        print(f"インターフェース情報（ルータ {self.node_id}）:")
+        print(f"インタフェース情報（ルータ {self.node_id}）:")
         for link, ip_address in self.interfaces.items():
             print(f"  リンク: {link}, IPアドレス: {ip_address}")
 
@@ -235,41 +235,46 @@ class Router:
     def receive_hello_packet(self, packet, received_link):
         router_id = packet.payload["router_id"]
         new_neighbor = False
+        now = self.network_event_scheduler.current_time
 
         # 隣接ルータの情報を更新
         if router_id not in self.neighbors:
             new_neighbor = True
             self.neighbors[router_id] = {
-                "last_hello_time": self.network_event_scheduler.current_time,
+                "last_hello_time": now,
                 "link": received_link,
                 "neighbor_info": packet.payload
             }
         else:
             last_hello_time = self.neighbors[router_id]["last_hello_time"]
-            if self.network_event_scheduler.current_time > last_hello_time:
+            if now > last_hello_time:
+                self.neighbors[router_id]["last_hello_time"] = now
+            if received_link != self.neighbors[router_id]["link"]:
                 new_neighbor = True
-                self.neighbors[router_id]["last_hello_time"] = self.network_event_scheduler.current_time
                 self.neighbors[router_id]["link"] = received_link
+            if packet.payload != self.neighbors[router_id]["neighbor_info"]:
+                new_neighbor = True
                 self.neighbors[router_id]["neighbor_info"] = packet.payload
 
-        # 隣接情報が更新された場合、情報を表示
-        if new_neighbor:
-            self.print_neighbor_info()
-
-    def print_neighbor_info(self):
         if self.network_event_scheduler.routing_verbose:
-            print(f"隣接ルータの情報（ルータ {self.node_id}）:")
-            if not self.neighbors:
-                print("  隣接ルータはありません。")
-                return
-            for router_id, info in self.neighbors.items():
-                last_hello_time = info["last_hello_time"]
-                link = info["link"]
-                neighbor_info = info["neighbor_info"]
-                print(f"  ルータID: {router_id}")
-                print(f"    最後のHello受信時刻: {last_hello_time}")
-                print(f"    隣接ルータへのリンク: {link}")
-                print(f"    追加情報: {neighbor_info}")
+            if new_neighbor:
+                self.print_neighbor_info(now)
+            else:
+                print(f"{now} Helloパケットを受信しましたが、隣接ルータの情報は更新されていません（ルータ {self.node_id}）")
+
+    def print_neighbor_info(self, now):
+        print(f"{now} Helloパケット受信によるアップデート（ルータ {self.node_id}）:")
+        if not self.neighbors:
+            print("  隣接ルータはありません。")
+            return
+        for router_id, info in self.neighbors.items():
+            last_hello_time = info["last_hello_time"]
+            link = info["link"]
+            neighbor_info = info["neighbor_info"]
+            print(f"  ルータID: {router_id}")
+            print(f"    最後のHello受信時刻: {last_hello_time}")
+            print(f"    隣接ルータへのリンク: {link}")
+            print(f"    追加情報: {neighbor_info}")
 
     def receive_lsa(self, lsa_packet):
         lsa_info = lsa_packet.payload["link_state_info"]
