@@ -1,3 +1,5 @@
+import heapq
+import random
 import ipaddress
 from sec6a.Packet import HelloPacket, LSAPacket
 
