@@ -1,4 +1,5 @@
 import re
+import uuid
 from sec5a.Packet import Packet
 
 class Node:
