@@ -169,9 +169,12 @@ class Router:
         else:
             last_hello_time = self.neighbors[router_id]["last_hello_time"]
             if now > last_hello_time:
-                new_neighbor = True
                 self.neighbors[router_id]["last_hello_time"] = now
+            if received_link != self.neighbors[router_id]["link"]:
+                new_neighbor = True
                 self.neighbors[router_id]["link"] = received_link
+            if packet.payload != self.neighbors[router_id]["neighbor_info"]:
+                new_neighbor = True
                 self.neighbors[router_id]["neighbor_info"] = packet.payload
 
         if self.network_event_scheduler.routing_verbose:
