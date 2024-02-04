@@ -367,10 +367,19 @@ class Router:
 
         # ルーティングテーブルを更新
         for destination, cost in shortest_paths.items():
+
             if destination != self.node_id:
-                destination_cidr = self.get_destination_cidr(destination)
                 next_hop = previous_nodes[destination]
-                link_to_next_hop = None
+                link_to_next_hop = self.get_link_to_neighbor(next_hop) if next_hop else None
+                # 宛先ルータの全インターフェースに対するルートを登録
+                for intf_info in self.topology_database[destination]['link_state_info'].values():
+                    destination_cidr = intf_info['ip_address']
+                    self.add_route(destination_cidr, next_hop, link_to_next_hop)
+
+#            if destination != self.node_id:
+#                destination_cidr = self.get_destination_cidr(destination)
+#                next_hop = previous_nodes[destination]
+#                link_to_next_hop = None
 
                 if next_hop == self.node_id:
                     next_hop = None
