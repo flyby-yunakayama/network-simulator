@@ -391,13 +391,24 @@ class Router:
                     network_cidr = str(network)
                     
                     if link_to_next_hop:
-                        if destination == link_to_next_hop.node_x.node_id if self.node_id != link_to_next_hop.node_x else link_to_next_hop.node_y.node_id:
+                        if link_to_next_hop.node_x.node_id == self.node_id:
+                            neighbor = link_to_next_hop.node_y.node_id
+                        else:
+                            neighbor = link_to_next_hop.node_x.node_id
+
+                        if destination == neighbor:
                             connection_type = "Directly connected"
                         else:
-                            connection_type = f"via {next_hop}" if next_hop else "Unknown"
+                            connection_type = f"{next_hop}" if next_hop else "Unknown"
 
                         # 一時的なルーティングテーブルにルートを追加
                         temp_routing_table[network_cidr] = (connection_type, link_to_next_hop)
+
+#        # ルータ自身のインターフェースに接続されているネットワークに対するルートを追加
+#        for link, interface_cidr in self.interfaces.items():
+#            # 既存のルートがない場合、またはルートがNoneの場合のみ追加
+#            if interface_cidr not in self.routing_table or self.routing_table[interface_cidr][0] is None:
+#                self.add_route(interface_cidr, None, link)  # 直接接続されているため、next_hopはNone
 
         # 一時的なルーティングテーブルから最終的なルーティングテーブルへの情報転送
         self.routing_table.clear()
