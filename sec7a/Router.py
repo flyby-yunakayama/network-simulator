@@ -35,15 +35,11 @@ class Router:
     def add_link(self, link, ip_address=None):
         if link not in self.interfaces:
             self.interfaces[link] = ip_address
+            self.mac_addresses[link] = self.generate_mac_address()
 
     def generate_mac_address(self):
         """MACアドレスをランダムに生成するメソッド"""
         return ':'.join(['{:02x}'.format((uuid.uuid4().int >> elements) & 0xff) for elements in range(2, 10, 2)])
-
-    def set_mac_address(self, interface):
-        """インターフェイスに対してMACアドレスをランダムに設定するメソッド"""
-        if interface not in self.mac_addresses:
-            self.mac_addresses[interface] = self.generate_mac_address()
 
     def get_mac_address(self, interface):
         """インターフェイスを指定してセットしたMACアドレスを取得するメソッド"""
