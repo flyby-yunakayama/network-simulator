@@ -404,9 +404,11 @@ class Router:
 
         # ルータ自身のインターフェースに接続されているネットワークに対するルートを追加
         for link, interface_cidr in self.interfaces.items():
+            network = ipaddress.ip_network(interface_cidr, strict=False)
+            network_cidr = str(network)
             # 既存のルートがない場合、またはルートがNoneの場合のみ追加
-            if interface_cidr not in temp_routing_table or temp_routing_table[interface_cidr][0] is None:
-                temp_routing_table[interface_cidr] = ("Directly connected", link)
+            if network_cidr not in temp_routing_table or temp_routing_table[network_cidr][0] is None:
+                temp_routing_table[network_cidr] = ("Directly connected", link)
 
         # 一時的なルーティングテーブルから最終的なルーティングテーブルへの情報転送
         self.routing_table.clear()
