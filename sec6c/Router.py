@@ -390,14 +390,14 @@ class Router:
                     network = ipaddress.ip_network(destination_cidr, strict=False)
                     network_cidr = str(network)
                     
-                    # 直接接続されたネットワークかどうかを確認
-                    if destination == link_to_next_hop.node_x.node_id if self.node_id != link_to_next_hop.node_x else link_to_next_hop.node_y.node_id:
-                        connection_type = "Directly connected"
-                    else:
-                        connection_type = f"via {next_hop}" if next_hop else "Unknown"
+                    if link_to_next_hop:
+                        if destination == link_to_next_hop.node_x.node_id if self.node_id != link_to_next_hop.node_x else link_to_next_hop.node_y.node_id:
+                            connection_type = "Directly connected"
+                        else:
+                            connection_type = f"via {next_hop}" if next_hop else "Unknown"
 
-                    # 一時的なルーティングテーブルにルートを追加
-                    temp_routing_table[network_cidr] = (connection_type, link_to_next_hop)
+                        # 一時的なルーティングテーブルにルートを追加
+                        temp_routing_table[network_cidr] = (connection_type, link_to_next_hop)
 
         # 一時的なルーティングテーブルから最終的なルーティングテーブルへの情報転送
         self.routing_table.clear()
