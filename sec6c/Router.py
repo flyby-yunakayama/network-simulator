@@ -382,7 +382,7 @@ class Router:
             if destination != self.node_id:
                 next_hop = self.find_initial_hop(destination, previous_nodes, self.node_id)
                 link_to_next_hop = self.get_link_to_neighbor(next_hop) if next_hop else None
-                print(f"From {self.node_id} to {destination}: previous_nodes: {previous_nodes.get(destination)}, {next_hop}, link: {link_to_next_hop}")
+                print(f"From {self.node_id} to {destination}: previous_nodes: {previous_nodes.get(destination)}, next_hop:{next_hop}, link: {link_to_next_hop}")
                 
                 # 宛先ルータの全インターフェースに対するルートを統合
                 for intf_info in self.topology_database[destination]['link_state_info'].values():
@@ -391,7 +391,7 @@ class Router:
                     network_cidr = str(network)
                     
                     # 直接接続されたネットワークかどうかを確認
-                    if link_to_next_hop:
+                    if destination == link_to_next_hop.node_x.node_id if self.node_id != link_to_next_hop.node_x else link_to_next_hop.node_y.node_id:
                         connection_type = "Directly connected"
                     else:
                         connection_type = f"via {next_hop}" if next_hop else "Unknown"
