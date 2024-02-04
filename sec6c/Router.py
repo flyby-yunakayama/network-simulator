@@ -459,7 +459,15 @@ class Router:
             print(f"ルーティングテーブル（ルータ {self.node_id}）:")
             for destination, route_info in self.routing_table.items():
                 next_hop, link = route_info
-                print(f"  宛先IPアドレス: {destination}, Next hop: {next_hop}, リンク: {link}")
+                # 直結されたネットワークの場合、特別な注記を追加
+                if next_hop is None:
+                    connection_status = "Directly connected"
+                    link_description = f", リンク: {link}" if link else ""
+                else:
+                    connection_status = f"Next hop: {next_hop}"
+                    link_description = f", リンク: {link}" if link else "リンク情報なし"
+
+                print(f"  宛先IPアドレス: {destination}, {connection_status}{link_description}")
 
     def ip_to_int(self, ip_address):
         octets = ip_address.split('.')
