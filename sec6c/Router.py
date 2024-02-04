@@ -424,51 +424,6 @@ class Router:
                 else:
                     print(f"  Destination: {destination_cidr}, Next hop: {connection_type.replace('via ', '')}, Link: {link}")
 
-#        # ルーティングテーブルを更新
-#        for destination, cost in shortest_paths.items():
-#
-#            if destination != self.node_id:
-#                next_hop = previous_nodes[destination]
-#                link_to_next_hop = self.get_link_to_neighbor(next_hop) if next_hop else None
-#                # 宛先ルータの全インターフェースに対するルートを登録
-#                for intf_info in self.topology_database[destination]['link_state_info'].values():
-#                    destination_cidr = intf_info['ip_address']
-#                    self.add_route(destination_cidr, next_hop, link_to_next_hop)
-#
-#                if next_hop == self.node_id:
-#                    next_hop = None
-#                    destination_router = self.topology_database.get(destination)
-#                    if destination_router:
-#                        ip_address_list = destination_router['link_state_info'].values()
-#                        # 自身のインターフェースを検索し、ip_addressと同じネットワークに属するリンクを探す
-#                        for ip_info in ip_address_list:
-#                            for intf_link, intf_cidr in self.interfaces.items():
-#                                if self.is_same_network(intf_cidr, ip_info['ip_address']):
-#                                    link_to_next_hop = intf_link
-#                                    break
-#                            if link_to_next_hop:
-#                                break
-#                else:
-#                    link_to_next_hop = self.get_link_to_neighbor(next_hop)
-#
-#                if destination_cidr and link_to_next_hop:
-#                    self.add_route(destination_cidr, next_hop, link_to_next_hop)
-#
-#                if self.network_event_scheduler.routing_verbose:
-#                    print(f"Updating route to {destination} at {destination_cidr} via {next_hop} on link {link_to_next_hop}")  # ルート更新のデバッグ情報
-#
-#        # ルータ自身のインターフェースに接続されているネットワークに対するルートを追加
-#        for link, interface_cidr in self.interfaces.items():
-#            # 既存のルートがない場合、またはルートがNoneの場合のみ追加
-#            if interface_cidr not in self.routing_table or self.routing_table[interface_cidr][0] is None:
-#                self.add_route(interface_cidr, None, link)  # 直接接続されているため、next_hopはNone
-#
-#        # ルーティングテーブルの内容を出力
-#        if self.network_event_scheduler.routing_verbose:
-#            print("Updated Routing Table:")
-#            for destination_cidr, (next_hop, link) in self.routing_table.items():
-#                print(f"Destination: {destination_cidr}, Next hop: {next_hop}, Link: {link}")
-
     def get_destination_cidr(self, router_id):
         if router_id in self.topology_database:
             link_info = self.topology_database[router_id]['link_state_info']
