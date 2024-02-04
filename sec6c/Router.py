@@ -391,12 +391,7 @@ class Router:
                     network_cidr = str(network)
                     
                     if link_to_next_hop:
-                        if link_to_next_hop.node_x.node_id == self.node_id:
-                            neighbor = link_to_next_hop.node_y.node_id
-                        elif link_to_next_hop.node_y.node_id == self.node_id:
-                            neighbor = link_to_next_hop.node_x.node_id
-
-                        if destination == neighbor:
+                        if previous_nodes.get(destination) == self.node_id:
                             connection_type = "Directly connected"
                         else:
                             connection_type = f"{next_hop}" if next_hop else "Unknown"
