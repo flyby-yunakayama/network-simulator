@@ -189,12 +189,18 @@ class Router:
         if destination_ip == "224.0.0.5":
             for link in self.interfaces.keys():
                 self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
+                #packet.header["source_mac"] = self.get_mac_address(link)
+                #packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"]
                 link.enqueue_packet(packet, self)
         elif link:  # unicast
             self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
+            #packet.header["source_mac"] = self.get_mac_address(link)
+            #packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"]
             link.enqueue_packet(packet, self)
         elif self.default_route:  # default route
             self.network_event_scheduler.log_packet_info(packet, "forwarded via default route", self.node_id)
+            #packet.header["source_mac"] = self.get_mac_address(self.default_route)
+            #packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"]
             self.default_route.enqueue_packet(packet, self)
         else:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
@@ -221,6 +227,8 @@ class Router:
             self.network_event_scheduler.log_packet_info(packet, "dropped due to TTL expired", self.node_id)
             return
         else:
+            #if packet.header["destination_mac"] == self.get_mac_address(received_link):
+
             self.network_event_scheduler.log_packet_info(packet, "received", self.node_id)  # パケット受信をログに記録
             destination_ip = packet.header["destination_ip"]
             if '/' in destination_ip:
@@ -236,6 +244,9 @@ class Router:
                     return
             print(packet)
             self.forward_packet(packet)
+            
+            #else:
+            #    self.network_event_scheduler.log_packet_info(packet, "dropped due to wrong MAC address", self.node_id)
 
     def is_final_destination(self, packet, network_address):
         destination_ip = packet.header["destination_ip"]
