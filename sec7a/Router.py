@@ -38,8 +38,9 @@ class Router:
             self.mac_addresses[link] = self.generate_mac_address()
 
     def generate_mac_address(self):
-        """MACアドレスをランダムに生成するメソッド"""
-        return ':'.join(['{:02x}'.format((uuid.uuid4().int >> elements) & 0xff) for elements in range(2, 10, 2)])
+        """MACアドレスをランダムに生成するメソッド。6つの2桁の16進数で構成される。"""
+        # ランダムなMACアドレスを生成
+        return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
 
     def get_mac_address(self, interface):
         """インターフェイスを指定してセットしたMACアドレスを取得するメソッド"""
