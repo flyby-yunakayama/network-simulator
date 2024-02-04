@@ -386,9 +386,10 @@ class Router:
                 
                 # 宛先ルータの全インターフェースに対するルートを個別に算出
                 for intf_info in self.topology_database[destination]['link_state_info'].values():
+                    print(intf_info)
                     destination_cidr = intf_info['ip_address']
-                    #network = ipaddress.ip_network(destination_cidr, strict=False)
-                    network_cidr = destination_cidr
+                    network = ipaddress.ip_network(destination_cidr, strict=False)
+                    network_cidr = str(network)
                     
                     if link_to_next_hop:
                         if previous_nodes.get(destination) == self.node_id:
