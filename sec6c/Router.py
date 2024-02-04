@@ -393,7 +393,7 @@ class Router:
                     if link_to_next_hop:
                         if link_to_next_hop.node_x.node_id == self.node_id:
                             neighbor = link_to_next_hop.node_y.node_id
-                        else:
+                        elif link_to_next_hop.node_y.node_id == self.node_id:
                             neighbor = link_to_next_hop.node_x.node_id
 
                         if destination == neighbor:
