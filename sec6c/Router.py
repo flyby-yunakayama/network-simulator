@@ -377,10 +377,8 @@ class Router:
         shortest_paths, previous_nodes = self.calculate_shortest_paths(self.node_id)
         print(f"Shortest paths from {self.node_id}: {shortest_paths} and previous nodes: {previous_nodes}")
 
-        # 一時的なルーティングテーブルを初期化
         temp_routing_table = {}
 
-        # ルーティングテーブルを更新
         for destination, _ in shortest_paths.items():
             if destination != self.node_id:
                 next_hop = self.find_initial_hop(destination, previous_nodes, self.node_id)
@@ -393,7 +391,7 @@ class Router:
                     network_cidr = str(network)
                     
                     # 直接接続されたネットワークかどうかを確認
-                    if next_hop is None or link_to_next_hop:
+                    if link_to_next_hop:
                         connection_type = "Directly connected"
                     else:
                         connection_type = f"via {next_hop}" if next_hop else "Unknown"
