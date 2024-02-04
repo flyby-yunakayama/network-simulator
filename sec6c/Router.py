@@ -364,10 +364,14 @@ class Router:
 
     def find_initial_hop(self, destination, previous_nodes, start_router_id):
         current_node = destination
-        while True:
-            if previous_nodes[current_node] == start_router_id:
+        while current_node is not None:  # Noneでないことを確認
+            if previous_nodes.get(current_node) == start_router_id:  # getメソッドを使用してKeyErrorを避ける
                 return current_node
-            current_node = previous_nodes[current_node]
+            current_node = previous_nodes.get(current_node)  # こちらもgetメソッドを使用
+        
+        # start_router_idに到達できなかった場合、エラーメッセージをログに記録または例外を発生
+        print(f"Error: No valid path from {start_router_id} to {destination} found.")
+        return None  # または適切なエラーハンドリング
 
     def update_routing_table_with_dijkstra(self):
         shortest_paths, previous_nodes = self.calculate_shortest_paths(self.node_id)
