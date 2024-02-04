@@ -364,9 +364,6 @@ class Router:
 
     def update_routing_table_with_dijkstra(self):
         shortest_paths, previous_nodes = self.calculate_shortest_paths(self.node_id)
-        print(self.node_id)
-        print("Shortest paths:", shortest_paths)  # デバッグ情報の出力
-        print("Previous nodes:", previous_nodes)  # デバッグ情報の出力
 
         # ルーティングテーブルを更新
         for destination, cost in shortest_paths.items():
@@ -394,7 +391,8 @@ class Router:
                 if destination_cidr and link_to_next_hop:
                     self.add_route(destination_cidr, next_hop, link_to_next_hop)
 
-                print(f"Updating route to {destination} at {destination_cidr} via {next_hop} on link {link_to_next_hop}")  # ルート更新のデバッグ情報
+                if self.network_event_scheduler.routing_verbose:
+                    print(f"Updating route to {destination} at {destination_cidr} via {next_hop} on link {link_to_next_hop}")  # ルート更新のデバッグ情報
 
         # ルータ自身のインターフェースに接続されているネットワークに対するルートを追加
         for link, interface_cidr in self.interfaces.items():
@@ -403,9 +401,10 @@ class Router:
                 self.add_route(interface_cidr, None, link)  # 直接接続されているため、next_hopはNone
 
         # ルーティングテーブルの内容を出力
-        print("Updated Routing Table:")
-        for destination_cidr, (next_hop, link) in self.routing_table.items():
-            print(f"Destination: {destination_cidr}, Next hop: {next_hop}, Link: {link}")
+        if self.network_event_scheduler.routing_verbose:
+            print("Updated Routing Table:")
+            for destination_cidr, (next_hop, link) in self.routing_table.items():
+                print(f"Destination: {destination_cidr}, Next hop: {next_hop}, Link: {link}")
 
     def get_destination_cidr(self, router_id):
         if router_id in self.topology_database:
