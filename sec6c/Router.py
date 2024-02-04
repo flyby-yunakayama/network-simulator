@@ -324,8 +324,8 @@ class Router:
             self.node_id: {'link_state_info': link_state_info}
         }
 
-    def print_topology_database(self):
-        print(f"トポロジデータベース（ルータ {self.node_id}）:")
+    def print_topology_database(self, now):
+        print(f"{now} トポロジデータベース（ルータ {self.node_id}）:")
         for router_id, router_info in self.topology_database.items():
             print(f"  ルータID: {router_id}")
             link_state_info = router_info.get("link_state_info", {})
