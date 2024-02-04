@@ -35,6 +35,14 @@ class Switch:
                       path_cost=self.root_path_cost,
                       network_event_scheduler=self.network_event_scheduler)
             link.enqueue_packet(bpdu, self)
+        # BPDU送信後にタイムアウト処理をスケジュール
+        self.network_event_scheduler.schedule_event_in(5, self.timeout_and_activate_links)
+
+    def timeout_and_activate_links(self):
+        # 全リンクがまだ初期状態ならアクティブ化
+        if all(state == 'initial' for state in self.link_states.values()):
+            for link in self.links:
+                self.link_states[link] = 'forwarding'
 
     def update_forwarding_table(self, source_address, link):
         self.forwarding_table[source_address] = link
@@ -56,7 +64,6 @@ class Switch:
 
     def forward_packet(self, packet, received_link):
         destination_address = packet.header["destination_mac"]
-        print(f"Switch {self.node_id} forwarding packet to {destination_address}")
         if destination_address in self.forwarding_table:
             link = self.forwarding_table[destination_address]
             if self.link_states[link] == 'forwarding':
@@ -64,10 +71,7 @@ class Switch:
                 link.enqueue_packet(packet, self)
         else:
             for link in self.links:
-                print(f"Switch {self.node_id} broadcasting packet to {destination_address} via {link}")
-                print(f"Switch {self.node_id} link_states: {self.link_states}")
                 if link != received_link and self.link_states[link] == 'forwarding':
-                    print(f"Switch {self.node_id} broadcasting packet to {destination_address} via {link}")
                     self.network_event_scheduler.log_packet_info(packet, "broadcast", self.node_id)
                     link.enqueue_packet(packet, self)
 
