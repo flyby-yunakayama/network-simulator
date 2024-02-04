@@ -384,11 +384,11 @@ class Router:
                 link_to_next_hop = self.get_link_to_neighbor(next_hop) if next_hop else None
                 print(f"From {self.node_id} to {destination}: previous_nodes: {previous_nodes.get(destination)}, next_hop:{next_hop}, link: {link_to_next_hop}")
                 
-                # 宛先ルータの全インターフェースに対するルートを統合
+                # 宛先ルータの全インターフェースに対するルートを個別に算出
                 for intf_info in self.topology_database[destination]['link_state_info'].values():
                     destination_cidr = intf_info['ip_address']
-                    network = ipaddress.ip_network(destination_cidr, strict=False)
-                    network_cidr = str(network)
+                    #network = ipaddress.ip_network(destination_cidr, strict=False)
+                    network_cidr = destination_cidr
                     
                     if link_to_next_hop:
                         if previous_nodes.get(destination) == self.node_id:
