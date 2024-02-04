@@ -11,6 +11,7 @@ class Switch:
         self.root_id = node_id
         self.root_path_cost = 0
         self.is_root = True
+        self.timeout_delay = 0.5  # BPDU再送信のタイムアウト時間
         label = f'Switch {node_id}'
         self.network_event_scheduler.add_node(node_id, label)
 
@@ -36,7 +37,11 @@ class Switch:
                       network_event_scheduler=self.network_event_scheduler)
             link.enqueue_packet(bpdu, self)
         # BPDU送信後にタイムアウト処理をスケジュール
-        self.network_event_scheduler.schedule_event_in(5, self.timeout_and_activate_links)
+        self.network_event_scheduler.schedule_event(
+            self.network_event_scheduler.current_time + self.timeout_delay,
+            self.timeout_and_activate_links
+        )
+
 
     def timeout_and_activate_links(self):
         # 全リンクがまだ初期状態ならアクティブ化
