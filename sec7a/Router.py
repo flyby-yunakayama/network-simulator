@@ -1,3 +1,4 @@
+import uuid
 import heapq
 import random
 import ipaddress
@@ -10,6 +11,7 @@ class Router:
         self.links = []
         self.available_ips = {ip: False for ip in ip_addresses} # CIDR表記のIPアドレスを辞書に変換し、使用状況をFalse（未使用）に初期化
         self.interfaces = {}  # インタフェース（リンクとIPアドレスのマッピング）
+        self.mac_addresses = {}  # インタフェースとMACアドレスのマッピング
         self.routing_table = {}  # ルーティングテーブル
         self.default_route = default_route  # デフォルトルート
         self.neighbors = {}  # 隣接ルータの状態を格納
@@ -26,12 +28,26 @@ class Router:
 
     def print_interfaces(self):
         print(f"インタフェース情報（ルータ {self.node_id}）:")
-        for link, ip_address in self.interfaces.items():
-            print(f"  リンク: {link}, IPアドレス: {ip_address}")
+        for interface, ip_address in self.interfaces.items():
+            mac_address = self.get_mac_address(interface)
+            print(f"  インタフェース: {interface}, IPアドレス: {ip_address}, MACアドレス: {mac_address}")
 
     def add_link(self, link, ip_address=None):
         if link not in self.interfaces:
             self.interfaces[link] = ip_address
+
+    def generate_mac_address(self):
+        """MACアドレスをランダムに生成するメソッド"""
+        return ':'.join(['{:02x}'.format((uuid.uuid4().int >> elements) & 0xff) for elements in range(2, 10, 2)])
+
+    def set_mac_address(self, interface):
+        """インターフェイスに対してMACアドレスをランダムに設定するメソッド"""
+        if interface not in self.mac_addresses:
+            self.mac_addresses[interface] = self.generate_mac_address()
+
+    def get_mac_address(self, interface):
+        """インターフェイスを指定してセットしたMACアドレスを取得するメソッド"""
+        return self.mac_addresses.get(interface, None)
 
     def mark_ip_as_used(self, ip_address):
         if ip_address in self.available_ips:
