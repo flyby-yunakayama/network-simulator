@@ -362,16 +362,24 @@ class Router:
 
         return shortest_paths, previous_nodes
 
+    def find_initial_hop(self, destination, previous_nodes, start_router_id):
+        current_node = destination
+        while True:
+            if previous_nodes[current_node] == start_router_id:
+                return current_node
+            current_node = previous_nodes[current_node]
+
     def update_routing_table_with_dijkstra(self):
         shortest_paths, previous_nodes = self.calculate_shortest_paths(self.node_id)
+        print(f"Shortest paths from {self.node_id}: {shortest_paths} and previous nodes: {previous_nodes}")
 
         # 一時的なルーティングテーブルを初期化
         temp_routing_table = {}
 
         # ルーティングテーブルを更新
-        for destination, cost in shortest_paths.items():
+        for destination, _ in shortest_paths.items():
             if destination != self.node_id:
-                next_hop = previous_nodes[destination]
+                next_hop = self.find_initial_hop(destination, previous_nodes, self.node_id)
                 link_to_next_hop = self.get_link_to_neighbor(next_hop) if next_hop else None
                 
                 # 宛先ルータの全インターフェースに対するルートを統合
@@ -384,7 +392,7 @@ class Router:
                     if next_hop is None or link_to_next_hop:
                         connection_type = "Directly connected"
                     else:
-                        connection_type = f"via {next_hop}"
+                        connection_type = f"via {next_hop}" if next_hop else "Unknown"
 
                     # 一時的なルーティングテーブルにルートを追加
                     temp_routing_table[network_cidr] = (connection_type, link_to_next_hop)
