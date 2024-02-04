@@ -208,6 +208,7 @@ class Router:
             self.network_event_scheduler.log_packet_info(packet, "dropped due to TTL expired", self.node_id)
             return
         else:
+            self.network_event_scheduler.log_packet_info(packet, "received", self.node_id)  # パケット受信をログに記録
             destination_ip = packet.header["destination_ip"]
             if '/' in destination_ip:
                 destination_ip, _ = destination_ip.split('/')
