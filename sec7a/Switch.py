@@ -42,7 +42,6 @@ class Switch:
             self.timeout_and_activate_links
         )
 
-
     def timeout_and_activate_links(self):
         # 全リンクがまだ初期状態ならアクティブ化
         if all(state == 'initial' for state in self.link_states.values()):
