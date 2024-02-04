@@ -278,6 +278,7 @@ class Router:
 
     def receive_lsa(self, lsa_packet):
         lsa_info = lsa_packet.payload["link_state_info"]
+        now = self.network_event_scheduler.current_time
 
         if not self.is_topology_initialized:
             self.initialize_topology_database()
@@ -294,6 +295,9 @@ class Router:
                     "link_state_info": lsa_info
                 }
 
+                if self.network_event_scheduler.routing_verbose:
+                    self.print_topology_database(now)
+
                 # ルーティングテーブルの再計算処理を入れる
 
                 # LSAを隣接ルータに再送信
@@ -301,7 +305,8 @@ class Router:
 
             else:
                 # 既知のLSAは無視する
-                pass
+                if self.network_event_scheduler.routing_verbose:
+                    print(f"{now} 古いLSAを受信しました（ルータ {self.node_id}）")
 
     def initialize_topology_database(self):
         # 自身のルータのリンク状態情報を初期化
@@ -318,20 +323,19 @@ class Router:
             self.node_id: {'link_state_info': link_state_info}
         }
 
-    def print_topology_database(self):
-        if self.network_event_scheduler.routing_verbose:
-            print(f"トポロジデータベース（ルータ {self.node_id}）:")
-            for router_id, router_info in self.topology_database.items():
-                print(f"  ルータID: {router_id}")
-                link_state_info = router_info.get("link_state_info", {})
-                for link, info in link_state_info.items():
-                    if isinstance(info, dict):
-                        print(f"    リンク: {link}")
-                        print(f"      IPアドレス: {info.get('ip_address')}")
-                        print(f"      コスト: {info.get('cost')}")
-                        print(f"      状態: {info.get('state')}")
-                    else:
-                        print(f"    不正なデータ型: {info}")
+    def print_topology_database(self, now):
+        print(f"{now} トポロジデータベース（ルータ {self.node_id}）:")
+        for router_id, router_info in self.topology_database.items():
+            print(f"  ルータID: {router_id}")
+            link_state_info = router_info.get("link_state_info", {})
+            for link, info in link_state_info.items():
+                if isinstance(info, dict):
+                    print(f"    リンク: {link}")
+                    print(f"      IPアドレス: {info.get('ip_address')}")
+                    print(f"      コスト: {info.get('cost')}")
+                    print(f"      状態: {info.get('state')}")
+                else:
+                    print(f"    不正なデータ型: {info}")
 
     def get_destination_cidr(self, router_id):
         if router_id in self.topology_database:

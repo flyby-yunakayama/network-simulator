@@ -31,13 +31,10 @@ node1.set_traffic(destination_mac="00:1A:2B:3C:4D:5F", destination_ip="192.168.2
 network_event_scheduler.run_until(5.0)
 
 router1.print_interfaces()
-router1.print_topology_database()
 router1.print_routing_table()
 
 node1.print_route("192.168.2.1/24")
 
-#link_state_info = router1.get_link_state_info()
-#print("Link State Information:", link_state_info)
 
 # 結果を確認
 network_event_scheduler.generate_summary(network_event_scheduler.packet_logs)
