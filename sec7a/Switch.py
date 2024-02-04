@@ -58,13 +58,14 @@ class Switch:
         destination_address = packet.header["destination_mac"]
         print(f"Switch {self.node_id} forwarding packet to {destination_address}")
         if destination_address in self.forwarding_table:
-            print(f"Switch {self.node_id} forwarding packet to {destination_address} via {self.forwarding_table[destination_address]}")
             link = self.forwarding_table[destination_address]
             if self.link_states[link] == 'forwarding':
                 self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
                 link.enqueue_packet(packet, self)
         else:
             for link in self.links:
+                print(f"Switch {self.node_id} broadcasting packet to {destination_address} via {link}")
+                print(f"Switch {self.node_id} link_states: {self.link_states}")
                 if link != received_link and self.link_states[link] == 'forwarding':
                     print(f"Switch {self.node_id} broadcasting packet to {destination_address} via {link}")
                     self.network_event_scheduler.log_packet_info(packet, "broadcast", self.node_id)
