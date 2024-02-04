@@ -26,6 +26,7 @@ network_event_scheduler.draw()
 
 # 通信アプリケーションの設定
 #node1.set_traffic(destination_mac="00:1A:2B:3C:4D:5F", destination_ip="192.168.2.1/24", bitrate=10000, start_time=1.0, duration=2.0, header_size=50, payload_size=10000, burstiness=1.0)
+#node1.set_traffic(destination_mac=router1.get_mac_address(link2), destination_ip="192.168.2.1/24", bitrate=10000, start_time=1.0, duration=2.0, header_size=50, payload_size=10000, burstiness=1.0)
 
 # イベントスケジューラを実行
 network_event_scheduler.run_until(5.0)
