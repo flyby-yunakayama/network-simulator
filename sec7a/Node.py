@@ -179,7 +179,7 @@ class Node:
             if self.network_event_scheduler.current_time < end_time:
                 # send_packetメソッドを使用してパケットを送信
                 data = b'X' * payload_size  # ダミーデータを生成
-                self.send_packet(destination_mac, destination_ip, data, header_size)
+                self.send_packet(destination_ip, data, header_size)
 
                 # 次のパケットをスケジュールするためのインターバルを計算
                 packet_size = header_size + payload_size
