@@ -20,6 +20,7 @@ class Node:
             self.mac_address = mac_address  # MACアドレス
         self.ip_address = ip_address  # IPアドレス
         self.links = []
+        self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
         self.mtu = mtu  # Maximum Transmission Unit (MTU)
         self.fragmented_packets = {}  # フラグメントされたパケットの一時格納用
         self.default_route = default_route
