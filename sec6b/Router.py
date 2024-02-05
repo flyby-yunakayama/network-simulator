@@ -377,11 +377,10 @@ class Router:
         return None  # 指定された隣接ルータに接続するリンクが見つからない場合
 
     def print_routing_table(self):
-        if self.network_event_scheduler.routing_verbose:
-            print(f"ルーティングテーブル（ルータ {self.node_id}）:")
-            for destination, route_info in self.routing_table.items():
-                next_hop, link = route_info
-                print(f"  宛先IPアドレス: {destination}, Next hop: {next_hop}, リンク: {link}")
+        print(f"ルーティングテーブル（ルータ {self.node_id}）:")
+        for destination, route_info in self.routing_table.items():
+            next_hop, link = route_info
+            print(f"  宛先IPアドレス: {destination}, Next hop: {next_hop}, リンク: {link}")
 
     def ip_to_int(self, ip_address):
         octets = ip_address.split('.')
