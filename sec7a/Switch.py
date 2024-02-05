@@ -56,6 +56,7 @@ class Switch:
             self.network_event_scheduler.log_packet_info(packet, "BPDU received", self.node_id)  # パケット受信をログに記録
             self.process_bpdu(packet, received_link)
         else:
+            print(packet)
             if packet.arrival_time == -1:
                 self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)  # パケットが失われた場合の処理
                 return
