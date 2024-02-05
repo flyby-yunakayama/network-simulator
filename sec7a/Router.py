@@ -165,6 +165,7 @@ class Router:
             # 送信元ルータを除外
             if link.node_x.node_id != original_sender_id and link.node_y.node_id != original_sender_id:
                 lsa_packet = original_lsa_packet
+                lsa_packet.header["source_mac"] = self.get_mac_address(link)
                 link.enqueue_packet(lsa_packet, self)
 
     def increment_lsa_sequence_number(self):
