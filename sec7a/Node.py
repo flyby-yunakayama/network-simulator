@@ -47,6 +47,19 @@ class Node:
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
 
+    def add_to_arp_table(self, ip_address, mac_address):
+        # ARPテーブルにIPアドレスとMACアドレスのマッピングを追加
+        self.arp_table[ip_address] = mac_address
+
+    def get_mac_address_from_ip(self, ip_address):
+        # 指定されたIPアドレスに対応するMACアドレスをARPテーブルから取得
+        return self.arp_table.get(ip_address, None)
+
+    def print_arp_table(self):
+        print(f"ARPテーブル（ルータ {self.node_id}）:")
+        for ip_address, mac_address in self.arp_table.items():
+            print(f"IPアドレス: {ip_address} -> MACアドレス: {mac_address}")
+
     def mark_ip_as_used(self, ip_address):
         # Nodeクラスではこのメソッドは何もしない
         pass
@@ -112,10 +125,11 @@ class Node:
 
         self.network_event_scheduler.log_packet_info(last_fragment, "reassembled", self.node_id)
 
-    def send_packet(self, destination_mac, destination_ip, data, header_size):
+    def send_packet(self, destination_ip, data, header_size):
         payload_size = self.mtu - header_size
         total_size = len(data)
         offset = 0
+        destination_mac = self.get_mac_address_from_ip(destination_ip)
 
         original_data_id = str(uuid.uuid4())
 
@@ -149,13 +163,15 @@ class Node:
             for link in self.links:
                 link.enqueue_packet(packet, self)
 
-    def create_packet(self, destination_mac, destination_ip, header_size, payload_size):
+    def create_packet(self, destination_ip, header_size, payload_size):
+        destination_mac = self.get_mac_address_from_ip(destination_ip)
         node_ip_address = self.ip_address.split('/')[0]
         packet = Packet(source_mac=self.mac_address, destination_mac=destination_mac, source_ip=node_ip_address, destination_ip=destination_ip, ttl=64, header_size=header_size, payload_size=payload_size, network_event_scheduler=self.network_event_scheduler)
         self.network_event_scheduler.log_packet_info(packet, "created", self.node_id)  # パケット生成をログに記録
         self.send_packet(packet)
 
-    def set_traffic(self, destination_mac, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
+    def set_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
+        destination_mac = self.get_mac_address_from_ip(destination_ip)
         end_time = start_time + duration
 
         def generate_packet():
