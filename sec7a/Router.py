@@ -53,6 +53,11 @@ class Router:
         # 指定されたIPアドレスに対応するMACアドレスをARPテーブルから取得
         return self.arp_table.get(ip_address, None)
 
+    def print_arp_table(self):
+        print(f"ARPテーブル（ルータ {self.node_id}）:")
+        for ip_address, mac_address in self.arp_table.items():
+            print(f"IPアドレス: {ip_address} -> MACアドレス: {mac_address}")
+
     def mark_ip_as_used(self, ip_address):
         if ip_address in self.available_ips:
             self.available_ips[ip_address] = True  # 辞書の値をTrue（使用済み）に更新
