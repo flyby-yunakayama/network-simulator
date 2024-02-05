@@ -5,18 +5,14 @@ from sec7a.Router import Router
 from sec7a.Packet import Packet
 
 class Node:
-    def __init__(self, node_id, mac_address, ip_address, network_event_scheduler, mtu=1500, default_route=None):
-        # MACアドレスが正しい形式であるか確認
-        if not self.is_valid_mac_address(mac_address):
-            raise ValueError("無効なMACアドレス形式です。")
-
+    def __init__(self, node_id, ip_address, network_event_scheduler, mtu=1500, default_route=None):
         # IPアドレスが正しいCIDR形式であるか確認
         if not self.is_valid_cidr_notation(ip_address):
             raise ValueError("無効なIPアドレス形式です。")
 
         self.network_event_scheduler = network_event_scheduler
         self.node_id = node_id
-        self.mac_address = mac_address  # MACアドレス
+        self.mac_address = self.generate_mac_address()  # MACアドレス
         self.ip_address = ip_address  # IPアドレス
         self.links = []
         self.mtu = mtu  # Maximum Transmission Unit (MTU)
@@ -41,6 +37,10 @@ class Node:
     def add_link(self, link, ip_address=None):
         if link not in self.links:
             self.links.append(link)
+
+    def generate_mac_address(self):
+        # ランダムなMACアドレスを生成
+        return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
 
     def mark_ip_as_used(self, ip_address):
         # Nodeクラスではこのメソッドは何もしない
