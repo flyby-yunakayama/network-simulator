@@ -45,6 +45,9 @@ class Router:
     def get_mac_address(self, interface):
         return self.mac_addresses.get(interface, None)
 
+    def get_ip_address(self, interface):
+        return self.ip_addresses.get(interface, None)
+
     def add_to_arp_table(self, ip_address, mac_address):
         # ARPテーブルにIPアドレスとMACアドレスのマッピングを追加
         self.arp_table[ip_address] = mac_address
