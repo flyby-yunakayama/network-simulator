@@ -30,7 +30,8 @@ class Packet:
 class BPDU(Packet):
     def __init__(self, source_mac, destination_mac, root_id, bridge_id, path_cost, network_event_scheduler):
         super().__init__(
-            source_mac, destination_mac,
+            source_mac=source_mac, 
+            destination_mac=destination_mac,
             source_ip='0.0.0.0/24',  # IPv4用ダミーIPアドレス
             destination_ip='0.0.0.0/24',  # IPv4用ダミーIPアドレス
             ttl=64, fragment_flags={}, fragment_offset=0,

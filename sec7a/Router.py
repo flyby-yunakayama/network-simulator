@@ -38,12 +38,10 @@ class Router:
             self.mac_addresses[link] = self.generate_mac_address()
 
     def generate_mac_address(self):
-        """MACアドレスをランダムに生成するメソッド。6つの2桁の16進数で構成される。"""
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
 
     def get_mac_address(self, interface):
-        """インターフェイスを指定してセットしたMACアドレスを取得するメソッド"""
         return self.mac_addresses.get(interface, None)
 
     def mark_ip_as_used(self, ip_address):
@@ -104,8 +102,8 @@ class Router:
         for link, interface_cidr in self.interfaces.items():
             network_address, mask_length = interface_cidr.split('/')
             hello_packet = HelloPacket(
-                source_mac="00:00:00:00:00:00",  # ダミーMACアドレス
-                source_ip=network_address,
+                source_mac=self.get_mac_address(link),  # インタフェースのMACアドレス
+                source_ip=network_address,  # インタフェースのIPアドレス
                 network_mask=self.cidr_to_subnet_mask(mask_length),
                 router_id=self.node_id,
                 hello_interval=self.hello_interval,  # 適切なHelloインターバルを設定
@@ -131,8 +129,8 @@ class Router:
         for link, ip_address in self.interfaces.items():
             source_ip = ip_address
             lsa_packet = LSAPacket(
-                source_mac="00:00:00:00:00:00",  # ダミーMACアドレス
-                source_ip=source_ip,  # インターフェースのIPアドレス
+                source_mac=self.get_mac_address(link),  # インタフェースのMACアドレス
+                source_ip=source_ip,  # インタフェースのIPアドレス
                 router_id=self.node_id,
                 sequence_number=seq_number,  # インクリメントしたシーケンス番号
                 link_state_info=link_state_info,  # リンク状態情報
