@@ -218,7 +218,6 @@ class Router:
         return network, subnet_mask
 
     def receive_packet(self, packet, received_link):
-        # 特定のパケットタイプ（HelloやLSA）を先に処理
         if isinstance(packet, HelloPacket):
             self.receive_hello_packet(packet, received_link)
             return  # Helloパケットの場合、処理を終了
