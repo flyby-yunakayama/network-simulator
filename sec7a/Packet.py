@@ -34,7 +34,7 @@ class BPDU(Packet):
             destination_mac=destination_mac,
             source_ip='0.0.0.0/24',  # IPv4用ダミーIPアドレス
             destination_ip='0.0.0.0/24',  # IPv4用ダミーIPアドレス
-            ttl=64, fragment_flags={}, fragment_offset=0,
+            ttl=1, fragment_flags={}, fragment_offset=0, # ダミーのTTLとフラグメント情報
             header_size=20, payload_size=50, network_event_scheduler=network_event_scheduler
         )
         self.payload = {

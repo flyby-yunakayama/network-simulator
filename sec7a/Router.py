@@ -2,7 +2,7 @@ import uuid
 import heapq
 import random
 import ipaddress
-from sec7a.Packet import HelloPacket, LSAPacket
+from sec7a.Packet import BPDU, HelloPacket, LSAPacket
 
 class Router:
     def __init__(self, node_id, ip_addresses, network_event_scheduler, hello_interval=10, lsa_interval=10, default_route = None):
@@ -13,6 +13,7 @@ class Router:
         self.interfaces = {}  # インタフェース（リンクとIPアドレスのマッピング）
         self.mac_addresses = {}  # インタフェースとMACアドレスのマッピング
         self.routing_table = {}  # ルーティングテーブル
+        self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
         self.default_route = default_route  # デフォルトルート
         self.neighbors = {}  # 隣接ルータの状態を格納
         self.hello_interval = hello_interval
@@ -43,6 +44,14 @@ class Router:
 
     def get_mac_address(self, interface):
         return self.mac_addresses.get(interface, None)
+
+    def add_to_arp_table(self, ip_address, mac_address):
+        # ARPテーブルにIPアドレスとMACアドレスのマッピングを追加
+        self.arp_table[ip_address] = mac_address
+
+    def get_mac_address_from_ip(self, ip_address):
+        # 指定されたIPアドレスに対応するMACアドレスをARPテーブルから取得
+        return self.arp_table.get(ip_address, None)
 
     def mark_ip_as_used(self, ip_address):
         if ip_address in self.available_ips:
@@ -187,18 +196,18 @@ class Router:
         if destination_ip == "224.0.0.5":
             for link in self.interfaces.keys():
                 self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
-                #packet.header["source_mac"] = self.get_mac_address(link)
-                #packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"]
+                packet.header["source_mac"] = self.get_mac_address(link)
+                packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"])
                 link.enqueue_packet(packet, self)
         elif link:  # unicast
             self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
-            #packet.header["source_mac"] = self.get_mac_address(link)
-            #packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"]
+            packet.header["source_mac"] = self.get_mac_address(link)
+            packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"])
             link.enqueue_packet(packet, self)
         elif self.default_route:  # default route
             self.network_event_scheduler.log_packet_info(packet, "forwarded via default route", self.node_id)
-            #packet.header["source_mac"] = self.get_mac_address(self.default_route)
-            #packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"]
+            packet.header["source_mac"] = self.get_mac_address(self.default_route)
+            packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"])
             self.default_route.enqueue_packet(packet, self)
         else:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
@@ -216,6 +225,9 @@ class Router:
         elif isinstance(packet, LSAPacket):
             self.receive_lsa(packet)
             return  # LSAパケットの場合、処理を終了
+        elif isinstance(packet, BPDU):
+            self.network_event_scheduler.log_packet_info(packet, "dropped BPDU", self.node_id)
+            return  # BPDUの場合、処理を終了
 
         # 一般のパケットの場合、TTLを減らす
         packet.header["ttl"] -= 1
@@ -225,26 +237,24 @@ class Router:
             self.network_event_scheduler.log_packet_info(packet, "dropped due to TTL expired", self.node_id)
             return
         else:
-            #if packet.header["destination_mac"] == self.get_mac_address(received_link):
-
-            self.network_event_scheduler.log_packet_info(packet, "received", self.node_id)  # パケット受信をログに記録
-            destination_ip = packet.header["destination_ip"]
-            if '/' in destination_ip:
-                destination_ip, _ = destination_ip.split('/')
-            for link, interface_cidr in self.interfaces.items():
-                network_address, mask_length = interface_cidr.split('/')
-                subnet_mask = self.cidr_to_subnet_mask(mask_length)
-                if self.matches_subnet(destination_ip, network_address, subnet_mask):
-                    if self.is_final_destination(packet, network_address):
-                        pass
-                    else:
-                        self.forward_packet(packet)
-                    return
-            print(packet)
-            self.forward_packet(packet)
-            
-            #else:
-            #    self.network_event_scheduler.log_packet_info(packet, "dropped due to wrong MAC address", self.node_id)
+            if packet.header["destination_mac"] == self.get_mac_address(received_link):
+                    self.network_event_scheduler.log_packet_info(packet, "received", self.node_id)  # パケット受信をログに記録
+                    destination_ip = packet.header["destination_ip"]
+                    if '/' in destination_ip:
+                        destination_ip, _ = destination_ip.split('/')
+                    for link, interface_cidr in self.interfaces.items():
+                        network_address, mask_length = interface_cidr.split('/')
+                        subnet_mask = self.cidr_to_subnet_mask(mask_length)
+                        if self.matches_subnet(destination_ip, network_address, subnet_mask):
+                            if self.is_final_destination(packet, network_address):
+                                pass
+                            else:
+                                self.forward_packet(packet)
+                            return
+                    print(packet)
+                    self.forward_packet(packet)
+            else:
+                self.network_event_scheduler.log_packet_info(packet, "dropped due to unmatched MAC address", self.node_id)
 
     def is_final_destination(self, packet, network_address):
         destination_ip = packet.header["destination_ip"]
