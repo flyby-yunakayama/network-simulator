@@ -204,22 +204,25 @@ class Router:
 
         if destination_ip == "224.0.0.5":
             for link in self.interfaces.keys():
-                self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
-                packet.header["source_mac"] = self.get_mac_address(link)
-                packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"])
-                link.enqueue_packet(packet, self)
+                self.process_and_enqueue_packet(packet, link)
         elif link:  # unicast
-            self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
-            packet.header["source_mac"] = self.get_mac_address(link)
-            packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"])
-            link.enqueue_packet(packet, self)
+            self.process_and_enqueue_packet(packet, link)
         elif self.default_route:  # default route
-            self.network_event_scheduler.log_packet_info(packet, "forwarded via default route", self.node_id)
-            packet.header["source_mac"] = self.get_mac_address(self.default_route)
-            packet.header["destination_mac"] = self.get_mac_address_from_ip(packet.header["destination_ip"])
-            self.default_route.enqueue_packet(packet, self)
+            self.process_and_enqueue_packet(packet, self.default_route)
         else:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
+
+    def process_and_enqueue_packet(self, packet, link):
+        # パケットのMACアドレスを更新
+        source_mac = self.get_mac_address(link)
+        destination_mac = self.get_mac_address_from_ip(packet.header["destination_ip"])
+        packet.add_mac_header(source_mac, destination_mac)
+        
+        # パケットの転送情報をログに記録
+        self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
+        
+        # パケットをリンクのキューに追加
+        link.enqueue_packet(packet, self)
 
     def cidr_to_network_address(self, cidr):
         network, mask_length = cidr.split('/')
@@ -247,6 +250,7 @@ class Router:
         else:
             if packet.header["destination_mac"] == self.get_mac_address(received_link):
                     self.network_event_scheduler.log_packet_info(packet, "received", self.node_id)  # パケット受信をログに記録
+                    packet.remove_mac_header()  # MACヘッダを疑似的に除去
                     destination_ip = packet.header["destination_ip"]
                     if '/' in destination_ip:
                         destination_ip, _ = destination_ip.split('/')
@@ -259,12 +263,10 @@ class Router:
                             else:
                                 self.forward_packet(packet)
                             return
-                    print(packet)
                     self.forward_packet(packet)
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped due to unmatched MAC address", self.node_id)
-                print(self.get_mac_address(received_link), packet.header["destination_mac"])
-
+ 
     def is_final_destination(self, packet, network_address):
         destination_ip = packet.header["destination_ip"]
         if '/' in destination_ip:

@@ -26,6 +26,17 @@ class Packet:
         # MACヘッダとIPヘッダを統合して返す
         return {**self.mac_header, **self.ip_header}
 
+    # MACヘッダを疑似的に除去するメソッド
+    def remove_mac_header(self):
+        self.mac_header = {}
+
+    # MACヘッダを再付与するメソッド
+    def add_mac_header(self, source_mac, destination_mac):
+        self.mac_header = {
+            "source_mac": source_mac,
+            "destination_mac": destination_mac
+        }
+
     def set_arrived(self, arrival_time):
         self.arrival_time = arrival_time
 

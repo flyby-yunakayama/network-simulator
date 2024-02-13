@@ -259,11 +259,9 @@ class Router:
                             else:
                                 self.forward_packet(packet)
                             return
-                    print(packet)
                     self.forward_packet(packet)
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped due to unmatched MAC address", self.node_id)
-                print(self.get_mac_address(received_link), packet.header["destination_mac"])
 
     def is_final_destination(self, packet, network_address):
         destination_ip = packet.header["destination_ip"]
