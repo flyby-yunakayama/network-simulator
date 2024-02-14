@@ -207,8 +207,8 @@ class Router:
             operation="reply",  # 操作はリプライ
             network_event_scheduler=self.network_event_scheduler
         )
-
         # ARPリプライを送信インターフェースを通じて送信
+        self.network_event_scheduler.log_packet_info(reply_packet, "ARP reply", self.node_id)
         received_link.enqueue_packet(reply_packet, self)
 
     def forward_packet(self, packet):
