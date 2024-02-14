@@ -2,7 +2,7 @@ import uuid
 import heapq
 import random
 import ipaddress
-from sec8a.Packet import BPDU, HelloPacket, LSAPacket
+from sec8a.Packet import ARPPacket, BPDU, HelloPacket, LSAPacket
 
 class Router:
     def __init__(self, node_id, ip_addresses, network_event_scheduler, hello_interval=10, lsa_interval=10, default_route = None):
@@ -198,6 +198,19 @@ class Router:
         # リンクの状態を取得するロジック（例: アクティブかどうか）
         return "active" if link.is_active else "inactive"
 
+    def on_arp_request_received(self, request_packet, received_link):
+        reply_packet = ARPPacket(
+            source_mac=self.get_mac_address(received_link),  # 受信インタフェースのMACアドレス
+            destination_mac=request_packet.header["source_mac"],  # ARPリクエスト送信元のMACアドレス
+            source_ip=self.get_ip_address(received_link),  # ARPリクエストの宛先IP（ルータのインタフェースIP）
+            destination_ip=request_packet.header["source_ip"],  # ARPリクエストの送信元IP
+            operation="reply",  # 操作はリプライ
+            network_event_scheduler=self.network_event_scheduler
+        )
+
+        # ARPリプライを送信インターフェースを通じて送信
+        received_link.enqueue_packet(reply_packet, self)
+
     def forward_packet(self, packet):
         destination_ip = packet.header["destination_ip"]
         next_hop, link = self.get_route(destination_ip)
@@ -230,6 +243,10 @@ class Router:
         return network, subnet_mask
 
     def receive_packet(self, packet, received_link):
+        if isinstance(packet, ARPPacket):
+            if packet.payload.get("operation") == "request":
+                self.on_arp_request_received(packet, received_link)
+                return  # ARPリクエストの場合、処理を終了
         if isinstance(packet, HelloPacket):
             self.receive_hello_packet(packet, received_link)
             return  # Helloパケットの場合、処理を終了
