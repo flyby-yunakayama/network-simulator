@@ -92,6 +92,7 @@ class Node:
                     source_mac = packet.payload["source_mac"]
                     print(f"ARP reply received: IPアドレス {source_ip} に対応するMACアドレスは {source_mac} です。")
                     self.add_to_arp_table(source_ip, source_mac)
+                    print(self.arp_table)
                     return
 
             if packet.header["destination_ip"] == self.ip_address:
@@ -186,7 +187,6 @@ class Node:
                 current_time - self.last_arp_request_time[destination_ip] > self.arp_request_interval:
                 self.send_arp_request(destination_ip)
                 self.last_arp_request_time[destination_ip] = current_time
-                return
         else:
             original_data_id = str(uuid.uuid4())
             payload_size = self.mtu - header_size
