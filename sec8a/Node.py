@@ -93,6 +93,7 @@ class Node:
                     print(f"ARP reply received: IPアドレス {source_ip} に対応するMACアドレスは {source_mac} です。")
                     self.add_to_arp_table(source_ip, source_mac)
                     print(self.arp_table)
+                    self.print_arp_table()
                     return
 
             if packet.header["destination_ip"] == self.ip_address:
