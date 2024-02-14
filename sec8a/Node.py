@@ -22,8 +22,7 @@ class Node:
         self.ip_address = ip_address  # IPアドレス
         self.links = []
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
-        self.last_arp_request_time = {}  # 最後にARPリクエストを送信した時刻を記録
-        self.arp_request_interval = 5  # ARPリクエストの最小間隔（秒）
+        self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
         self.mtu = mtu  # Maximum Transmission Unit (MTU)
         self.fragmented_packets = {}  # フラグメントされたパケットの一時格納用
         self.default_route = default_route
@@ -90,11 +89,8 @@ class Node:
                     self.network_event_scheduler.log_packet_info(packet, "ARP reply received", self.node_id)
                     source_ip = packet.payload["source_ip"]
                     source_mac = packet.payload["source_mac"]
-                    print(f"ARP reply received: IPアドレス {source_ip} に対応するMACアドレスは {source_mac} です。")
                     self.add_to_arp_table(source_ip, source_mac)
-                    print(self.arp_table)
-                    self.print_arp_table()
-                    return
+                    self.on_arp_reply_received(source_ip, source_mac)
 
             if packet.header["destination_ip"] == self.ip_address:
                 # 宛先IPがこのノードの場合
@@ -150,6 +146,13 @@ class Node:
 
         self.network_event_scheduler.log_packet_info(last_fragment, "reassembled", self.node_id)
 
+    def on_arp_reply_received(self, destination_ip, destination_mac):
+        # ARPリプライを受信したら、待機中のパケットに対して処理を行う
+        if destination_ip in self.waiting_for_arp_reply:
+            for data, header_size in self.waiting_for_arp_reply[destination_ip]:
+                self._send_packet_data(destination_ip, destination_mac, data, header_size)
+            del self.waiting_for_arp_reply[destination_ip]
+
     def send_arp_request(self, ip_address):
         # ARPリクエストパケットを作成して送信する処理
         # 宛先MACアドレスはブロードキャストアドレス、宛先IPアドレスは問い合わせたいIPアドレス
@@ -182,36 +185,38 @@ class Node:
         print(self.node_id, destination_mac)
 
         if destination_mac is None:
-            current_time = self.network_event_scheduler.current_time
-            # 宛先MACアドレスが不明で、かつARPリクエストの再送信間隔を超えている場合、ARPリクエストを送信
-            if destination_ip not in self.last_arp_request_time or \
-                current_time - self.last_arp_request_time[destination_ip] > self.arp_request_interval:
-                self.send_arp_request(destination_ip)
-                self.last_arp_request_time[destination_ip] = current_time
+            # ARPリクエストを送信し、パケットを待機リストに追加
+            self.send_arp_request(destination_ip)
+            if destination_ip not in self.waiting_for_arp_reply:
+                self.waiting_for_arp_reply[destination_ip] = []
+            self.waiting_for_arp_reply[destination_ip].append((data, header_size))
         else:
-            original_data_id = str(uuid.uuid4())
-            payload_size = self.mtu - header_size
-            total_size = len(data)
-            offset = 0
+            self._send_packet_data(destination_ip, destination_mac, data, header_size)
 
-            while offset < total_size:
-                more_fragments = offset + payload_size < total_size
+    def _send_packet_data(self, destination_ip, destination_mac, data, header_size):
+        original_data_id = str(uuid.uuid4())
+        payload_size = self.mtu - header_size
+        total_size = len(data)
+        offset = 0
 
-                fragment_data = data[offset:offset + payload_size]
-                fragment_offset = offset
+        while offset < total_size:
+            more_fragments = offset + payload_size < total_size
 
-                fragment_flags = {
-                    "more_fragments": more_fragments,
-                    "original_data_id": original_data_id  # データの一意の識別子を追加
-                }
+            fragment_data = data[offset:offset + payload_size]
+            fragment_offset = offset
 
-                node_ip_address = self.ip_address.split('/')[0]
-                packet = Packet(self.mac_address, destination_mac, node_ip_address, destination_ip, 64, fragment_flags, fragment_offset, header_size, len(fragment_data), self.network_event_scheduler)
-                packet.payload = fragment_data
+            fragment_flags = {
+                "more_fragments": more_fragments,
+                "original_data_id": original_data_id  # データの一意の識別子を追加
+            }
 
-                self._send_packet(packet)
+            node_ip_address = self.ip_address.split('/')[0]
+            packet = Packet(self.mac_address, destination_mac, node_ip_address, destination_ip, 64, fragment_flags, fragment_offset, header_size, len(fragment_data), self.network_event_scheduler)
+            packet.payload = fragment_data
 
-                offset += payload_size
+            self._send_packet(packet)
+
+            offset += payload_size
 
     def _send_packet(self, packet):
         """
