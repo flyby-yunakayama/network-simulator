@@ -91,6 +91,7 @@ class Node:
                     source_mac = packet.payload["source_mac"]
                     self.add_to_arp_table(source_ip, source_mac)
                     self.on_arp_reply_received(source_ip, source_mac)
+                    return
 
             if packet.header["destination_ip"] == self.ip_address:
                 # 宛先IPがこのノードの場合
