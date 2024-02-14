@@ -5,7 +5,7 @@ import numpy as np
 from collections import defaultdict
 
 class NetworkEventScheduler:
-    def __init__(self, log_enabled=False, verbose=False, stp_verbose=False):
+    def __init__(self, log_enabled=False, verbose=False, stp_verbose=False, routing_verbose=False):
         self.current_time = 0
         self.events = []
         self.event_id = 0
@@ -13,10 +13,11 @@ class NetworkEventScheduler:
         self.log_enabled = log_enabled
         self.verbose = verbose
         self.stp_verbose = stp_verbose
+        self.routing_verbose = routing_verbose
         self.graph = nx.Graph()
 
-    def add_node(self, node_id, label):
-        self.graph.add_node(node_id, label=label)
+    def add_node(self, node_id, label, ip_addresses=None):
+        self.graph.add_node(node_id, label=label, ip_addresses=ip_addresses)
 
     def add_link(self, node1_id, node2_id, label, bandwidth, delay):
         self.graph.add_edge(node1_id, node2_id, label=label, bandwidth=bandwidth, delay=delay)
@@ -103,8 +104,8 @@ class NetworkEventScheduler:
                 "event": event_type,
                 "node_id": node_id,
                 "packet_id": packet.id,
-                "src": packet.header["source_mac"],
-                "dst": packet.header["destination_mac"]
+                "src": packet.header["source_ip"],
+                "dst": packet.header["destination_ip"]
             }
             self.packet_logs[packet.id]["events"].append(event_info)
 
@@ -113,7 +114,7 @@ class NetworkEventScheduler:
 
     def print_packet_logs(self):
         for packet_id, log in self.packet_logs.items():
-            print(f"Packet ID: {packet_id} Src: {log['source_mac']} {log['creation_time']} -> Dst: {log['destination_mac']} {log['arrival_time']}")
+            print(f"Packet ID: {packet_id} Src: {log['source_ip']} {log['creation_time']} -> Dst: {log['destination_ip']} {log['arrival_time']}")
             for event in log['events']:
                 print(f"Time: {event['time']}, Event: {event['event']}")
 
@@ -121,7 +122,7 @@ class NetworkEventScheduler:
         summary_data = defaultdict(lambda: {"sent_packets": 0, "sent_bytes": 0, "received_packets": 0, "received_bytes": 0, "total_delay": 0, "lost_packets": 0, "min_creation_time": float('inf'), "max_arrival_time": 0})
 
         for packet_id, log in packet_logs.items():
-            src_dst_pair = (log["source_mac"], log["destination_mac"])
+            src_dst_pair = (log["source_ip"], log["destination_ip"])
             summary_data[src_dst_pair]["sent_packets"] += 1
             summary_data[src_dst_pair]["sent_bytes"] += log["size"]
             summary_data[src_dst_pair]["min_creation_time"] = min(summary_data[src_dst_pair]["min_creation_time"], log["creation_time"])
@@ -167,7 +168,7 @@ class NetworkEventScheduler:
         throughput_data = defaultdict(list)
         for packet_id, log in packet_logs.items():
             if log['arrival_time'] is not None:
-                src_dst_pair = (log['source_mac'], log['destination_mac'])
+                src_dst_pair = (log['source_ip'], log['destination_ip'])
                 slot_index = int((log['arrival_time'] - min_time) / time_slot)
                 throughput_data[src_dst_pair].append((slot_index, log['size']))
 
@@ -194,7 +195,7 @@ class NetworkEventScheduler:
         delay_data = defaultdict(list)
         for packet_id, log in packet_logs.items():
             if log['arrival_time'] is not None:
-                src_dst_pair = (log['source_mac'], log['destination_mac'])
+                src_dst_pair = (log['source_ip'], log['destination_ip'])
                 delay = log['arrival_time'] - log['creation_time']
                 delay_data[src_dst_pair].append(delay)
 
@@ -224,6 +225,6 @@ class NetworkEventScheduler:
 
     def run_until(self, end_time):
         while self.events and self.events[0][0] <= end_time:
-            event_time, callback, args = heapq.heappop(self.events)
+            event_time, event_id, callback, args = heapq.heappop(self.events)
             self.current_time = event_time
             callback(*args)
