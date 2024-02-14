@@ -186,6 +186,7 @@ class Node:
                 current_time - self.last_arp_request_time[destination_ip] > self.arp_request_interval:
                 self.send_arp_request(destination_ip)
                 self.last_arp_request_time[destination_ip] = current_time
+                return
         else:
             original_data_id = str(uuid.uuid4())
             payload_size = self.mtu - header_size
