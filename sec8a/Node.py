@@ -105,7 +105,7 @@ class Node:
                 if packet.payload.get("operation") == "reply" and packet.payload["destination_ip"] == self.ip_address:
                     # ARPリプライを受信した場合の処理
                     source_ip = packet.payload["source_ip"]
-                    source_mac = packet.header["source_mac"]
+                    source_mac = packet.payload["source_mac"]
                     self.add_to_arp_table(source_ip, source_mac)
                     return
 

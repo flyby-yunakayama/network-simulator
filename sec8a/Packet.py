@@ -60,7 +60,9 @@ class ARPPacket(Packet):
         )
         # ARP特有の情報をペイロードとして設定
         self.payload = {
-            "operation": operation,  # ARP操作（例: "request"または"reply"）
+            "operation": operation,  # ARP操作（"request"または"reply"）
+            "source_mac": source_mac,  # 送信元MACアドレス
+            "destination_mac": destination_mac,  # 宛先MACアドレス
             "source_ip": source_ip,  # 送信元IPアドレス
             "destination_ip": destination_ip  # 宛先IPアドレス
         }
