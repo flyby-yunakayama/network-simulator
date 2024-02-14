@@ -104,6 +104,7 @@ class Node:
             if isinstance(packet, ARPPacket):
                 if packet.payload.get("operation") == "reply" and packet.payload["destination_ip"] == self.ip_address:
                     # ARPリプライを受信した場合の処理
+                    self.network_event_scheduler.log_packet_info(packet, "ARP reply received", self.node_id)
                     source_ip = packet.payload["source_ip"]
                     source_mac = packet.payload["source_mac"]
                     self.add_to_arp_table(source_ip, source_mac)
