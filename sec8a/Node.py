@@ -179,6 +179,7 @@ class Node:
         total_size = len(data)
         offset = 0
         destination_mac = self.get_mac_address_from_ip(destination_ip)
+        print(self.node_id, destination_mac)
 
         if destination_mac is None:
             current_time = self.network_event_scheduler.current_time
