@@ -166,6 +166,7 @@ class Node:
             operation="request",
             network_event_scheduler=self.network_event_scheduler
         )
+        self.network_event_scheduler.log_packet_info(arp_request_packet, "ARP request", self.node_id)
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
@@ -178,6 +179,7 @@ class Node:
             operation="reply",  # 操作は'reply'
             network_event_scheduler=self.network_event_scheduler
         )
+        self.network_event_scheduler.log_packet_info(arp_reply_packet, "ARP reply", self.node_id)
         self._send_packet(arp_reply_packet)
 
     def send_packet(self, destination_ip, data, header_size):
