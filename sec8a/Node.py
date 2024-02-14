@@ -22,10 +22,11 @@ class Node:
         self.ip_address = ip_address  # IPアドレス
         self.links = []
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
+        self.last_arp_request_time = {}  # 最後にARPリクエストを送信した時刻を記録
+        self.arp_request_interval = 5  # ARPリクエストの最小間隔（秒）
         self.mtu = mtu  # Maximum Transmission Unit (MTU)
         self.fragmented_packets = {}  # フラグメントされたパケットの一時格納用
         self.default_route = default_route
-        self.arp_timeout = arp_timeout
         label = f'Node {node_id}\n{mac_address}'
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
@@ -56,25 +57,7 @@ class Node:
 
     def get_mac_address_from_ip(self, ip_address):
         # 指定されたIPアドレスに対応するMACアドレスをARPテーブルから取得
-        mac_address = self.arp_table.get(ip_address)
-        if mac_address:
-            # ARPテーブルにMACアドレスが存在する場合は、そのMACアドレスを返す
-            return mac_address
-        else:
-            # ARPテーブルにMACアドレスが存在しない場合、ARPリクエストを送信
-            self.send_arp_request(ip_address)
-            # ARPリプライ待ちのタイムアウト処理をスケジュール
-            self.network_event_scheduler.schedule_event(
-                self.network_event_scheduler.current_time + self.arp_timeout,
-                self.handle_arp_reply_timeout,
-                ip_address
-            )
-            # リプライ待ちの状態では即座にはMACアドレスを返せないのでNoneを返す
-            return None
-
-    def handle_arp_reply_timeout(self, ip_address):
-        # ARPリプライがタイムアウト期間内に到着しなかった場合の処理
-        print(f"ARPリクエストのタイムアウト: {ip_address} のMACアドレスが見つかりません。")
+        return self.arp_table.get(ip_address, None)
 
     def print_arp_table(self):
         print(f"ARPテーブル（ルータ {self.node_id}）:")
@@ -197,26 +180,34 @@ class Node:
         offset = 0
         destination_mac = self.get_mac_address_from_ip(destination_ip)
 
-        original_data_id = str(uuid.uuid4())
+        if destination_mac is None:
+            current_time = self.network_event_scheduler.current_time
+            # 宛先MACアドレスが不明で、かつARPリクエストの再送信間隔を超えている場合、ARPリクエストを送信
+            if destination_ip not in self.last_arp_request_time or \
+                current_time - self.last_arp_request_time[destination_ip] > self.arp_request_interval:
+                self.send_arp_request(destination_ip)
+                self.last_arp_request_time[destination_ip] = current_time
+        else:
+            original_data_id = str(uuid.uuid4())
 
-        while offset < total_size:
-            more_fragments = offset + payload_size < total_size
+            while offset < total_size:
+                more_fragments = offset + payload_size < total_size
 
-            fragment_data = data[offset:offset + payload_size]
-            fragment_offset = offset
+                fragment_data = data[offset:offset + payload_size]
+                fragment_offset = offset
 
-            fragment_flags = {
-                "more_fragments": more_fragments,
-                "original_data_id": original_data_id  # データの一意の識別子を追加
-            }
+                fragment_flags = {
+                    "more_fragments": more_fragments,
+                    "original_data_id": original_data_id  # データの一意の識別子を追加
+                }
 
-            node_ip_address = self.ip_address.split('/')[0]
-            packet = Packet(self.mac_address, destination_mac, node_ip_address, destination_ip, 64, fragment_flags, fragment_offset, header_size, len(fragment_data), self.network_event_scheduler)
-            packet.payload = fragment_data
+                node_ip_address = self.ip_address.split('/')[0]
+                packet = Packet(self.mac_address, destination_mac, node_ip_address, destination_ip, 64, fragment_flags, fragment_offset, header_size, len(fragment_data), self.network_event_scheduler)
+                packet.payload = fragment_data
 
-            self._send_packet(packet)
+                self._send_packet(packet)
 
-            offset += payload_size
+                offset += payload_size
 
     def _send_packet(self, packet):
         """
@@ -237,7 +228,6 @@ class Node:
         self.send_packet(packet)
 
     def set_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
-        destination_mac = self.get_mac_address_from_ip(destination_ip)
         end_time = start_time + duration
 
         def generate_packet():
