@@ -60,7 +60,7 @@ class Node:
         return self.arp_table.get(ip_address, None)
 
     def print_arp_table(self):
-        print(f"ARPテーブル（ルータ {self.node_id}）:")
+        print(f"ARPテーブル（ノード {self.node_id}）:")
         for ip_address, mac_address in self.arp_table.items():
             print(f"IPアドレス: {ip_address} -> MACアドレス: {mac_address}")
 
@@ -90,6 +90,7 @@ class Node:
                     self.network_event_scheduler.log_packet_info(packet, "ARP reply received", self.node_id)
                     source_ip = packet.payload["source_ip"]
                     source_mac = packet.payload["source_mac"]
+                    print(f"ARP reply received: IPアドレス {source_ip} に対応するMACアドレスは {source_mac} です。")
                     self.add_to_arp_table(source_ip, source_mac)
                     return
 
@@ -175,9 +176,6 @@ class Node:
         self._send_packet(arp_reply_packet)
 
     def send_packet(self, destination_ip, data, header_size):
-        payload_size = self.mtu - header_size
-        total_size = len(data)
-        offset = 0
         destination_mac = self.get_mac_address_from_ip(destination_ip)
         print(self.node_id, destination_mac)
 
@@ -190,6 +188,9 @@ class Node:
                 self.last_arp_request_time[destination_ip] = current_time
         else:
             original_data_id = str(uuid.uuid4())
+            payload_size = self.mtu - header_size
+            total_size = len(data)
+            offset = 0
 
             while offset < total_size:
                 more_fragments = offset + payload_size < total_size
