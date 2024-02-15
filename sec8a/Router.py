@@ -227,7 +227,6 @@ class Router:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
     def process_and_enqueue_packet(self, packet, link):
-        print(f"Packet {packet.id} processed at router {self.node_id} and enqueued on link {link}")
         source_mac = self.get_mac_address(link)
         destination_ip = packet.header["destination_ip"]
         destination_mac = self.get_mac_address_from_ip(packet.header["destination_ip"])
@@ -257,9 +256,7 @@ class Router:
             network_event_scheduler=self.network_event_scheduler
         )
         self.network_event_scheduler.log_packet_info(arp_request_packet, "ARP request", self.node_id)
-
-        for link in self.links:
-            link.enqueue_packet(arp_request_packet, self)
+        link.enqueue_packet(arp_request_packet, self)
 
     def on_arp_reply_received(self, source_ip, source_mac):
         # ARPリプライを受信した際の処理
