@@ -203,7 +203,7 @@ class Router:
         reply_packet = ARPPacket(
             source_mac=self.get_mac_address(received_link),  # 受信インタフェースのMACアドレス
             destination_mac=request_packet.header["source_mac"],  # ARPリクエスト送信元のMACアドレス
-            source_ip=self.get_ip_address(received_link),  # ARPリクエストの宛先IP（ルータのインタフェースIP）
+            source_ip=request_packet.header["destination_ip"],  # ARPリクエストの宛先IP
             destination_ip=request_packet.header["source_ip"],  # ARPリクエストの送信元IP
             operation="reply",  # 操作はリプライ
             network_event_scheduler=self.network_event_scheduler
