@@ -215,7 +215,6 @@ class Router:
     def forward_packet(self, packet):
         destination_ip = packet.header["destination_ip"]
         next_hop, link = self.get_route(destination_ip)
-        print(packet, destination_ip, next_hop, link)
 
         if destination_ip == "224.0.0.5":
             for link in self.interfaces.keys():
@@ -228,6 +227,7 @@ class Router:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
     def process_and_enqueue_packet(self, packet, link):
+        print(f"Packet {packet.id} processed at router {self.node_id} and enqueued on link {link}")
         source_mac = self.get_mac_address(link)
         destination_ip = packet.header["destination_ip"]
         destination_mac = self.get_mac_address_from_ip(packet.header["destination_ip"])
