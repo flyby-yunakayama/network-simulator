@@ -265,7 +265,7 @@ class Router:
         # 待機リストにあるパケットを処理
         if source_ip in self.waiting_for_arp_reply:
             for packet in self.waiting_for_arp_reply[source_ip]:
-                self.process_and_enqueue_packet(packet, self.get_link_for_destination(source_ip))
+                self.forward_packet(packet)
             del self.waiting_for_arp_reply[source_ip]
 
     def cidr_to_network_address(self, cidr):
@@ -278,6 +278,9 @@ class Router:
             if packet.payload.get("operation") == "request":
                 self.on_arp_request_received(packet, received_link)
                 return  # ARPリクエストの場合、処理を終了
+            elif packet.payload.get("operation") == "reply":
+                self.on_arp_reply_received(packet.header["source_ip"], packet.header["source_mac"])
+                return  # ARPリプライの場合、処理を終了
         if isinstance(packet, HelloPacket):
             self.receive_hello_packet(packet, received_link)
             return  # Helloパケットの場合、処理を終了
