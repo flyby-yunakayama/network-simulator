@@ -215,6 +215,7 @@ class Router:
     def forward_packet(self, packet):
         destination_ip = packet.header["destination_ip"]
         next_hop, link = self.get_route(destination_ip)
+        print(packet, destination_ip, next_hop, link)
 
         if destination_ip == "224.0.0.5":
             for link in self.interfaces.keys():
