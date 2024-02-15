@@ -14,6 +14,7 @@ class Router:
         self.mac_addresses = {}  # インタフェースとMACアドレスのマッピング
         self.routing_table = {}  # ルーティングテーブル
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
+        self.waiting_for_arp_reply = {}  # 宛先IPアドレスごとの待機パケットリスト
         self.default_route = default_route  # デフォルトルート
         self.neighbors = {}  # 隣接ルータの状態を格納
         self.hello_interval = hello_interval
@@ -226,16 +227,48 @@ class Router:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
     def process_and_enqueue_packet(self, packet, link):
-        # パケットのMACアドレスを更新
         source_mac = self.get_mac_address(link)
+        destination_ip = packet.header["destination_ip"]
         destination_mac = self.get_mac_address_from_ip(packet.header["destination_ip"])
-        packet.add_mac_header(source_mac, destination_mac)
-        
-        # パケットの転送情報をログに記録
-        self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
-        
-        # パケットをリンクのキューに追加
-        link.enqueue_packet(packet, self)
+        #
+        # ARPテーブルにエントリがなくdestination_mac == Noneの場合、ARPリクエストを送信
+        #
+        if destination_mac is None:
+            # ARPリクエストを送信し、パケットを待機リストに追加
+            self.send_arp_request(destination_ip)
+            if destination_ip not in self.waiting_for_arp_reply:
+                self.waiting_for_arp_reply[destination_ip] = []
+            self.waiting_for_arp_reply[destination_ip].append(packet)
+        else:
+            packet.add_mac_header(source_mac, destination_mac)
+            self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
+            link.enqueue_packet(packet, self)
+
+    def send_arp_request(self, ip_address):
+        # ARPリクエストパケットを作成して送信する処理
+        # 宛先MACアドレスはブロードキャストアドレス、宛先IPアドレスは問い合わせたいIPアドレス
+        arp_request_packet = ARPPacket(
+            source_mac=self.mac_address,
+            destination_mac="FF:FF:FF:FF:FF:FF",  # ブロードキャストアドレス
+            source_ip=self.ip_address,
+            destination_ip=ip_address,
+            operation="request",
+            network_event_scheduler=self.network_event_scheduler
+        )
+        self.network_event_scheduler.log_packet_info(arp_request_packet, "ARP request", self.node_id)
+
+        for link in self.links:
+            link.enqueue_packet(arp_request_packet, self)
+
+    def on_arp_reply_received(self, source_ip, source_mac):
+        # ARPリプライを受信した際の処理
+        # ARPテーブルを更新
+        self.add_to_arp_table(source_ip, source_mac)
+        # 待機リストにあるパケットを処理
+        if source_ip in self.waiting_for_arp_reply:
+            for packet in self.waiting_for_arp_reply[source_ip]:
+                self.process_and_enqueue_packet(packet, self.get_link_for_destination(source_ip))
+            del self.waiting_for_arp_reply[source_ip]
 
     def cidr_to_network_address(self, cidr):
         network, mask_length = cidr.split('/')

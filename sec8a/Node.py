@@ -183,7 +183,6 @@ class Node:
 
     def send_packet(self, destination_ip, data, header_size):
         destination_mac = self.get_mac_address_from_ip(destination_ip)
-        print(self.node_id, destination_mac)
 
         if destination_mac is None:
             # ARPリクエストを送信し、パケットを待機リストに追加
