@@ -235,7 +235,7 @@ class Router:
         #
         if destination_mac is None:
             # ARPリクエストを送信し、パケットを待機リストに追加
-            self.send_arp_request(destination_ip)
+            self.send_arp_request(link, destination_ip)
             if destination_ip not in self.waiting_for_arp_reply:
                 self.waiting_for_arp_reply[destination_ip] = []
             self.waiting_for_arp_reply[destination_ip].append(packet)
@@ -244,13 +244,13 @@ class Router:
             self.network_event_scheduler.log_packet_info(packet, "forwarded", self.node_id)
             link.enqueue_packet(packet, self)
 
-    def send_arp_request(self, ip_address):
+    def send_arp_request(self, link, ip_address):
         # ARPリクエストパケットを作成して送信する処理
         # 宛先MACアドレスはブロードキャストアドレス、宛先IPアドレスは問い合わせたいIPアドレス
         arp_request_packet = ARPPacket(
-            source_mac=self.mac_address,
+            source_mac=self.get_mac_address(link),  # 送信インタフェースのMACアドレス
             destination_mac="FF:FF:FF:FF:FF:FF",  # ブロードキャストアドレス
-            source_ip=self.ip_address,
+            source_ip=self.get_ip_address(link),  # 送信インタフェースのIPアドレス
             destination_ip=ip_address,
             operation="request",
             network_event_scheduler=self.network_event_scheduler
