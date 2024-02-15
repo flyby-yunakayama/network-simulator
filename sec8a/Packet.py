@@ -44,7 +44,9 @@ class Packet:
         return False  # heapqでの比較のため
 
     def __str__(self):
-        return f'パケット(送信元MAC: {self.mac_header["source_mac"]}, 宛先MAC: {self.mac_header["destination_mac"]}, 送信元IP: {self.ip_header["source_ip"]}, 宛先IP: {self.ip_header["destination_ip"]}, TTL: {self.ip_header["ttl"]}, フラグメントフラグ: {self.ip_header["fragment_flags"]}, フラグメントオフセット: {self.ip_header["fragment_offset"]}, ペイロード: {self.payload})'
+        source_mac = self.mac_header.get("source_mac", "不明")
+        destination_mac = self.mac_header.get("destination_mac", "不明")
+        return f'パケット(送信元MAC: {source_mac}, 宛先MAC: {destination_mac}, 送信元IP: {self.ip_header["source_ip"]}, 宛先IP: {self.ip_header["destination_ip"]}, TTL: {self.ip_header["ttl"]}, フラグメントフラグ: {self.ip_header["fragment_flags"]}, フラグメントオフセット: {self.ip_header["fragment_offset"]}, ペイロード: {self.payload})'
 
 class ARPPacket(Packet):
     def __init__(self, source_mac, destination_mac, source_ip, destination_ip, operation, network_event_scheduler):
