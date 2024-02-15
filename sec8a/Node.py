@@ -150,6 +150,7 @@ class Node:
     def on_arp_reply_received(self, destination_ip, destination_mac):
         # ARPリプライを受信したら、待機中のパケットに対して処理を行う
         print(destination_ip)
+        print(self.waiting_for_arp_reply)
         if destination_ip in self.waiting_for_arp_reply:
             for data, header_size in self.waiting_for_arp_reply[destination_ip]:
                 print(f"ARPリプライを受信しました。IPアドレス: {destination_ip}, MACアドレス: {destination_mac}")
