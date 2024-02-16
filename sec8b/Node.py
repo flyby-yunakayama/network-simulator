@@ -73,7 +73,7 @@ class Node:
     def add_dns_record(self, domain_name, ip_address):
         # URLとIPアドレスのマッピングをDNSテーブルに追加するメソッド
         self.url_to_ip_mapping[domain_name] = ip_address
-        print(f"DNS record added: {domain_name} -> {ip_address}")
+        print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
 
     def receive_packet(self, packet, received_link):
         if packet.arrival_time == -1:

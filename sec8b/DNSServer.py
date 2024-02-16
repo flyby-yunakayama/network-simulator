@@ -29,7 +29,6 @@ class DNSServer:
     def add_dns_record(self, domain_name, ip_address):
         # 新しいDNSレコードを追加するメソッド
         self.dns_records[domain_name] = ip_address
-        print(f"DNS Record added: {domain_name} -> {ip_address}")
         
     def receive_packet(self, packet, received_link):
         if packet.arrival_time == -1:
