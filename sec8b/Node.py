@@ -314,10 +314,7 @@ class Node:
     def on_dns_response_received(self, query_domain, resolved_ip):
         # DNSレスポンスを受信した際の処理
         self.add_dns_record(query_domain, resolved_ip)
-        print(f"DNS response received: {query_domain} -> {resolved_ip}")
-        print(self.waiting_for_dns_reply)
         if query_domain in self.waiting_for_dns_reply:
-            print("Processing waiting traffic")
             for parameters in self.waiting_for_dns_reply[query_domain]:
                 bitrate, start_time, duration, header_size, payload_size, burstiness = parameters
                 # 解決されたIPアドレスを使用してトラフィック生成を開始します。
