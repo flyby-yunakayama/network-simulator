@@ -92,7 +92,9 @@ class DNSPacket(Packet):
         self.dns_data = {}
 
     def __str__(self):
-        return f'DNSPacket(Query Domain: {self.query_domain}, Query Type: {self.query_type})'
+        source_mac = self.mac_header.get("source_mac", "不明")
+        destination_mac = self.mac_header.get("destination_mac", "不明")
+        return f'DNSPacket(送信元MAC: {source_mac}, 宛先MAC: {destination_mac}, 送信元IP: {self.ip_header["source_ip"]}, 宛先IP: {self.ip_header["destination_ip"]}, Query Domain: {self.query_domain}, Query Type: {self.query_type})'
 
 class BPDU(Packet):
     def __init__(self, source_mac, destination_mac, root_id, bridge_id, path_cost, network_event_scheduler):
