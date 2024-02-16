@@ -283,6 +283,16 @@ class Node:
         self.network_event_scheduler.log_packet_info(dns_query_packet, "DNS query", self.node_id)
         self._send_packet(dns_query_packet)
 
+    def print_url_to_ip_mapping(self):
+        # DNSテーブルの内容を表示するメソッド
+        print("URL to IP Mapping:")
+        if not self.url_to_ip_mapping:
+            print("  No entries found.")
+            return
+
+        for url, ip_address in self.url_to_ip_mapping.items():
+            print(f"  {url}: {ip_address}")
+
     def __str__(self):
         connected_nodes = [link.node_x.node_id if self != link.node_x else link.node_y.node_id for link in self.links]
         connected_nodes_str = ', '.join(map(str, connected_nodes))
