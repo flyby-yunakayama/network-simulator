@@ -257,6 +257,7 @@ class Node:
 
     def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
         destination_ip = self.resolve_destination_ip(destination_url)
+        print(f"Destination IP: {destination_ip}")
         if destination_ip is None:
             # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にset_trafficを呼び出す
             self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
@@ -288,10 +289,10 @@ class Node:
 
     def send_dns_query_and_set_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
         # DNSクエリを送信する前に、トラフィック生成のパラメータを記録します。
+        print(f"DNS query for {destination_url} is required. Traffic will start after DNS response is received.")
         if destination_url not in self.waiting_for_dns_reply:
             self.waiting_for_dns_reply[destination_url] = []
         self.waiting_for_dns_reply[destination_url].append((bitrate, start_time, duration, header_size, payload_size, burstiness))
-
         # DNSクエリパケットを生成して送信します。
         self.send_dns_query(destination_url)
 
