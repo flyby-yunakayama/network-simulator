@@ -25,6 +25,7 @@ class Node:
         self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
         self.dns_server_ip = dns_server  # DNSサーバのIPアドレス
         self.url_to_ip_mapping = {}  # URLとIPアドレスのマッピングを保持するDNSテーブル
+        self.waiting_for_dns_reply = {}  # DNSレスポンスを待っているパケットを保存する辞書
         self.mtu = mtu  # Maximum Transmission Unit (MTU)
         self.fragmented_packets = {}  # フラグメントされたパケットの一時格納用
         self.default_route = default_route
@@ -105,7 +106,7 @@ class Node:
                 self.network_event_scheduler.log_packet_info(packet, "DNS packet received", self.node_id)                
                 if packet.query_domain and "resolved_ip" in packet.dns_data:
                     # DNSレスポンスから解決されたIPアドレスを取得し、DNSテーブルに追加
-                    self.add_dns_record(packet.query_domain, packet.dns_data["resolved_ip"])
+                    self.on_dns_response_received(packet.query_domain, packet.dns_data["resolved_ip"])
                     return
 
             if packet.header["destination_ip"] == self.ip_address:
@@ -254,20 +255,23 @@ class Node:
         self.network_event_scheduler.log_packet_info(packet, "created", self.node_id)  # パケット生成をログに記録
         self.send_packet(packet)
 
-    def set_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
+    def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
+        destination_ip = self.resolve_destination_ip(destination_url)
+        if destination_ip is None:
+            # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にset_trafficを呼び出す
+            self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
+        else:
+            # DNSレコードが既に存在する場合、直接set_trafficを呼び出す
+            self.set_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
+
+    def set_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
         end_time = start_time + duration
 
         def generate_packet():
             if self.network_event_scheduler.current_time < end_time:
-                # 宛先URLから宛先IPアドレスを解決する処理を追加
-                destination_ip = self.resolve_destination_ip(destination_url)
-                if destination_ip is None:
-                    # 宛先IPアドレスが解決できない場合、DNSクエリを行う
-                    self.send_dns_query(destination_url)
-                else:
-                    # 宛先IPアドレスが解決できた場合、パケットを送信
-                    data = b'X' * payload_size  # ダミーデータを生成
-                    self.send_packet(destination_ip, data, header_size)
+                # send_packetメソッドを使用してパケットを送信
+                data = b'X' * payload_size  # ダミーデータを生成
+                self.send_packet(destination_ip, data, header_size)
 
                 # 次のパケットをスケジュールするためのインターバルを計算
                 packet_size = header_size + payload_size
@@ -282,6 +286,15 @@ class Node:
         # 見つかった場合はそのIPアドレスを返し、見つからない場合はNoneを返します。
         return self.url_to_ip_mapping.get(destination_url, None)
 
+    def send_dns_query_and_set_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
+        # DNSクエリを送信する前に、トラフィック生成のパラメータを記録します。
+        if destination_url not in self.waiting_for_dns_reply:
+            self.waiting_for_dns_reply[destination_url] = []
+        self.waiting_for_dns_reply[destination_url].append((bitrate, start_time, duration, header_size, payload_size, burstiness))
+
+        # DNSクエリパケットを生成して送信します。
+        self.send_dns_query(destination_url)
+
     def send_dns_query(self, destination_url):
         # DNSクエリパケットを生成します。
         dns_query_packet = DNSPacket(
@@ -295,6 +308,17 @@ class Node:
         )
         self.network_event_scheduler.log_packet_info(dns_query_packet, "DNS query", self.node_id)
         self._send_packet(dns_query_packet)
+
+    def on_dns_response_received(self, query_domain, resolved_ip):
+        # DNSレスポンスを受信した際の処理
+        self.add_dns_record(query_domain, resolved_ip)
+        if query_domain in self.waiting_for_dns_reply:
+            for parameters in self.waiting_for_dns_reply[query_domain]:
+                bitrate, start_time, duration, header_size, payload_size, burstiness = parameters
+                # 解決されたIPアドレスを使用してトラフィック生成を開始します。
+                self.set_traffic(resolved_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
+            # 処理が完了したら、該当するドメイン名のエントリを削除
+            del self.waiting_for_dns_reply[query_domain]
 
     def print_url_to_ip_mapping(self):
         # DNSテーブルの内容を表示するメソッド
