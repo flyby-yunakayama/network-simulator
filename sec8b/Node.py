@@ -282,7 +282,7 @@ class Node:
                 interval = (packet_size * 8) / bitrate * burstiness
                 self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
 
-        self.network_event_scheduler.schedule_event(0, generate_packet)
+        self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time, generate_packet)
 
     def resolve_destination_ip(self, destination_url):
         # 与えられた宛先URLに対応するIPアドレスをurl_to_ip_mappingから検索します。
