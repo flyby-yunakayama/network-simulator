@@ -21,6 +21,9 @@ class DNSServer:
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
 
+    def mark_ip_as_used(self, ip_address):
+        pass
+
     def add_dns_record(self, domain_name, ip_address):
         # 新しいDNSレコードを追加するメソッド
         self.dns_records[domain_name] = ip_address
