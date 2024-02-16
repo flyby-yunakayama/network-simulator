@@ -307,13 +307,15 @@ class Node:
             network_event_scheduler=self.network_event_scheduler
         )
         self.network_event_scheduler.log_packet_info(dns_query_packet, "DNS query", self.node_id)
-        print(dns_query_packet)
         self._send_packet(dns_query_packet)
 
     def on_dns_response_received(self, query_domain, resolved_ip):
         # DNSレスポンスを受信した際の処理
         self.add_dns_record(query_domain, resolved_ip)
+        print(f"DNS response received: {query_domain} -> {resolved_ip}")
+        print(self.waiting_for_dns_reply)
         if query_domain in self.waiting_for_dns_reply:
+            print("Processing waiting traffic")
             for parameters in self.waiting_for_dns_reply[query_domain]:
                 bitrate, start_time, duration, header_size, payload_size, burstiness = parameters
                 # 解決されたIPアドレスを使用してトラフィック生成を開始します。
