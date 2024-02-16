@@ -86,6 +86,7 @@ class NetworkEventScheduler:
         if self.log_enabled:
             if packet.id not in self.packet_logs:
                 self.packet_logs[packet.id] = {
+                    "packet_type": type(packet).__name__,  # パケットのクラス名を記録
                     "source_mac": packet.header["source_mac"],
                     "destination_mac": packet.header["destination_mac"],
                     "source_ip": packet.header["source_ip"],
@@ -118,45 +119,42 @@ class NetworkEventScheduler:
             for event in log['events']:
                 print(f"Time: {event['time']}, Event: {event['event']}")
 
-    def generate_summary(self, packet_logs):
-        summary_data = defaultdict(lambda: {"sent_packets": 0, "sent_bytes": 0, "received_packets": 0, "received_bytes": 0, "total_delay": 0, "lost_packets": 0, "min_creation_time": float('inf'), "max_arrival_time": 0})
+    def generate_summary(packet_logs):
+        # パケットタイプとソース宛先ペアでの集計データを保持するための辞書
+        summary_data = defaultdict(lambda: defaultdict(lambda: {"sent_packets": 0, "sent_bytes": 0, "received_packets": 0, "received_bytes": 0, "total_delay": 0, "lost_packets": 0, "min_creation_time": float('inf'), "max_arrival_time": 0}))
 
+        # ログエントリを反復処理してデータを集計
         for packet_id, log in packet_logs.items():
+            packet_type = log["packet_type"]
             src_dst_pair = (log["source_ip"], log["destination_ip"])
-            summary_data[src_dst_pair]["sent_packets"] += 1
-            summary_data[src_dst_pair]["sent_bytes"] += log["size"]
-            summary_data[src_dst_pair]["min_creation_time"] = min(summary_data[src_dst_pair]["min_creation_time"], log["creation_time"])
+            data = summary_data[packet_type][src_dst_pair]
+
+            data["sent_packets"] += 1
+            data["sent_bytes"] += log["size"]
+            data["min_creation_time"] = min(data["min_creation_time"], log["creation_time"])
 
             if "arrival_time" in log and log["arrival_time"] is not None:
-                summary_data[src_dst_pair]["received_packets"] += 1
-                summary_data[src_dst_pair]["received_bytes"] += log["size"]
-                summary_data[src_dst_pair]["total_delay"] += log["arrival_time"] - log["creation_time"]
-                summary_data[src_dst_pair]["max_arrival_time"] = max(summary_data[src_dst_pair]["max_arrival_time"], log["arrival_time"])
+                data["received_packets"] += 1
+                data["received_bytes"] += log["size"]
+                data["total_delay"] += log["arrival_time"] - log["creation_time"]
+                data["max_arrival_time"] = max(data["max_arrival_time"], log["arrival_time"])
             else:
-                summary_data[src_dst_pair]["lost_packets"] += 1
+                data["lost_packets"] += 1
 
-        for src_dst, data in summary_data.items():
-            sent_packets = data["sent_packets"]
-            sent_bytes = data["sent_bytes"]
-            received_packets = data["received_packets"]
-            received_bytes = data["received_bytes"]
-            total_delay = data["total_delay"]
-            lost_packets = data["lost_packets"]
-            min_creation_time = data["min_creation_time"]
-            max_arrival_time = data["max_arrival_time"]
-
-            traffic_duration = max_arrival_time - min_creation_time
-            avg_throughput = (received_bytes * 8 / traffic_duration) if traffic_duration > 0 else 0
-            avg_delay = total_delay / received_packets if received_packets > 0 else 0
-
-            print(f"Src-Dst Pair: {src_dst}")
-            print(f"Total Sent Packets: {sent_packets}")
-            print(f"Total Sent Bytes: {sent_bytes}")
-            print(f"Total Received Packets: {received_packets}")
-            print(f"Total Received Bytes: {received_bytes}")
-            print(f"Average Throughput (bps): {avg_throughput}")
-            print(f"Average Delay (s): {avg_delay}")
-            print(f"Lost Packets: {lost_packets}\n")
+        # 集計結果をパケットタイプごと、ソース宛先ペアごとに出力
+        for packet_type, src_dst_data in summary_data.items():
+            print(f"Packet Type: {packet_type}")
+            for src_dst, data in src_dst_data.items():
+                print(f"  Src-Dst Pair: {src_dst}")
+                print(f"    Total Sent Packets: {data['sent_packets']}")
+                print(f"    Total Sent Bytes: {data['sent_bytes']}")
+                print(f"    Total Received Packets: {data['received_packets']}")
+                print(f"    Total Received Bytes: {data['received_bytes']}")
+                avg_throughput = (data["received_bytes"] * 8 / (data["max_arrival_time"] - data["min_creation_time"])) if (data["max_arrival_time"] - data["min_creation_time"]) > 0 else 0
+                avg_delay = data["total_delay"] / data["received_packets"] if data["received_packets"] > 0 else 0
+                print(f"    Average Throughput (bps): {avg_throughput}")
+                print(f"    Average Delay (s): {avg_delay}")
+                print(f"    Lost Packets: {data['lost_packets']}\n")
 
     def generate_throughput_graph(self, packet_logs):
         time_slot = 1.0  # 時間スロットを1秒に固定
