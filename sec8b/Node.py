@@ -260,7 +260,7 @@ class Node:
             destination_ip = self.resolve_destination_ip(destination_url)
             if destination_ip is None:
                 # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にトラフィックを開始するための処理をスケジュール
-                self.send_dns_query_and_schedule_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
+                self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
             else:
                 # DNSレコードが既に存在する場合、直接トラフィック生成を開始
                 self.set_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
