@@ -119,7 +119,7 @@ class NetworkEventScheduler:
             for event in log['events']:
                 print(f"Time: {event['time']}, Event: {event['event']}")
 
-    def generate_summary(packet_logs):
+    def generate_summary(self, packet_logs):
         # パケットタイプとソース宛先ペアでの集計データを保持するための辞書
         summary_data = defaultdict(lambda: defaultdict(lambda: {"sent_packets": 0, "sent_bytes": 0, "received_packets": 0, "received_bytes": 0, "total_delay": 0, "lost_packets": 0, "min_creation_time": float('inf'), "max_arrival_time": 0}))
 
