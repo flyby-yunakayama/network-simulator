@@ -6,7 +6,7 @@ from sec8b.Router import Router
 from sec8b.Packet import Packet, ARPPacket, DNSPacket
 
 class Node:
-    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server="192.0.2.3", mtu=1500, default_route=None):
+    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server="192.168.1.200/24", mtu=1500, default_route=None):
         # IPアドレスが正しいCIDR形式であるか確認
         if not self.is_valid_cidr_notation(ip_address):
             raise ValueError("無効なIPアドレス形式です。")
@@ -100,8 +100,11 @@ class Node:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
 
+                # 'more_fragments'キーが存在しない場合はFalseをデフォルト値として使用
+                more_fragments = packet.header.get("fragment_flags", {}).get("more_fragments", False)
+
                 # フラグメントされたパケットの処理
-                if packet.header["fragment_flags"]["more_fragments"]:
+                if more_fragments:
                     self._store_fragment(packet)
                 else:
                     self._reassemble_and_process_packet(packet)
