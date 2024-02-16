@@ -43,6 +43,10 @@ class NetworkEventScheduler:
         for node, data in self.graph.nodes(data=True):
             if 'Switch' in data['label']: # Switch
                 nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='red', node_shape='s', node_size=250)
+            elif 'Router' in data['label']: # Router
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='orange', node_shape='s', node_size=250)
+            elif 'DNSServer' in data['label']: # Router
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='green', node_shape='t', node_size=250)
             else: # Node
                 nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='lightblue', node_shape='o', node_size=250)
 

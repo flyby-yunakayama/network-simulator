@@ -9,6 +9,7 @@ class DNSServer:
             self.mac_address = self.generate_mac_address()  # ランダムなMACアドレスを生成
         else:
             self.mac_address = mac_address  # MACアドレスを指定
+        label = f'DNSServer {node_id}'
         self.ip_address = ip_address
         self.network_event_scheduler = network_event_scheduler
         self.dns_records = {}  # ドメイン名をキーにしてIPアドレスを取得するための辞書
