@@ -45,12 +45,12 @@ class DNSServer:
                     # ARPリクエストの処理
                     self._send_arp_reply(packet)
 
-            if packet.header["destination_ip"] == self.ip_address:
-                # 宛先IPがこのノードの場合
-                self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-                packet.set_arrived(self.network_event_scheduler.current_time)
+            if isinstance(packet, DNSPacket):
+                print(f"DNS query received: {packet.query_domain}")
+                if packet.header["destination_ip"] == self.ip_address:
+                    self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+                    packet.set_arrived(self.network_event_scheduler.current_time)
 
-                if isinstance(packet, DNSPacket):
                     # DNSパケット処理
                     self.network_event_scheduler.log_packet_info(packet, "DNS query received", self.node_id)
                     dns_response_packet = self.handle_dns_query(packet)
