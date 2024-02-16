@@ -38,6 +38,11 @@ class Router:
             self.interfaces[link] = ip_address
             self.mac_addresses[link] = self.generate_mac_address()
 
+        # リンクに割り当てられたIPアドレスがある場合、ルーティングテーブルにルートを追加
+        if ip_address:
+            # 'Directly connected'としてルートを追加
+            self.add_route(ip_address, "Directly connected", link)
+
     def generate_mac_address(self):
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])

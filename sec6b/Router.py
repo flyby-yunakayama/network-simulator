@@ -33,6 +33,11 @@ class Router:
         if link not in self.interfaces:
             self.interfaces[link] = ip_address
 
+        # リンクに割り当てられたIPアドレスがある場合、ルーティングテーブルにルートを追加
+        if ip_address:
+            # 'Directly connected'としてルートを追加
+            self.add_route(ip_address, "Directly connected", link)
+
     def mark_ip_as_used(self, ip_address):
         if ip_address in self.available_ips:
             self.available_ips[ip_address] = True  # 辞書の値をTrue（使用済み）に更新
