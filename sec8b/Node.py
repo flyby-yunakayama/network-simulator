@@ -69,6 +69,11 @@ class Node:
         # Nodeクラスではこのメソッドは何もしない
         pass
 
+    def add_dns_record(self, domain_name, ip_address):
+        # URLとIPアドレスのマッピングをDNSテーブルに追加するメソッド
+        self.url_to_ip_mapping[domain_name] = ip_address
+        print(f"DNS record added: {domain_name} -> {ip_address}")
+
     def receive_packet(self, packet, received_link):
         if packet.arrival_time == -1:
             # パケットロスをログに記録
@@ -93,6 +98,14 @@ class Node:
                     source_mac = packet.payload["source_mac"]
                     self.add_to_arp_table(source_ip, source_mac)
                     self.on_arp_reply_received(source_ip, source_mac)
+                    return
+
+            if isinstance(packet, DNSPacket):
+                # DNSレスポンスの処理
+                self.network_event_scheduler.log_packet_info(packet, "DNS packet received", self.node_id)                
+                if packet.query_domain and "resolved_ip" in packet.dns_data:
+                    # DNSレスポンスから解決されたIPアドレスを取得し、DNSテーブルに追加
+                    self.add_dns_record(packet.query_domain, packet.dns_data["resolved_ip"])
                     return
 
             if packet.header["destination_ip"] == self.ip_address:

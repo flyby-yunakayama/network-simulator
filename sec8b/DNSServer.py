@@ -54,6 +54,7 @@ class DNSServer:
                     # DNSパケット処理
                     self.network_event_scheduler.log_packet_info(packet, "DNS query received", self.node_id)
                     dns_response_packet = self.handle_dns_query(packet)
+                    self.network_event_scheduler.log_packet_info(dns_response_packet, "DNS response", self.node_id)
                     self._send_packet(dns_response_packet)
 
             else:
