@@ -38,6 +38,7 @@ class DNSServer:
             return
 
         # 宛先MACアドレスがブロードキャストアドレスまたは自身のMACアドレスの場合の処理
+        print(f"Packet received: {packet}")
         if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF" or packet.header["destination_mac"] == self.mac_address:
             if isinstance(packet, ARPPacket):
                 # ARPパケット処理
