@@ -143,7 +143,7 @@ class NetworkEventScheduler:
 
         # 集計結果をパケットタイプごと、ソース宛先ペアごとに出力
         for packet_type, src_dst_data in summary_data.items():
-            print(f"Packet Type: {packet_type}")
+            print(f"Packet Type: {packet_type} ###########################################")
             for src_dst, data in src_dst_data.items():
                 print(f"  Src-Dst Pair: {src_dst}")
                 print(f"    Total Sent Packets: {data['sent_packets']}")
