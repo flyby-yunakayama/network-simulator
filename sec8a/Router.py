@@ -230,9 +230,7 @@ class Router:
         source_mac = self.get_mac_address(link)
         destination_ip = packet.header["destination_ip"]
         destination_mac = self.get_mac_address_from_ip(packet.header["destination_ip"])
-        #
         # ARPテーブルにエントリがなくdestination_mac == Noneの場合、ARPリクエストを送信
-        #
         if destination_mac is None:
             # ARPリクエストを送信し、パケットを待機リストに追加
             self.send_arp_request(link, destination_ip)
