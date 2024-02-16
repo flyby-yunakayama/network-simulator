@@ -256,13 +256,17 @@ class Node:
         self.send_packet(packet)
 
     def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
-        destination_ip = self.resolve_destination_ip(destination_url)
-        if destination_ip is None:
-            # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にset_trafficを呼び出す
-            self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
-        else:
-            # DNSレコードが既に存在する場合、直接set_trafficを呼び出す
-            self.set_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
+        def attempt_to_start_traffic():
+            destination_ip = self.resolve_destination_ip(destination_url)
+            if destination_ip is None:
+                # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にトラフィックを開始するための処理をスケジュール
+                self.send_dns_query_and_schedule_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
+            else:
+                # DNSレコードが既に存在する場合、直接トラフィック生成を開始
+                self.set_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
+        
+        # 最初のパケット生成（またはDNSレコードの検索処理）をstart_timeにスケジュール
+        self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
 
     def set_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
         end_time = start_time + duration
@@ -277,9 +281,6 @@ class Node:
                 packet_size = header_size + payload_size
                 interval = (packet_size * 8) / bitrate * burstiness
                 self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
-
-        # 最初のパケットをスケジュール
-        self.network_event_scheduler.schedule_event(start_time, generate_packet)
 
     def resolve_destination_ip(self, destination_url):
         # 与えられた宛先URLに対応するIPアドレスをurl_to_ip_mappingから検索します。
