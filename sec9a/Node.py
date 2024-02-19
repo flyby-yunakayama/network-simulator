@@ -169,7 +169,7 @@ class Node:
                     # ACKパケットからDNSサーバのIPアドレスを取得
                     dns_server_ip = packet.dhcp_data.get("dns_server_ip")
                     if dns_server_ip:
-                        self.dns_server_ip
+                        self.dns_server_ip = dns_server_ip
                         print(f"Node {self.node_id} has been assigned the DNS server IP address {dns_server_ip}.")
                     return
 
