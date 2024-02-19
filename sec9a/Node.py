@@ -1,5 +1,6 @@
 import uuid
 import re
+import random
 from ipaddress import ip_interface, ip_network
 from sec9a.Switch import Switch
 from sec9a.Router import Router
@@ -26,7 +27,8 @@ class Node:
         self.fragmented_packets = {}  # フラグメントされたパケットの一時格納用
         self.default_route = default_route
         label = f'Node {node_id}\n{mac_address}'
-        self.request_ip_via_dhcp()
+
+        self.schedule_dhcp_packet()
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
     def is_valid_mac_address(self, mac_address):
@@ -62,15 +64,18 @@ class Node:
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
 
-    def request_ip_via_dhcp(self):
-        # IPアドレスがネットワークアドレスの場合に実行
-        print("Network address?: ", self.is_network_address(self.ip_address))
+    def schedule_dhcp_packet(self):
         if self.is_network_address(self.ip_address):
-            dhcp_discover_packet = self.create_dhcp_discover_packet()
-            self.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
-            self._send_packet(dhcp_discover_packet)
-        else:
-            print(f"Node {self.node_id} already has an IP address: {self.ip_address}")
+            initial_delay = random.uniform(0.3, 0.5)
+            self.network_event_scheduler.schedule_event(
+                self.network_event_scheduler.current_time + initial_delay,
+                self.request_ip_via_dhcp
+            )
+
+    def request_ip_via_dhcp(self):
+        dhcp_discover_packet = self.create_dhcp_discover_packet()
+        self.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
+        self._send_packet(dhcp_discover_packet)
 
     def create_dhcp_discover_packet(self):
         return DHCPPacket(
