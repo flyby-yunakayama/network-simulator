@@ -119,7 +119,9 @@ class DHCPServer(Server):
         return ip_pool
 
     def get_available_ip(self):
+        print(self.ip_pool)
         for ip in self.ip_pool:
+            print(ip, self.used_ips)
             if ip not in self.used_ips:
                 self.used_ips.add(ip)
                 return ip
