@@ -1,13 +1,14 @@
 import uuid
 import re
-from ipaddress import ip_network
+from ipaddress import ip_interface, ip_network
 from sec9a.Switch import Switch
 from sec9a.Router import Router
 from sec9a.Packet import Packet, ARPPacket, DNSPacket, DHCPPacket
 
 class Node:
-    def __init__(self, node_id, network_event_scheduler, mac_address=None, ip_address=None, dns_server="192.168.1.200/24", mtu=1500, default_route=None):
+    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server="192.168.1.200/24", mtu=1500, default_route=None):
         self.node_id = node_id
+        self.ip_address = ip_address  # IPアドレス
         self.network_event_scheduler = network_event_scheduler
         if mac_address is None:
             self.mac_address = self.generate_mac_address()  # ランダムなMACアドレスを生成
@@ -15,7 +16,6 @@ class Node:
             if not self.is_valid_mac_address(mac_address):
                 raise ValueError("無効なMACアドレス形式です。")
             self.mac_address = mac_address  # MACアドレス
-        self.ip_address = ip_address  # IPアドレス
         self.links = []
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
         self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
@@ -42,6 +42,18 @@ class Node:
         except ValueError:
             return False
 
+    def is_network_address(self, address):
+        try:
+            # ip_interfaceを使用して、指定されたアドレスのインターフェースオブジェクトを作成
+            interface = ip_interface(address)
+            # 指定されたアドレスのネットワークオブジェクトを取得
+            network = ip_network(address, strict=False)
+            # ネットワークアドレスそのものであるかを判断
+            return interface.ip == network.network_address and interface.network.prefixlen == network.prefixlen
+        except ValueError:
+            # 不正なアドレス形式の場合はFalseを返す
+            return False
+
     def add_link(self, link, ip_address=None):
         if link not in self.links:
             self.links.append(link)
@@ -51,8 +63,8 @@ class Node:
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
 
     def request_ip_via_dhcp(self):
-        # IPアドレスが未設定、またはCIDR形式の検証に失敗した場合に実行
-        if not self.ip_address or not self.is_valid_cidr_notation(self.ip_address):
+        # IPアドレスがネットワークアドレスの場合に実行
+        if self.is_network_address(self.ip_address):
             dhcp_discover_packet = self.create_dhcp_discover_packet()
             self.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
             self._send_packet(dhcp_discover_packet)

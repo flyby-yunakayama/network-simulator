@@ -42,13 +42,15 @@ class NetworkEventScheduler:
 
         for node, data in self.graph.nodes(data=True):
             if 'Switch' in data['label']: # Switch
-                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='red', node_shape='s', node_size=250)
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='lightcoral', node_shape='s', node_size=250)
             elif 'Router' in data['label']: # Router
                 nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='orange', node_shape='s', node_size=250)
-            elif 'DNSServer' in data['label']: # Router
-                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='green', node_shape='d', node_size=250)
+            elif 'DNSServer' in data['label']: # DNS Server
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='forestgreen', node_shape='d', node_size=250)
+            elif 'DHCPServer' in data['label']: # DHCP Server
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='limegreen', node_shape='d', node_size=250)
             else: # Node
-                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='lightblue', node_shape='o', node_size=250)
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[node], node_color='royalblue', node_shape='o', node_size=250)
 
         nx.draw_networkx_labels(self.graph, pos, labels=nx.get_node_attributes(self.graph, 'label'), font_size=8)
         nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=nx.get_edge_attributes(self.graph, 'label'), font_size=8)
