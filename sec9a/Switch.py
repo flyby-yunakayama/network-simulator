@@ -78,8 +78,11 @@ class Switch:
             for link in self.links:
                 print(f"Switch {self.node_id} checking link {link.node_x.node_id} - {link.node_y.node_id}")
                 if link != received_link and self.link_states[link] == 'forwarding':
+                    print(f"Switch {self.node_id} forwarding packet to {link.node_x.node_id} - {link.node_y.node_id}")
                     self.network_event_scheduler.log_packet_info(packet, "broadcast", self.node_id)
                     link.enqueue_packet(packet, self)
+                else:
+                    print(f"Switch {self.node_id} not forwarding packet to {link.node_x.node_id} - {link.node_y.node_id}")
 
     def process_bpdu(self, bpdu, received_link):
         # ルートIDの更新とルートパスコストの計算
