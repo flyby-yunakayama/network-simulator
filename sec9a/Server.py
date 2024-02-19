@@ -133,7 +133,7 @@ class DHCPServer(Server):
     def handle_dhcp_discover(self, discover_packet):
         # DHCP DISCOVERメッセージの処理
         # 利用可能なIPアドレスを割り当て、DHCPOfferPacketを生成して送信
-        offered_ip = self.assign_ip_address()
+        offered_ip = self.assign_ip_address(discover_packet)
         offer_packet = self.create_dhcp_offer_packet(discover_packet, offered_ip)
         self._send_packet(offer_packet)
 
