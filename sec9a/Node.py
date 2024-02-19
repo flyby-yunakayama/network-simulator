@@ -81,8 +81,8 @@ class Node:
         return DHCPPacket(
             source_mac=self.mac_address,
             destination_mac="FF:FF:FF:FF:FF:FF",  # DHCP Discoverはブロードキャストアドレスへ送信される
-            source_ip="0.0.0.0",  # ソースIPは未割り当て状態で0.0.0.0を使用
-            destination_ip="255.255.255.255",  # 宛先IPはブロードキャストアドレス
+            source_ip="0.0.0.0/32",  # ソースIPは未割り当て状態で0.0.0.0を使用
+            destination_ip="255.255.255.255/32",  # 宛先IPはブロードキャストアドレス
             message_type="DISCOVER",
             network_event_scheduler=self.network_event_scheduler
         )
@@ -92,8 +92,8 @@ class Node:
         dhcp_request_packet = DHCPPacket(
             source_mac=self.mac_address,
             destination_mac="FF:FF:FF:FF:FF:FF",  # DHCP Requestはブロードキャストアドレスへ送信される
-            source_ip="0.0.0.0",  # ソースIPは未割り当て状態で0.0.0.0を使用
-            destination_ip="255.255.255.255",  # 宛先IPはブロードキャストアドレス
+            source_ip="0.0.0.0/32",  # ソースIPは未割り当て状態で0.0.0.0を使用
+            destination_ip="255.255.255.255/32",  # 宛先IPはブロードキャストアドレス
             message_type="REQUEST",
             network_event_scheduler=self.network_event_scheduler
         )
