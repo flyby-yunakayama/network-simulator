@@ -106,9 +106,9 @@ class DNSServer(Server):
             return None
 
 class DHCPServer(Server):
-    def __init__(self, node_id, ip_address, network_event_scheduler, ip_pool_start, ip_pool_end, mac_address=None):
+    def __init__(self, node_id, ip_address, network_event_scheduler, start_cidr, mac_address=None):
         super().__init__(node_id, ip_address, network_event_scheduler, mac_address)
-        self.ip_pool = self.initialize_ip_pool(ip_pool_start, ip_pool_end)
+        self.ip_pool = self.initialize_ip_pool(start_cidr)
         self.leased_ips = {}
 
     def initialize_ip_pool(self, start_cidr):
