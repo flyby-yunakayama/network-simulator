@@ -20,6 +20,20 @@ class Server:
     def mark_ip_as_used(self, ip_address):
         pass
 
+    def receive_packet(self, packet, received_link):
+        if packet.arrival_time == -1:
+            # パケットロスをログに記録
+            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
+            return
+
+        # 宛先MACアドレスがブロードキャストアドレスまたは自身のMACアドレスの場合の処理
+        if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF" or packet.header["destination_mac"] == self.mac_address:
+            if isinstance(packet, ARPPacket):
+                # ARPパケット処理
+                if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
+                    # ARPリクエストの処理
+                    self._send_arp_reply(packet)
+
     def _send_arp_reply(self, request_packet):
         # ARPリプライパケットを作成
         arp_reply_packet = ARPPacket(
@@ -37,7 +51,6 @@ class Server:
         for link in self.links:
             link.enqueue_packet(packet, self)
 
-
 class DNSServer(Server):
     def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None):
         super().__init__(node_id, ip_address, network_event_scheduler, mac_address)
@@ -50,29 +63,18 @@ class DNSServer(Server):
         self.dns_records[domain_name] = ip_address
 
     def receive_packet(self, packet, received_link):
-        if packet.arrival_time == -1:
-            # パケットロスをログに記録
-            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
-            return
+        super().receive_packet(packet, received_link)  # Serverクラスの共通処理を利用
 
-        # 宛先MACアドレスがブロードキャストアドレスまたは自身のMACアドレスの場合の処理
         if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF" or packet.header["destination_mac"] == self.mac_address:
-            if isinstance(packet, ARPPacket):
-                # ARPパケット処理
-                if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
-                    # ARPリクエストの処理
-                    self._send_arp_reply(packet)
+            if isinstance(packet, DNSPacket) and packet.header["destination_ip"] == self.ip_address:
+                self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+                packet.set_arrived(self.network_event_scheduler.current_time)
 
-            if isinstance(packet, DNSPacket):
-                if packet.header["destination_ip"] == self.ip_address:
-                    self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-                    packet.set_arrived(self.network_event_scheduler.current_time)
-
-                    # DNSパケット処理
-                    self.network_event_scheduler.log_packet_info(packet, "DNS query received", self.node_id)
-                    dns_response_packet = self.handle_dns_query(packet)
-                    self.network_event_scheduler.log_packet_info(dns_response_packet, "DNS response", self.node_id)
-                    self._send_packet(dns_response_packet)
+                # DNSパケット処理
+                self.network_event_scheduler.log_packet_info(packet, "DNS query received", self.node_id)
+                dns_response_packet = self.handle_dns_query(packet)
+                self.network_event_scheduler.log_packet_info(dns_response_packet, "DNS response", self.node_id)
+                self._send_packet(dns_response_packet)
 
             else:
                 # 宛先IPがこのノードではない場合の処理
