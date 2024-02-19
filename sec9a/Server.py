@@ -109,7 +109,7 @@ class DHCPServer(Server):
     def __init__(self, node_id, ip_address, network_event_scheduler, start_cidr, mac_address=None):
         super().__init__(node_id, ip_address, network_event_scheduler, mac_address)
         self.ip_pool = self.initialize_ip_pool(start_cidr)
-        self.leased_ips = {}
+        self.used_ips = set()  # 使用中のIPアドレスを追跡するセット
         label = f'DHCPServer {node_id}'
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
@@ -117,6 +117,14 @@ class DHCPServer(Server):
         network = ip_network(start_cidr, strict=False)
         ip_pool = [f"{ip}/{network.prefixlen}" for ip in network.hosts()]
         return ip_pool
+
+    def get_available_ip(self):
+        for ip in self.ip_pool:
+            if ip not in self.used_ips:
+                self.used_ips.add(ip)
+                return ip
+        # 利用可能なIPアドレスがない場合はNoneを返す
+        return None
 
     def receive_packet(self, packet, received_link):
         super().receive_packet(packet, received_link)  # Serverクラスの共通処理を利用
@@ -134,7 +142,7 @@ class DHCPServer(Server):
         # DHCP DISCOVERメッセージの処理
         # 利用可能なIPアドレスを割り当て、DHCPOfferPacketを生成して送信
         if self.ip_pool:
-            assigned_ip = self.ip_pool.pop(0)
+            assigned_ip = self.get_available_ip()
             # DHCP Offerメッセージの送信
             offer_packet = self.create_dhcp_offer_packet(discover_packet, assigned_ip)
             self.network_event_scheduler.log_packet_info(offer_packet, "DHCP Offer", self.node_id)

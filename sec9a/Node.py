@@ -153,7 +153,6 @@ class Node:
                     self.network_event_scheduler.log_packet_info(packet, "DHCP Offer received", self.node_id)
                     # OfferされたIPアドレスを取得
                     offered_ip = packet.dhcp_data.get("offered_ip")
-                    print(f"Node {self.node_id} received an IP address offer: {offered_ip}.")
                     if offered_ip:
                         # OfferされたIPアドレスを使用してDHCP Requestを送信
                         self.send_dhcp_request(offered_ip)
