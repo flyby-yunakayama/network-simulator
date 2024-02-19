@@ -6,7 +6,7 @@ from sec9a.Router import Router
 from sec9a.Packet import Packet, ARPPacket, DNSPacket, DHCPPacket
 
 class Node:
-    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server="192.168.1.200/24", mtu=1500, default_route=None):
+    def __init__(self, node_id, network_event_scheduler, mac_address=None, ip_address=None, dns_server="192.168.1.200/24", mtu=1500, default_route=None):
         # IPアドレスが正しいCIDR形式であるか確認
         if not self.is_valid_cidr_notation(ip_address):
             raise ValueError("無効なIPアドレス形式です。")
