@@ -69,10 +69,10 @@ class Node:
             initial_delay = random.uniform(0.5, 0.6)
             self.network_event_scheduler.schedule_event(
                 self.network_event_scheduler.current_time + initial_delay,
-                self.request_ip_via_dhcp
+                self.send_dhcp_discover
             )
 
-    def request_ip_via_dhcp(self):
+    def send_dhcp_discover(self):
         dhcp_discover_packet = DHCPPacket(
             source_mac=self.mac_address,
             destination_mac="FF:FF:FF:FF:FF:FF",  # DHCP Discoverはブロードキャストアドレスへ送信される
