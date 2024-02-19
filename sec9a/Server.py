@@ -169,11 +169,14 @@ class DHCPServer(Server):
 
     def create_dhcp_ack_packet(self, request_packet):
         # DHCPAckPacketの生成（DHCPPacketクラスを使用）
-        return DHCPPacket(
+        assigned_ip = request_packet.dhcp_data["requested_ip"]
+        dhcp_ack_packet = DHCPPacket(
             source_mac=self.mac_address,
             destination_mac=request_packet.header["source_mac"],
             source_ip=self.ip_address,
-            destination_ip=request_packet.dhcp_data["requested_ip"],
+            destination_ip=assigned_ip,
             message_type="ACK",
             network_event_scheduler=self.network_event_scheduler
         )
+        dhcp_ack_packet.dhcp_data = {"assigned_ip": assigned_ip}
+        return dhcp_ack_packet
