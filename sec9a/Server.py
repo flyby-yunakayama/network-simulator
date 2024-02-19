@@ -106,10 +106,11 @@ class DNSServer(Server):
             return None
 
 class DHCPServer(Server):
-    def __init__(self, node_id, ip_address, network_event_scheduler, start_cidr, mac_address=None):
+    def __init__(self, node_id, ip_address, dns_server_ip, network_event_scheduler, start_cidr, mac_address=None):
         super().__init__(node_id, ip_address, network_event_scheduler, mac_address)
         self.ip_pool = self.initialize_ip_pool(start_cidr)
         self.used_ips = set()  # 使用中のIPアドレスを追跡するセット
+        self.dns_server_ip = dns_server_ip
         label = f'DHCPServer {node_id}'
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
@@ -178,5 +179,8 @@ class DHCPServer(Server):
             message_type="ACK",
             network_event_scheduler=self.network_event_scheduler
         )
-        dhcp_ack_packet.dhcp_data = {"assigned_ip": assigned_ip}
+        dhcp_ack_packet.dhcp_data = {
+            "assigned_ip": assigned_ip,  # 割り当てるIPアドレス
+            "dns_server_ip": self.dns_server_ip  # DNSサーバのIPアドレス
+        }
         return dhcp_ack_packet

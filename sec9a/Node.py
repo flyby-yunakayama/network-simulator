@@ -7,7 +7,7 @@ from sec9a.Router import Router
 from sec9a.Packet import Packet, ARPPacket, DNSPacket, DHCPPacket
 
 class Node:
-    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server="192.168.1.200/24", mtu=1500, default_route=None):
+    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server=None, mtu=1500, default_route=None):
         self.node_id = node_id
         self.ip_address = ip_address  # IPアドレス
         self.network_event_scheduler = network_event_scheduler
@@ -166,6 +166,11 @@ class Node:
                         # 割り当てられたIPアドレスをノードのIPアドレスとして設定
                         self.ip_address = assigned_ip
                         print(f"Node {self.node_id} has been assigned the IP address {assigned_ip}.")
+                    # ACKパケットからDNSサーバのIPアドレスを取得
+                    dns_server_ip = packet.dhcp_data.get("dns_server_ip")
+                    if dns_server_ip:
+                        self.dns_server_ip
+                        print(f"Node {self.node_id} has been assigned the DNS server IP address {dns_server_ip}.")
                     return
 
             if isinstance(packet, DNSPacket):
