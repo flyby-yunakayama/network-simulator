@@ -66,7 +66,7 @@ class Node:
 
     def schedule_dhcp_packet(self):
         if self.is_network_address(self.ip_address):
-            initial_delay = random.uniform(0.3, 0.5)
+            initial_delay = random.uniform(0.5, 0.6)
             self.network_event_scheduler.schedule_event(
                 self.network_event_scheduler.current_time + initial_delay,
                 self.request_ip_via_dhcp
