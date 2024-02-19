@@ -124,6 +124,7 @@ class DHCPServer(Server):
             print(ip, self.used_ips)
             if ip not in self.used_ips:
                 self.used_ips.add(ip)
+                print(ip, self.used_ips)
                 return ip
         # 利用可能なIPアドレスがない場合はNoneを返す
         return None
