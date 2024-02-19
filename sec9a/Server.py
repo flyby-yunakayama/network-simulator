@@ -119,12 +119,9 @@ class DHCPServer(Server):
         return ip_pool
 
     def get_available_ip(self):
-        print(self.ip_pool)
         for ip in self.ip_pool:
-            print(ip, self.used_ips)
             if ip not in self.used_ips:
                 self.used_ips.add(ip)
-                print(ip, self.used_ips)
                 return ip
         # 利用可能なIPアドレスがない場合はNoneを返す
         return None
@@ -159,7 +156,7 @@ class DHCPServer(Server):
 
     def create_dhcp_offer_packet(self, discover_packet, offered_ip):
         # DHCPOfferPacketの生成（DHCPPacketクラスを使用）
-        return DHCPPacket(
+        dhcp_offer_packet = DHCPPacket(
             source_mac=self.mac_address,
             destination_mac=discover_packet.header["source_mac"],
             source_ip=self.ip_address,
@@ -167,6 +164,8 @@ class DHCPServer(Server):
             message_type="OFFER",
             network_event_scheduler=self.network_event_scheduler
         )
+        dhcp_offer_packet.dhcp_data = {"offered_ip": offered_ip}
+        return dhcp_offer_packet
 
     def create_dhcp_ack_packet(self, request_packet):
         # DHCPAckPacketの生成（DHCPPacketクラスを使用）
