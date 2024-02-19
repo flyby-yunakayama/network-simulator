@@ -1,4 +1,6 @@
 import uuid
+from ipaddress import ip_network
+
 from sec9a.Packet import ARPPacket, DNSPacket, DHCPPacket
 
 class Server:
@@ -103,37 +105,28 @@ class DNSServer(Server):
             # クエリされたドメインがDNSレコードに存在しない場合はNoneを返す
             return None
 
-
-class SimpleDHCPServer(Server):
+class DHCPServer(Server):
     def __init__(self, node_id, ip_address, network_event_scheduler, ip_pool_start, ip_pool_end, mac_address=None):
         super().__init__(node_id, ip_address, network_event_scheduler, mac_address)
         self.ip_pool = self.initialize_ip_pool(ip_pool_start, ip_pool_end)
         self.leased_ips = {}
 
-    def initialize_ip_pool(self, start, end):
-        # IPアドレスプールの初期化
-        from ipaddress import ip_address
-        start_ip = ip_address(start)
-        end_ip = ip_address(end)
-        return [str(ip) for ip in range(int(start_ip), int(end_ip) + 1)]
+    def initialize_ip_pool(self, start_cidr):
+        network = ip_network(start_cidr, strict=False)
+        ip_pool = [f"{ip}/{network.prefixlen}" for ip in network.hosts()]
+        return ip_pool
 
     def receive_packet(self, packet, received_link):
-        if packet.arrival_time == -1:
-            # パケットロスをログに記録
-            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
-            return
+        super().receive_packet(packet, received_link)  # Serverクラスの共通処理を利用
 
-        if isinstance(packet, DHCPPacket):
-            if packet.message_type == "DISCOVER":
-                self.handle_dhcp_discover(packet)
-            elif packet.message_type == "REQUEST":
-                self.handle_dhcp_request(packet)
-            else:
-                # 他のDHCPメッセージタイプの処理が必要な場合、ここに追加
-                pass
-        else:
-            # DHCPパケット以外の処理
-            super().receive_packet(packet, received_link)
+        if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF" and packet.header["destination_ip"] == "255.255.255.255/32":
+            if isinstance(packet, DHCPPacket):
+                if packet.message_type == "DISCOVER":
+                    self.handle_dhcp_discover(packet)
+                elif packet.message_type == "REQUEST":
+                    self.handle_dhcp_request(packet)
+                else:
+                    pass
 
     def handle_dhcp_discover(self, discover_packet):
         # DHCP DISCOVERメッセージの処理
@@ -161,7 +154,7 @@ class SimpleDHCPServer(Server):
         # DHCPOfferPacketの生成（DHCPPacketクラスを使用）
         return DHCPPacket(
             source_mac=self.mac_address,
-            destination_mac=discover_packet.mac_address,
+            destination_mac=discover_packet.header["source_mac"],
             source_ip=self.ip_address,
             destination_ip=offered_ip,
             message_type="OFFER",
@@ -172,7 +165,7 @@ class SimpleDHCPServer(Server):
         # DHCPAckPacketの生成（DHCPPacketクラスを使用）
         return DHCPPacket(
             source_mac=self.mac_address,
-            destination_mac=request_packet.mac_address,
+            destination_mac=request_packet.header["source_mac"],
             source_ip=self.ip_address,
             destination_ip=request_packet.dhcp_data["requested_ip"],
             message_type="ACK",

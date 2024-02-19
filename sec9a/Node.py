@@ -3,7 +3,7 @@ import re
 from ipaddress import ip_network
 from sec9a.Switch import Switch
 from sec9a.Router import Router
-from sec9a.Packet import Packet, ARPPacket, DNSPacket
+from sec9a.Packet import Packet, ARPPacket, DNSPacket, DHCPPacket
 
 class Node:
     def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server="192.168.1.200/24", mtu=1500, default_route=None):
@@ -30,6 +30,7 @@ class Node:
         self.fragmented_packets = {}  # フラグメントされたパケットの一時格納用
         self.default_route = default_route
         label = f'Node {node_id}\n{mac_address}'
+        self.request_ip_via_dhcp()
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
     def is_valid_mac_address(self, mac_address):
@@ -52,6 +53,41 @@ class Node:
     def generate_mac_address(self):
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
+
+    def request_ip_via_dhcp(self):
+        # IPアドレスが未設定、またはCIDR形式の検証に失敗した場合に実行
+        if not self.ip_address or not self.is_valid_cidr_notation(self.ip_address):
+            dhcp_discover_packet = self.create_dhcp_discover_packet()
+            self.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
+            self._send_packet(dhcp_discover_packet)
+        else:
+            print(f"Node {self.node_id} already has an IP address: {self.ip_address}")
+
+    def create_dhcp_discover_packet(self):
+        return DHCPPacket(
+            source_mac=self.mac_address,
+            destination_mac="FF:FF:FF:FF:FF:FF",  # DHCP Discoverはブロードキャストアドレスへ送信される
+            source_ip="0.0.0.0",  # ソースIPは未割り当て状態で0.0.0.0を使用
+            destination_ip="255.255.255.255",  # 宛先IPはブロードキャストアドレス
+            message_type="DISCOVER",
+            network_event_scheduler=self.network_event_scheduler
+        )
+
+    def send_dhcp_request(self, requested_ip):
+        """DHCP Requestメッセージを送信するメソッド"""
+        dhcp_request_packet = DHCPPacket(
+            source_mac=self.mac_address,
+            destination_mac="FF:FF:FF:FF:FF:FF",  # DHCP Requestはブロードキャストアドレスへ送信される
+            source_ip="0.0.0.0",  # ソースIPは未割り当て状態で0.0.0.0を使用
+            destination_ip="255.255.255.255",  # 宛先IPはブロードキャストアドレス
+            message_type="REQUEST",
+            network_event_scheduler=self.network_event_scheduler
+        )
+        # OfferされたIPアドレスをリクエストするための情報をdhcp_dataにセット
+        dhcp_request_packet.dhcp_data = {"requested_ip": requested_ip}
+        # DHCP Requestパケットを送信
+        self.network_event_scheduler.log_packet_info(dhcp_request_packet, "DHCP Request sent", self.node_id)
+        self._send_packet(dhcp_request_packet)
 
     def add_to_arp_table(self, ip_address, mac_address):
         # ARPテーブルにIPアドレスとMACアドレスのマッピングを追加
@@ -99,6 +135,27 @@ class Node:
                     source_mac = packet.payload["source_mac"]
                     self.add_to_arp_table(source_ip, source_mac)
                     self.on_arp_reply_received(source_ip, source_mac)
+                    return
+
+            if isinstance(packet, DHCPPacket):
+                if packet.message_type == "OFFER":
+                    # DHCP Offerパケットの処理
+                    self.network_event_scheduler.log_packet_info(packet, "DHCP Offer received", self.node_id)
+                    # OfferされたIPアドレスを取得
+                    offered_ip = packet.dhcp_data.get("offered_ip")
+                    if offered_ip:
+                        # OfferされたIPアドレスを使用してDHCP Requestを送信
+                        self.send_dhcp_request(offered_ip)
+                    return
+                elif packet.message_type == "ACK":
+                    # DHCP ACKパケットの処理
+                    self.network_event_scheduler.log_packet_info(packet, "DHCP ACK received", self.node_id)
+                    # ACKパケットから割り当てられたIPアドレスを取得
+                    assigned_ip = packet.dhcp_data.get("assigned_ip")
+                    if assigned_ip:
+                        # 割り当てられたIPアドレスをノードのIPアドレスとして設定
+                        self.ip_address = assigned_ip
+                        print(f"Node {self.node_id} has been assigned the IP address {assigned_ip}.")
                     return
 
             if isinstance(packet, DNSPacket):
