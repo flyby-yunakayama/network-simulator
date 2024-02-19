@@ -133,24 +133,18 @@ class DHCPServer(Server):
     def handle_dhcp_discover(self, discover_packet):
         # DHCP DISCOVERメッセージの処理
         # 利用可能なIPアドレスを割り当て、DHCPOfferPacketを生成して送信
-        offered_ip = self.assign_ip_address(discover_packet)
-        offer_packet = self.create_dhcp_offer_packet(discover_packet, offered_ip)
-        self._send_packet(offer_packet)
-
-    def handle_dhcp_request(self, request_packet):
-        # DHCP REQUESTメッセージの処理
-        # IPアドレスの割り当てを確定し、DHCPAckPacketを生成して送信
-        ack_packet = self.create_dhcp_ack_packet(request_packet)
-        self._send_packet(ack_packet)
-
-    def assign_ip_address(self, discover_packet):
-        # 利用可能なIPアドレスを割り当てる
         if self.ip_pool:
             assigned_ip = self.ip_pool.pop(0)
             # DHCP Offerメッセージの送信
             offer_packet = self.create_dhcp_offer_packet(discover_packet, assigned_ip)
             self.network_event_scheduler.log_packet_info(offer_packet, "DHCP Offer", self.node_id)
             self._send_packet(offer_packet)
+
+    def handle_dhcp_request(self, request_packet):
+        # DHCP REQUESTメッセージの処理
+        # IPアドレスの割り当てを確定し、DHCPAckPacketを生成して送信
+        ack_packet = self.create_dhcp_ack_packet(request_packet)
+        self._send_packet(ack_packet)
 
     def create_dhcp_offer_packet(self, discover_packet, offered_ip):
         # DHCPOfferPacketの生成（DHCPPacketクラスを使用）

@@ -73,12 +73,7 @@ class Node:
             )
 
     def request_ip_via_dhcp(self):
-        dhcp_discover_packet = self.create_dhcp_discover_packet()
-        self.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
-        self._send_packet(dhcp_discover_packet)
-
-    def create_dhcp_discover_packet(self):
-        return DHCPPacket(
+        dhcp_discover_packet = DHCPPacket(
             source_mac=self.mac_address,
             destination_mac="FF:FF:FF:FF:FF:FF",  # DHCP Discoverはブロードキャストアドレスへ送信される
             source_ip="0.0.0.0/32",  # ソースIPは未割り当て状態で0.0.0.0を使用
@@ -86,9 +81,10 @@ class Node:
             message_type="DISCOVER",
             network_event_scheduler=self.network_event_scheduler
         )
+        self.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
+        self._send_packet(dhcp_discover_packet)
 
     def send_dhcp_request(self, requested_ip):
-        """DHCP Requestメッセージを送信するメソッド"""
         dhcp_request_packet = DHCPPacket(
             source_mac=self.mac_address,
             destination_mac="FF:FF:FF:FF:FF:FF",  # DHCP Requestはブロードキャストアドレスへ送信される
