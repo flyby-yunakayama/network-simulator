@@ -64,6 +64,7 @@ class Node:
 
     def request_ip_via_dhcp(self):
         # IPアドレスがネットワークアドレスの場合に実行
+        print("Network address?: ", self.is_network_address(self.ip_address))
         if self.is_network_address(self.ip_address):
             dhcp_discover_packet = self.create_dhcp_discover_packet()
             self.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
