@@ -110,6 +110,8 @@ class DHCPServer(Server):
         super().__init__(node_id, ip_address, network_event_scheduler, mac_address)
         self.ip_pool = self.initialize_ip_pool(start_cidr)
         self.leased_ips = {}
+        label = f'DHCPServer {node_id}'
+        self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
     def initialize_ip_pool(self, start_cidr):
         network = ip_network(start_cidr, strict=False)
