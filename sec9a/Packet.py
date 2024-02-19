@@ -109,7 +109,7 @@ class DHCPPacket(Packet):
             payload_size=0,  # 実際のペイロードサイズはオプションによって異なる
             network_event_scheduler=network_event_scheduler
         )
-        self.message_type = message_type  # DHCPメッセージタイプ (例: 'DISCOVER', 'OFFER', 'REQUEST', 'ACK')
+        self.message_type = message_type  # DHCPメッセージタイプ ('DISCOVER', 'OFFER', 'REQUEST', 'ACK')
         # DHCPメッセージの詳細情報を格納するためのプレースホルダ
         self.dhcp_data = {}
 

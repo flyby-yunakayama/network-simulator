@@ -127,6 +127,10 @@ class DHCPServer(Server):
         # 利用可能なIPアドレスがない場合はNoneを返す
         return None
 
+    def mark_ips_as_used(self, ips):
+        for ip in ips:
+            self.used_ips.add(ip)
+
     def receive_packet(self, packet, received_link):
         super().receive_packet(packet, received_link)  # Serverクラスの共通処理を利用
 
