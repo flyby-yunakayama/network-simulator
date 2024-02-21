@@ -292,6 +292,15 @@ class Router:
             if internal_ip:
                 packet.header["destination_ip"] = internal_ip
 
+    def print_nat_table(self):
+        if not self.nat_table:
+            print("NAT変換テーブルは空です。")
+            return
+        
+        print("NAT変換テーブル:")
+        for internal_ip, external_ip in self.nat_table.items():
+            print(f"{internal_ip} -> {external_ip}")
+
     def send_arp_request(self, link, ip_address):
         # ARPリクエストパケットを作成して送信する処理
         # 宛先MACアドレスはブロードキャストアドレス、宛先IPアドレスは問い合わせたいIPアドレス
