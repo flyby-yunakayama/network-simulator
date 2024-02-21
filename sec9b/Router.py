@@ -271,6 +271,13 @@ class Router:
         return ipaddress.ip_address(ip_address) in internal_network
 
     def apply_nat(self, packet, direction):
+        if self.network_event_scheduler.nat_verbose:
+            original_ip = packet.header["source_ip"] if direction == 'outbound' else packet.header["destination_ip"]
+            new_ip = self.external_ip if direction == 'outbound' else self.nat_table.get(packet.header["destination_ip"], "未変換")
+
+            log_message = f"NAT {direction}: {original_ip} -> {new_ip}"
+            self.network_event_scheduler.log_packet_info(packet, log_message, self.node_id)
+
         if direction == 'outbound':
             # 外部ネットワークへのパケット送信時のNAT処理
             original_src_ip = packet.header["source_ip"]

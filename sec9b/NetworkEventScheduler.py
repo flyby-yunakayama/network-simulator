@@ -5,7 +5,7 @@ import numpy as np
 from collections import defaultdict
 
 class NetworkEventScheduler:
-    def __init__(self, log_enabled=False, verbose=False, stp_verbose=False, routing_verbose=False):
+    def __init__(self, log_enabled=False, verbose=False, stp_verbose=False, routing_verbose=False, nat_verbose=False):
         self.current_time = 0
         self.events = []
         self.event_id = 0
@@ -14,6 +14,7 @@ class NetworkEventScheduler:
         self.verbose = verbose
         self.stp_verbose = stp_verbose
         self.routing_verbose = routing_verbose
+        self.nat_verbose = nat_verbose
         self.graph = nx.Graph()
 
     def add_node(self, node_id, label, ip_addresses=None):
