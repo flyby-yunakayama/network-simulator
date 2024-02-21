@@ -265,8 +265,9 @@ class Router:
             link.enqueue_packet(packet, self)
 
     def is_internal_ip(self, ip_address):
-        # 192.168.0.0/16 の範囲内であるかどうかをチェック
-        internal_network = ipaddress.ip_network('192.168.0.0/16')
+        # CIDRネットワーク表記からIPアドレス部分のみを抽出
+        ip_address = ip_address.split('/')[0]  # CIDR表記を分割し、IPアドレス部分を取得
+        internal_network = ipaddress.ip_network('192.168.0.0/16', strict=False)
         return ipaddress.ip_address(ip_address) in internal_network
 
     def apply_nat(self, packet, direction):
