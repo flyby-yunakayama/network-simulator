@@ -392,7 +392,7 @@ class Node:
                     fragment_offset=fragment_offset,
                     header_size=header_size,
                     source_port=kwargs.get('source_port'),
-                    destination_port=kwargs.get('destination_port')
+                    destination_port=kwargs.get('destination_port'),
                     sequence_number=kwargs.get('sequence_number'),
                     acknowledgment_number=kwargs.get('acknowledgment_number'),
                     flags=kwargs.get('flags')
