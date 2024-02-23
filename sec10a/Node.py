@@ -450,11 +450,11 @@ class Node:
         # 見つかった場合はそのIPアドレスを返し、見つからない場合はNoneを返します。
         return self.url_to_ip_mapping.get(destination_url, None)
 
-    def send_dns_query_and_set_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
-        # DNSクエリを送信する前に、トラフィック生成のパラメータを記録します。
+    def send_dns_query_and_set_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
+        # DNSクエリを送信する前に、トラフィック生成のパラメータと使用するプロトコルを記録します。
         if destination_url not in self.waiting_for_dns_reply:
             self.waiting_for_dns_reply[destination_url] = []
-        self.waiting_for_dns_reply[destination_url].append((bitrate, start_time, duration, header_size, payload_size, burstiness))
+        self.waiting_for_dns_reply[destination_url].append((bitrate, start_time, duration, header_size, payload_size, burstiness, protocol))
         # DNSクエリパケットを生成して送信します。
         self.send_dns_query(destination_url)
 
@@ -477,9 +477,13 @@ class Node:
         self.add_dns_record(query_domain, resolved_ip)
         if query_domain in self.waiting_for_dns_reply:
             for parameters in self.waiting_for_dns_reply[query_domain]:
-                bitrate, start_time, duration, header_size, payload_size, burstiness = parameters
+                bitrate, start_time, duration, header_size, payload_size, burstiness, protocol = parameters
                 # 解決されたIPアドレスを使用してトラフィック生成を開始します。
-                self.set_traffic(resolved_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
+                if protocol == "UDP":
+                    self.set_udp_traffic(resolved_ip, bitrate, start_time, duration, payload_size, burstiness)
+                elif protocol == "TCP":
+                    # TCPトラフィック生成メソッドを呼び出す（実装が必要）
+                    self.set_tcp_traffic(resolved_ip, bitrate, start_time, duration, payload_size, burstiness)
             # 処理が完了したら、該当するドメイン名のエントリを削除
             del self.waiting_for_dns_reply[query_domain]
 
