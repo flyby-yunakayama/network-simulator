@@ -446,6 +446,7 @@ class Node:
             if self.network_event_scheduler.current_time < end_time:
                 # send_packetメソッドを使用してパケットを送信
                 data = b'X' * int(payload_size)  # ダミーデータを生成
+                print(f"Generating UDP packet to {destination_ip}, {len(data)} bytes., payload_size={payload_size}")
                 self.send_packet(destination_ip, data, protocol, source_port=source_port, destination_port=destination_port)
 
                 # 次のパケットをスケジュールするためのインターバルを計算
