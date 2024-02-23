@@ -425,6 +425,7 @@ class Node:
                 link.enqueue_packet(packet, self)
 
     def start_udp_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
+        print(f"Starting UDP traffic to {destination_url} at {bitrate} bps, start_time={start_time}, duration={duration}, header_size={header_size}, payload_size={payload_size}, burstiness={burstiness}, protocol={protocol}")
         def attempt_to_start_traffic():
             destination_ip = self.resolve_destination_ip(destination_url)
             if destination_ip is None:
