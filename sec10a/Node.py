@@ -371,7 +371,6 @@ class Node:
                     source_ip=self.ip_address.split('/')[0],
                     destination_ip=destination_ip,
                     ttl=64,
-                    payload=fragment_data,
                     network_event_scheduler=self.network_event_scheduler,
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
@@ -386,7 +385,6 @@ class Node:
                     source_ip=self.ip_address.split('/')[0],
                     destination_ip=destination_ip,
                     ttl=64,
-                    payload=fragment_data,
                     network_event_scheduler=self.network_event_scheduler,
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
@@ -398,6 +396,7 @@ class Node:
                     flags=kwargs.get('flags')
                 )
 
+            packet.payload = fragment_data
             self._send_packet(packet)
 
             offset += payload_size
