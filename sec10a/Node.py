@@ -331,6 +331,7 @@ class Node:
         """
         UDPパケットを送信するための内部メソッド。
         """
+        print(f"Sending UDP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
         udp_header_size = 8  # UDPヘッダは8バイト
         ip_header_size = 20  # IPヘッダは20バイト
         header_size = udp_header_size + ip_header_size
