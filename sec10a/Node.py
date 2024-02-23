@@ -369,7 +369,6 @@ class Node:
                 "more_fragments": more_fragments,
                 "original_data_id": original_data_id
             }
-            print(f"Fragmenting data: offset={offset}, payload_size={payload_size}, more_fragments={more_fragments}, total_size={total_size}")
 
             if protocol == "UDP":
                 packet = UDPPacket(
@@ -425,7 +424,6 @@ class Node:
                 link.enqueue_packet(packet, self)
 
     def start_udp_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
-        print(f"Starting UDP traffic to {destination_url} at {bitrate} bps, start_time={start_time}, duration={duration}, header_size={header_size}, payload_size={payload_size}, burstiness={burstiness}, protocol={protocol}")
         def attempt_to_start_traffic():
             destination_ip = self.resolve_destination_ip(destination_url)
             if destination_ip is None:
@@ -442,7 +440,6 @@ class Node:
         end_time = start_time + duration
         source_port = self.select_random_port()  # 利用可能なランダムなソースポートを選択
         destination_port = self.select_random_port()  # デスティネーションポートもランダムに選択
-        print(f"Starting UDP traffic to {destination_ip} at {bitrate} bps, start_time={start_time}, duration={duration}, header_size={header_size}, payload_size={payload_size}, burstiness={burstiness}, protocol={protocol}")
 
         def generate_packet():
             if self.network_event_scheduler.current_time < end_time:
@@ -492,10 +489,10 @@ class Node:
                 bitrate, start_time, duration, header_size, payload_size, burstiness, protocol = parameters
                 # 解決されたIPアドレスを使用してトラフィック生成を開始します。
                 if protocol == "UDP":
-                    self.set_udp_traffic(resolved_ip, bitrate, start_time, duration, payload_size, burstiness)
+                    self.set_udp_traffic(resolved_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
                 elif protocol == "TCP":
                     # TCPトラフィック生成メソッドを呼び出す（実装が必要）
-                    self.set_tcp_traffic(resolved_ip, bitrate, start_time, duration, payload_size, burstiness)
+                    self.set_tcp_traffic(resolved_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
             # 処理が完了したら、該当するドメイン名のエントリを削除
             del self.waiting_for_dns_reply[query_domain]
 
