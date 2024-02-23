@@ -16,6 +16,7 @@ class Packet:
             "fragment_flags": fragment_flags,
             "fragment_offset": fragment_offset
         }
+        self.payload = b'X' * payload_size
         self.size = header_size + payload_size
         self.creation_time = self.network_event_scheduler.current_time
         self.arrival_time = None
