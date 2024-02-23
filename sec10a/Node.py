@@ -18,6 +18,8 @@ class Node:
                 raise ValueError("無効なMACアドレス形式です。")
             self.mac_address = mac_address  # MACアドレス
         self.links = []
+        self.used_ports = set()  # 使用中のポート番号を保持するセット
+        self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
         self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
         self.dns_server_ip = dns_server  # DNSサーバのIPアドレス
@@ -63,6 +65,37 @@ class Node:
     def generate_mac_address(self):
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
+
+    def select_available_port(self):
+        for port in range(1024, 49152):
+            if port not in self.used_ports:
+                self.used_ports.add(port)
+                return port
+        raise Exception("No available ports")
+
+    def select_random_port(self):
+        """
+        ランダムにポート番号を選択します。
+        一般的には、1024以上49151以下の範囲で選択します（ウェルノウンポートとダイナミックポートを避けるため）。
+        """
+        return random.randint(1024, 49151)
+
+    def assign_destination_port(self, source_port):
+        """
+        source_portに対してランダムなdestination_portを選択し、マッピングに記録します。
+        """
+        destination_port = self.select_random_port()
+        self.port_mapping[source_port] = destination_port
+        return destination_port
+
+    def get_destination_port(self, source_port):
+        """
+        与えられたsource_portに対応するdestination_portを返します。
+        存在しない場合は新しく割り当てます。
+        """
+        if source_port not in self.port_mapping:
+            return self.assign_destination_port(source_port)
+        return self.port_mapping[source_port]
 
     def schedule_dhcp_packet(self):
         if self.is_network_address(self.ip_address):
@@ -343,7 +376,8 @@ class Node:
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
                     header_size=header_size,
-                    **kwargs  # UDP特有のパラメータをここで渡す
+                    source_port=kwargs.get('source_port'),
+                    destination_port=kwargs.get('destination_port')
                 )
             elif protocol == "TCP":
                 packet = TCPPacket(
@@ -357,7 +391,11 @@ class Node:
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
                     header_size=header_size,
-                    **kwargs  # TCP特有のパラメータをここで渡す
+                    source_port=kwargs.get('source_port'),
+                    destination_port=kwargs.get('destination_port')
+                    sequence_number=kwargs.get('sequence_number'),
+                    acknowledgment_number=kwargs.get('acknowledgment_number'),
+                    flags=kwargs.get('flags')
                 )
 
             packet.payload = fragment_data
@@ -376,7 +414,7 @@ class Node:
             for link in self.links:
                 link.enqueue_packet(packet, self)
 
-    def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
+    def start_udp_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
         def attempt_to_start_traffic():
             destination_ip = self.resolve_destination_ip(destination_url)
             if destination_ip is None:
@@ -384,19 +422,21 @@ class Node:
                 self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
             else:
                 # DNSレコードが既に存在する場合、直接トラフィック生成を開始
-                self.set_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol)
+                self.set_udp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol)
         
         # 最初のパケット生成（またはDNSレコードの検索処理）をstart_timeにスケジュール
         self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
 
-    def set_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
+    def set_udp_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
         end_time = start_time + duration
+        source_port = self.select_random_port()  # 利用可能なランダムなソースポートを選択
+        destination_port = self.select_random_port()  # デスティネーションポートもランダムに選択
 
         def generate_packet():
             if self.network_event_scheduler.current_time < end_time:
                 # send_packetメソッドを使用してパケットを送信
                 data = b'X' * payload_size  # ダミーデータを生成
-                self.send_packet(destination_ip, data, protocol=protocol, payload_size=payload_size)
+                self.send_packet(destination_ip, data, protocol="UDP", source_port=source_port, destination_port=destination_port)
 
                 # 次のパケットをスケジュールするためのインターバルを計算
                 packet_size = header_size + payload_size
