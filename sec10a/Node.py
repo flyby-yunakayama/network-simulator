@@ -241,8 +241,12 @@ class Node:
     def on_arp_reply_received(self, destination_ip, destination_mac):
         # ARPリプライを受信したら、待機中のパケットに対して処理を行う
         if destination_ip in self.waiting_for_arp_reply:
-            for data, header_size in self.waiting_for_arp_reply[destination_ip]:
-                self._send_packet_data(destination_ip, destination_mac, data, header_size)
+            for packet_info in self.waiting_for_arp_reply[destination_ip]:
+                data, protocol, kwargs = packet_info
+                # send_packetメソッドを使用して、待機中のパケットを送信
+                # kwargsは辞書なので、関数のキーワード引数として展開するために**を使用
+                self.send_packet(destination_ip, data, protocol=protocol, **kwargs)
+            # 待機リストから該当する宛先IPを削除
             del self.waiting_for_arp_reply[destination_ip]
 
     def send_arp_request(self, ip_address):
