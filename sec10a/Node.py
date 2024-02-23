@@ -154,81 +154,107 @@ class Node:
         self.url_to_ip_mapping[domain_name] = ip_address
         print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
 
-    def receive_packet(self, packet, received_link):
-        if packet.arrival_time == -1:
-            # パケットロスをログに記録
-            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
-            return
-
-        # 宛先MACアドレスがブロードキャストアドレスの場合の処理
-        if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":
-            if isinstance(packet, ARPPacket):
-                # ペイロード内のoperationが'request'で、かつ宛先IPがこのノードのIPアドレスと一致する場合
-                if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
-                    # 自身のMACアドレスを含むARPリプライを送信
-                    self._send_arp_reply(packet)
-                    return
+    def process_ARP_packet(self, packet):
+        if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":  # ブロードキャスト
+            if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
+                self._send_arp_reply(packet)
+                return
 
         if packet.header["destination_mac"] == self.mac_address:
-            if isinstance(packet, ARPPacket):
-                if packet.payload.get("operation") == "reply" and packet.payload["destination_ip"] == self.ip_address:
-                    # ARPリプライを受信した場合の処理
-                    self.network_event_scheduler.log_packet_info(packet, "ARP reply received", self.node_id)
-                    source_ip = packet.payload["source_ip"]
-                    source_mac = packet.payload["source_mac"]
-                    self.add_to_arp_table(source_ip, source_mac)
-                    self.on_arp_reply_received(source_ip, source_mac)
-                    return
+            if packet.payload.get("operation") == "reply" and packet.payload["destination_ip"] == self.ip_address:
+                # ARPリプライを受信した場合の処理
+                self.network_event_scheduler.log_packet_info(packet, "ARP reply received", self.node_id)
+                source_ip = packet.payload["source_ip"]
+                source_mac = packet.payload["source_mac"]
+                self.add_to_arp_table(source_ip, source_mac)
+                self.on_arp_reply_received(source_ip, source_mac)
+                return
 
-            if isinstance(packet, DHCPPacket):
-                if packet.message_type == "OFFER":
-                    # DHCP Offerパケットの処理
-                    self.network_event_scheduler.log_packet_info(packet, "DHCP Offer received", self.node_id)
-                    # OfferされたIPアドレスを取得
-                    offered_ip = packet.dhcp_data.get("offered_ip")
-                    if offered_ip:
-                        # OfferされたIPアドレスを使用してDHCP Requestを送信
-                        self.send_dhcp_request(offered_ip)
-                    return
-                elif packet.message_type == "ACK":
-                    # DHCP ACKパケットの処理
-                    self.network_event_scheduler.log_packet_info(packet, "DHCP ACK received", self.node_id)
-                    # ACKパケットから割り当てられたIPアドレスを取得
-                    assigned_ip = packet.dhcp_data.get("assigned_ip")
-                    if assigned_ip:
-                        # 割り当てられたIPアドレスをノードのIPアドレスとして設定
-                        self.ip_address = assigned_ip
-                        print(f"Node {self.node_id} has been assigned the IP address {assigned_ip}.")
-                    # ACKパケットからDNSサーバのIPアドレスを取得
-                    dns_server_ip = packet.dhcp_data.get("dns_server_ip")
-                    if dns_server_ip:
-                        self.dns_server_ip = dns_server_ip
-                        print(f"Node {self.node_id} has been assigned the DNS server IP address {dns_server_ip}.")
-                    return
+    def process_DHCP_packet(self, packet):
+        if packet.header["destination_mac"] == self.mac_address:
+            if packet.message_type == "OFFER":
+                # DHCP Offerパケットの処理
+                self.network_event_scheduler.log_packet_info(packet, "DHCP Offer received", self.node_id)
+                # OfferされたIPアドレスを取得
+                offered_ip = packet.dhcp_data.get("offered_ip")
+                if offered_ip:
+                    # OfferされたIPアドレスを使用してDHCP Requestを送信
+                    self.send_dhcp_request(offered_ip)
+                return
+            elif packet.message_type == "ACK":
+                # DHCP ACKパケットの処理
+                self.network_event_scheduler.log_packet_info(packet, "DHCP ACK received", self.node_id)
+                # ACKパケットから割り当てられたIPアドレスを取得
+                assigned_ip = packet.dhcp_data.get("assigned_ip")
+                if assigned_ip:
+                    # 割り当てられたIPアドレスをノードのIPアドレスとして設定
+                    self.ip_address = assigned_ip
+                    print(f"Node {self.node_id} has been assigned the IP address {assigned_ip}.")
+                # ACKパケットからDNSサーバのIPアドレスを取得
+                dns_server_ip = packet.dhcp_data.get("dns_server_ip")
+                if dns_server_ip:
+                    self.dns_server_ip = dns_server_ip
+                    print(f"Node {self.node_id} has been assigned the DNS server IP address {dns_server_ip}.")
+                return
 
-            if isinstance(packet, DNSPacket):
-                # DNSレスポンスの処理
-                self.network_event_scheduler.log_packet_info(packet, "DNS packet received", self.node_id)                
-                if packet.query_domain and "resolved_ip" in packet.dns_data:
-                    # DNSレスポンスから解決されたIPアドレスを取得し、DNSテーブルに追加
-                    self.on_dns_response_received(packet.query_domain, packet.dns_data["resolved_ip"])
-                    return
+    def process_DNS_packet(self, packet):
+        if packet.header["destination_mac"] == self.mac_address:
+            # DNSレスポンスの処理
+            self.network_event_scheduler.log_packet_info(packet, "DNS packet received", self.node_id)                
+            if packet.query_domain and "resolved_ip" in packet.dns_data:
+                # DNSレスポンスから解決されたIPアドレスを取得し、DNSテーブルに追加
+                self.on_dns_response_received(packet.query_domain, packet.dns_data["resolved_ip"])
+                return
 
+    def process_UDP_packet(self, packet):
+        if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
-                # 宛先IPがこのノードの場合
-                self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-                packet.set_arrived(self.network_event_scheduler.current_time)
-
-                # 'more_fragments'キーが存在しない場合はFalseをデフォルト値として使用
-                more_fragments = packet.header.get("fragment_flags", {}).get("more_fragments", False)
-
-                # フラグメントされたパケットの処理
-                if more_fragments:
-                    self._store_fragment(packet)
-                else:
-                    self._reassemble_and_process_packet(packet)
+                self.process_data_packet(packet)
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
+
+    def process_TCP_packet(self, packet):
+        if packet.header["destination_mac"] == self.mac_address:
+            if packet.header["destination_ip"] == self.ip_address:
+
+
+
+
+
+                self.process_data_packet(packet)
+            else:
+                self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
+
+
+    def receive_packet(self, packet, received_link):
+        if packet.arrival_time == -1:
+            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
+        elif isinstance(packet, ARPPacket):  # ARPパケットの処理
+            self.process_ARP_packet(packet)
+        elif isinstance(packet, DHCPPacket):
+            self.process_DHCP_packet(packet)
+        elif isinstance(packet, DNSPacket):
+            self.process_DNS_packet(packet)
+        elif isinstance(packet, UDPPacket):
+            self.process_UDP_packet(packet)
+        elif isinstance(packet, TCPPacket):
+            self.process_TCP_packet(packet)
+        else:
+            self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
+
+    def process_data_packet(self, packet):
+        # 宛先IPがこのノードの場合
+        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+        packet.set_arrived(self.network_event_scheduler.current_time)
+
+        # 'more_fragments'キーが存在しない場合はFalseをデフォルト値として使用
+        more_fragments = packet.header.get("fragment_flags", {}).get("more_fragments", False)
+
+        # フラグメントされたパケットの処理
+        if more_fragments:
+            self._store_fragment(packet)
+        else:
+            self._reassemble_and_process_packet(packet)
 
     def _store_fragment(self, fragment):
         original_data_id = fragment.header["fragment_flags"]["original_data_id"]
@@ -453,6 +479,38 @@ class Node:
                 self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
 
         self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time, generate_packet)
+
+    def start_tcp_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="TCP"):
+        def attempt_to_start_traffic():
+            destination_ip = self.resolve_destination_ip(destination_url)
+            if destination_ip is None:
+                # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にトラフィックを開始するための処理をスケジュール
+                self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol="TCP")
+            else:
+                # DNSレコードが既に存在する場合、直接トラフィック生成を開始
+                self.set_tcp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
+
+        self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
+
+    def set_tcp_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="TCP"):
+        end_time = start_time + duration
+        source_port = self.select_random_port()
+        destination_port = self.select_random_port()  # 実際のアプリケーションでは、適切な宛先ポートを指定する必要があります
+
+        # 3ウェイハンドシェイクを開始
+        self.initiate_tcp_handshake(destination_ip, source_port, destination_port)
+
+        def generate_packet():
+            # ハンドシェイク完了後にデータ転送を開始
+            if self.network_event_scheduler.current_time < end_time and self.is_tcp_connection_established(destination_ip, source_port, destination_port):
+                data = b'X' * payload_size
+                self.send_packet(destination_ip, data, protocol, source_port=source_port, destination_port=destination_port)
+
+                packet_size = header_size + payload_size
+                interval = (packet_size * 8) / bitrate * burstiness
+                self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
+
+        self.network_event_scheduler.schedule_event(start_time + 1, generate_packet)  # ハンドシェイクに少し時間を与える
 
     def resolve_destination_ip(self, destination_url):
         # 与えられた宛先URLに対応するIPアドレスをurl_to_ip_mappingから検索します。
