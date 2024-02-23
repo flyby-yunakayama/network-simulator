@@ -419,7 +419,7 @@ class Node:
             destination_ip = self.resolve_destination_ip(destination_url)
             if destination_ip is None:
                 # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にトラフィックを開始するための処理をスケジュール
-                self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
+                self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol)
             else:
                 # DNSレコードが既に存在する場合、直接トラフィック生成を開始
                 self.set_udp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol)
@@ -436,7 +436,7 @@ class Node:
             if self.network_event_scheduler.current_time < end_time:
                 # send_packetメソッドを使用してパケットを送信
                 data = b'X' * payload_size  # ダミーデータを生成
-                self.send_packet(destination_ip, data, protocol="UDP", source_port=source_port, destination_port=destination_port)
+                self.send_packet(destination_ip, data, protocol, source_port=source_port, destination_port=destination_port)
 
                 # 次のパケットをスケジュールするためのインターバルを計算
                 packet_size = header_size + payload_size
