@@ -375,6 +375,7 @@ class Node:
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
                     header_size=header_size,
+                    payload_size=len(fragment_data),
                     source_port=kwargs.get('source_port'),
                     destination_port=kwargs.get('destination_port')
                 )
@@ -389,6 +390,7 @@ class Node:
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
                     header_size=header_size,
+                    payload_size=len(fragment_data),
                     source_port=kwargs.get('source_port'),
                     destination_port=kwargs.get('destination_port'),
                     sequence_number=kwargs.get('sequence_number'),
