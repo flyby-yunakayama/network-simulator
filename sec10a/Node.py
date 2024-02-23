@@ -398,7 +398,6 @@ class Node:
                     flags=kwargs.get('flags')
                 )
 
-            packet.payload = fragment_data
             self._send_packet(packet)
 
             offset += payload_size
