@@ -350,15 +350,20 @@ class Node:
         IPパケットを送信するための内部メソッド。TCP/UDPの区別に応じて適切なパケットを生成します。
         """
         original_data_id = str(uuid.uuid4())
-        payload_size = self.mtu - header_size
         total_size = len(data)
         offset = 0
 
         while offset < total_size:
-            more_fragments = offset + payload_size < total_size
+            # MTUからヘッダサイズを引いた値が、このフラグメントの最大ペイロードサイズ
+            max_payload_size = self.mtu - header_size
+            # 実際のペイロードサイズは、残りのデータサイズとmax_payload_sizeの小さい方
+            payload_size = min(max_payload_size, total_size - offset)
+            # フラグメントデータの切り出し
             fragment_data = data[offset:offset + payload_size]
             fragment_offset = offset
 
+            # フラグメントフラグの設定
+            more_fragments = offset + payload_size < total_size
             fragment_flags = {
                 "more_fragments": more_fragments,
                 "original_data_id": original_data_id
@@ -375,7 +380,7 @@ class Node:
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
                     header_size=header_size,
-                    payload_size=len(fragment_data),
+                    payload_size=payload_size,
                     source_port=kwargs.get('source_port'),
                     destination_port=kwargs.get('destination_port')
                 )
@@ -390,7 +395,7 @@ class Node:
                     fragment_flags=fragment_flags,
                     fragment_offset=fragment_offset,
                     header_size=header_size,
-                    payload_size=len(fragment_data),
+                    payload_size=payload_size,
                     source_port=kwargs.get('source_port'),
                     destination_port=kwargs.get('destination_port'),
                     sequence_number=kwargs.get('sequence_number'),
@@ -398,9 +403,12 @@ class Node:
                     flags=kwargs.get('flags')
                 )
 
+            # パケットのペイロードにフラグメントデータを設定
             packet.payload = fragment_data
+            # パケットの送信
             self._send_packet(packet)
 
+            # 次のフラグメントのオフセットへ
             offset += payload_size
 
     def _send_packet(self, packet):
