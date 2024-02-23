@@ -1,9 +1,10 @@
 import uuid
 
 class Packet:
-    def __init__(self, source_mac, destination_mac, source_ip, destination_ip, ttl, fragment_flags, fragment_offset, header_size, payload_size, network_event_scheduler, source_port=None, destination_port=None, sequence_number=None, acknowledgment_number=None, flags=None):
+    def __init__(self, source_mac, destination_mac, source_ip, destination_ip, ttl, fragment_flags, fragment_offset, header_size, payload_size, network_event_scheduler):
         self.network_event_scheduler = network_event_scheduler
         self.id = str(uuid.uuid4())
+        # MACヘッダとIPヘッダを分割して管理
         self.mac_header = {
             "source_mac": source_mac,
             "destination_mac": destination_mac
@@ -15,13 +16,6 @@ class Packet:
             "fragment_flags": fragment_flags,
             "fragment_offset": fragment_offset
         }
-        self.tcp_header = {
-            "source_port": source_port,
-            "destination_port": destination_port,
-            "sequence_number": sequence_number,
-            "acknowledgment_number": acknowledgment_number,
-            "flags": flags  # URG, ACK, PSH, RST, SYN, FINの各フラグ
-        }
         self.payload = b'X' * payload_size
         self.size = header_size + payload_size
         self.creation_time = self.network_event_scheduler.current_time
@@ -29,7 +23,8 @@ class Packet:
     
     @property
     def header(self):
-        return {**self.mac_header, **self.ip_header, **self.tcp_header}
+        # MACヘッダとIPヘッダを統合して返す
+        return {**self.mac_header, **self.ip_header}
 
     # MACヘッダを疑似的に除去するメソッド
     def remove_mac_header(self):
@@ -52,6 +47,21 @@ class Packet:
         source_mac = self.mac_header.get("source_mac", "不明")
         destination_mac = self.mac_header.get("destination_mac", "不明")
         return f'パケット(送信元MAC: {source_mac}, 宛先MAC: {destination_mac}, 送信元IP: {self.ip_header["source_ip"]}, 宛先IP: {self.ip_header["destination_ip"]}, TTL: {self.ip_header["ttl"]}, フラグメントフラグ: {self.ip_header["fragment_flags"]}, フラグメントオフセット: {self.ip_header["fragment_offset"]}, ペイロード: {self.payload})'
+
+class TCPPacket(Packet):
+    def __init__(self, source_port, destination_port, sequence_number, acknowledgment_number, flags, **kwargs):
+        super().__init__(**kwargs)
+        self.source_port = source_port
+        self.destination_port = destination_port
+        self.sequence_number = sequence_number
+        self.acknowledgment_number = acknowledgment_number
+        self.flags = flags
+
+class UDPPacket(Packet):
+    def __init__(self, source_port, destination_port, **kwargs):
+        super().__init__(**kwargs)
+        self.source_port = source_port
+        self.destination_port = destination_port
 
 class ARPPacket(Packet):
     def __init__(self, source_mac, destination_mac, source_ip, destination_ip, operation, network_event_scheduler):

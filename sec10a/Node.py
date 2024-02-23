@@ -4,7 +4,7 @@ import random
 from ipaddress import ip_interface, ip_network
 from sec10a.Switch import Switch
 from sec10a.Router import Router
-from sec10a.Packet import Packet, ARPPacket, DNSPacket, DHCPPacket
+from sec10a.Packet import Packet, UDPPacket, TCPPacket, ARPPacket, DNSPacket, DHCPPacket
 
 class Node:
     def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server=None, mtu=1500, default_route=None):
@@ -272,7 +272,10 @@ class Node:
         self.network_event_scheduler.log_packet_info(arp_reply_packet, "ARP reply", self.node_id)
         self._send_packet(arp_reply_packet)
 
-    def send_packet(self, destination_ip, data, header_size):
+    def send_packet(self, destination_ip, data, protocol="UDP", **kwargs):
+        """
+        汎用的なパケット送信メソッド。プロトコルに基づいて適切なパケットを送信します。
+        """
         destination_mac = self.get_mac_address_from_ip(destination_ip)
 
         if destination_mac is None:
@@ -280,11 +283,35 @@ class Node:
             self.send_arp_request(destination_ip)
             if destination_ip not in self.waiting_for_arp_reply:
                 self.waiting_for_arp_reply[destination_ip] = []
-            self.waiting_for_arp_reply[destination_ip].append((data, header_size))
+            self.waiting_for_arp_reply[destination_ip].append((data, protocol, kwargs))
         else:
-            self._send_packet_data(destination_ip, destination_mac, data, header_size)
+            if protocol == "UDP":
+                self._send_udp_packet(destination_ip, destination_mac, data, **kwargs)
+            elif protocol == "TCP":
+                self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
 
-    def _send_packet_data(self, destination_ip, destination_mac, data, header_size):
+    def _send_udp_packet(self, destination_ip, destination_mac, data, **kwargs):
+        """
+        UDPパケットを送信するための内部メソッド。
+        """
+        udp_header_size = 8  # UDPヘッダは8バイト
+        ip_header_size = 20  # IPヘッダは20バイト
+        header_size = udp_header_size + ip_header_size
+        self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="UDP", **kwargs)
+
+    def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
+        """
+        TCPパケットを送信するためのメソッド。
+        """
+        tcp_header_size = 20  # TCPヘッダは20バイト
+        ip_header_size = 20  # IPヘッダは20バイト
+        header_size = tcp_header_size + ip_header_size
+        self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
+
+    def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
+        """
+        IPパケットを送信するための内部メソッド。TCP/UDPの区別に応じて適切なパケットを生成します。
+        """
         original_data_id = str(uuid.uuid4())
         payload_size = self.mtu - header_size
         total_size = len(data)
@@ -292,19 +319,44 @@ class Node:
 
         while offset < total_size:
             more_fragments = offset + payload_size < total_size
-
             fragment_data = data[offset:offset + payload_size]
             fragment_offset = offset
 
             fragment_flags = {
                 "more_fragments": more_fragments,
-                "original_data_id": original_data_id  # データの一意の識別子を追加
+                "original_data_id": original_data_id
             }
 
-            node_ip_address = self.ip_address.split('/')[0]
-            packet = Packet(self.mac_address, destination_mac, node_ip_address, destination_ip, 64, fragment_flags, fragment_offset, header_size, len(fragment_data), self.network_event_scheduler)
-            packet.payload = fragment_data
+            if protocol == "UDP":
+                packet = UDPPacket(
+                    source_mac=self.mac_address,
+                    destination_mac=destination_mac,
+                    source_ip=self.ip_address.split('/')[0],
+                    destination_ip=destination_ip,
+                    ttl=64,
+                    payload=fragment_data,
+                    network_event_scheduler=self.network_event_scheduler,
+                    fragment_flags=fragment_flags,
+                    fragment_offset=fragment_offset,
+                    header_size=header_size,
+                    **kwargs  # UDP特有のパラメータをここで渡す
+                )
+            elif protocol == "TCP":
+                packet = TCPPacket(
+                    source_mac=self.mac_address,
+                    destination_mac=destination_mac,
+                    source_ip=self.ip_address.split('/')[0],
+                    destination_ip=destination_ip,
+                    ttl=64,
+                    payload=fragment_data,
+                    network_event_scheduler=self.network_event_scheduler,
+                    fragment_flags=fragment_flags,
+                    fragment_offset=fragment_offset,
+                    header_size=header_size,
+                    **kwargs  # TCP特有のパラメータをここで渡す
+                )
 
+            packet.payload = fragment_data
             self._send_packet(packet)
 
             offset += payload_size
@@ -320,14 +372,7 @@ class Node:
             for link in self.links:
                 link.enqueue_packet(packet, self)
 
-    def create_packet(self, destination_ip, header_size, payload_size):
-        destination_mac = self.get_mac_address_from_ip(destination_ip)
-        node_ip_address = self.ip_address.split('/')[0]
-        packet = Packet(source_mac=self.mac_address, destination_mac=destination_mac, source_ip=node_ip_address, destination_ip=destination_ip, ttl=64, header_size=header_size, payload_size=payload_size, network_event_scheduler=self.network_event_scheduler)
-        self.network_event_scheduler.log_packet_info(packet, "created", self.node_id)  # パケット生成をログに記録
-        self.send_packet(packet)
-
-    def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
+    def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
         def attempt_to_start_traffic():
             destination_ip = self.resolve_destination_ip(destination_url)
             if destination_ip is None:
@@ -335,19 +380,19 @@ class Node:
                 self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness)
             else:
                 # DNSレコードが既に存在する場合、直接トラフィック生成を開始
-                self.set_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness)
+                self.set_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol)
         
         # 最初のパケット生成（またはDNSレコードの検索処理）をstart_timeにスケジュール
         self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
 
-    def set_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0):
+    def set_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP"):
         end_time = start_time + duration
 
         def generate_packet():
             if self.network_event_scheduler.current_time < end_time:
                 # send_packetメソッドを使用してパケットを送信
                 data = b'X' * payload_size  # ダミーデータを生成
-                self.send_packet(destination_ip, data, header_size)
+                self.send_packet(destination_ip, data, protocol=protocol, payload_size=payload_size)
 
                 # 次のパケットをスケジュールするためのインターバルを計算
                 packet_size = header_size + payload_size
