@@ -368,6 +368,7 @@ class Node:
                 "more_fragments": more_fragments,
                 "original_data_id": original_data_id
             }
+            print(f"Fragmenting data: offset={offset}, payload_size={payload_size}, more_fragments={more_fragments}, total_size={total_size}")
 
             if protocol == "UDP":
                 packet = UDPPacket(
