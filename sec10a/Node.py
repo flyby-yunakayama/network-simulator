@@ -20,6 +20,7 @@ class Node:
         self.links = []
         self.used_ports = set()  # 使用中のポート番号を保持するセット
         self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
+        self.tcp_connections = {}  # 接続状態を追跡する辞書
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
         self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
         self.dns_server_ip = dns_server  # DNSサーバのIPアドレス
@@ -216,15 +217,73 @@ class Node:
     def process_TCP_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
-
-
-
-
-
-                self.process_data_packet(packet)
+                # TCPフラグを確認して適切な処理を行う
+                if "SYN" in packet.flags and not "ACK" in packet.flags:
+                    # SYNパケットを受信した場合、SYN-ACKを送信
+                    self.send_TCP_SYN_ACK(packet)
+                elif "SYN" in packet.flags and "ACK" in packet.flags:
+                    # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
+                    self.send_TCP_ACK(packet, final_ack=True)
+                elif "ACK" in packet.flags:
+                    # ACKパケットを受信した場合、接続が確立されたとみなす
+                    self.establish_TCP_connection(packet)
+                elif "FIN" in packet.flags:
+                    # FINパケットを受信した場合、接続を終了
+                    self.terminate_TCP_connection(packet)
+                elif "PSH" in packet.flags or "PSH-ACK" in packet.flags:
+                    # データ転送パケット（PSH）を受信した場合、データを処理
+                    self.process_data_packet(packet)
+                else:
+                    # その他のフラグに対する処理
+                    pass
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
+    def send_TCP_SYN_ACK(self, packet):
+        # SYN-ACKパケットを送信する処理
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"Sending SYN-ACK to {packet.header['source_ip']}:{packet.header['source_port']}")
+        syn_ack_packet_flags = "SYN,ACK"
+        self._send_tcp_packet(
+            destination_ip=packet.header["source_ip"],
+            destination_mac=packet.header["source_mac"],
+            data="",
+            flags=syn_ack_packet_flags,
+            source_port=packet.header["destination_port"],
+            destination_port=packet.header["source_port"]
+        )
+
+    def send_TCP_ACK(self, packet, final_ack=False):
+        # ACKパケットを送信して接続を確立する処理
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"Sending ACK to {packet.header['source_ip']}:{packet.header['source_port']}, Final ACK: {final_ack}")
+        ack_packet_flags = "ACK"
+        self._send_tcp_packet(
+            destination_ip=packet.header["source_ip"],
+            destination_mac=packet.header["source_mac"],
+            data="",
+            flags=ack_packet_flags,
+            source_port=packet.header["destination_port"],
+            destination_port=packet.header["source_port"]
+        )
+        if final_ack:
+            # 最終的なACKの後に接続を確立する処理
+            self.establish_TCP_connection(packet)
+
+    def establish_TCP_connection(self, packet):
+        # TCP接続を確立する処理
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        self.tcp_connections[connection_key] = "ESTABLISHED"
+
+    def terminate_TCP_connection(self, packet):
+        # TCP接続を終了する処理
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"Terminating TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}") 
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        if connection_key in self.tcp_connections:
+            del self.tcp_connections[connection_key]
 
     def receive_packet(self, packet, received_link):
         if packet.arrival_time == -1:
@@ -351,7 +410,43 @@ class Node:
             if protocol == "UDP":
                 self._send_udp_packet(destination_ip, destination_mac, data, **kwargs)
             elif protocol == "TCP":
-                self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
+                # TCP接続の状態を確認
+                if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
+                    # 接続が未確立の場合、ハンドシェイクを開始
+                    self.initiate_tcp_handshake(destination_ip, destination_mac, **kwargs)
+                else:
+                    # 接続が確立されている場合、データパケットを送信
+                    self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
+
+    def is_tcp_connection_established(self, destination_ip, destination_port):
+        # 接続が確立されているかどうかを確認
+        key = (destination_ip, destination_port)
+        return self.tcp_connections.get(key, {}).get("state") == "ESTABLISHED"
+
+    def update_tcp_connection_state(self, destination_ip, destination_port, new_state):
+        # 指定された宛先に対するTCP接続の状態を更新します。
+        key = (destination_ip, destination_port)
+        self.tcp_connections[key] = {"state": new_state}
+
+    def initiate_tcp_handshake(self, destination_ip, destination_mac, **kwargs):
+        """
+        TCPの3ウェイハンドシェイクを開始するためのメソッド。
+        SYNパケットを送信してハンドシェイクを開始します。
+        """
+        # 接続状態を確認し、未確立の場合にのみSYNパケットを送信
+        if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{destination_port} from port {source_port}")
+
+            # SYNフラグをセットしてTCPパケットを送信
+            control_packet_kwargs = kwargs.copy()
+            control_packet_kwargs.update({
+                "flags": "SYN",
+                "payload_size": 0  # コントロールパケットにはペイロードがない
+            })
+            # 接続状態を「SYN_SENT」に更新
+            self.update_tcp_connection_state(destination_ip, kwargs.get('destination_port'), "SYN_SENT")
+            self._send_tcp_packet(destination_ip, destination_mac, b"", **control_packet_kwargs)
 
     def _send_udp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
@@ -370,6 +465,7 @@ class Node:
         tcp_header_size = 20  # TCPヘッダは20バイト
         ip_header_size = 20  # IPヘッダは20バイト
         header_size = tcp_header_size + ip_header_size
+
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
@@ -497,11 +593,7 @@ class Node:
         source_port = self.select_random_port()
         destination_port = self.select_random_port()  # 実際のアプリケーションでは、適切な宛先ポートを指定する必要があります
 
-        # 3ウェイハンドシェイクを開始
-        self.initiate_tcp_handshake(destination_ip, source_port, destination_port)
-
         def generate_packet():
-            # ハンドシェイク完了後にデータ転送を開始
             if self.network_event_scheduler.current_time < end_time and self.is_tcp_connection_established(destination_ip, source_port, destination_port):
                 data = b'X' * payload_size
                 self.send_packet(destination_ip, data, protocol, source_port=source_port, destination_port=destination_port)
