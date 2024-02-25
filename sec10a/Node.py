@@ -500,7 +500,7 @@ class Node:
                 packet = UDPPacket(
                     source_mac=self.mac_address,
                     destination_mac=destination_mac,
-                    source_ip=self.ip_address.split('/')[0],
+                    source_ip=self.ip_address,
                     destination_ip=destination_ip,
                     ttl=64,
                     network_event_scheduler=self.network_event_scheduler,
@@ -515,7 +515,7 @@ class Node:
                 packet = TCPPacket(
                     source_mac=self.mac_address,
                     destination_mac=destination_mac,
-                    source_ip=self.ip_address.split('/')[0],
+                    source_ip=self.ip_address,
                     destination_ip=destination_ip,
                     ttl=64,
                     network_event_scheduler=self.network_event_scheduler,
