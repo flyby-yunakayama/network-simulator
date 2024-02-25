@@ -220,19 +220,19 @@ class Node:
             if packet.header["destination_ip"] == self.ip_address:
                 # TCPフラグを確認して適切な処理を行う
                 flags = packet.header.get('flags', '')  # flagsがNoneの場合、デフォルト値として空文字列を使用
-                if "SYN" in packet.header['flags'] and not "ACK" in packet.header['flags']:
+                if "SYN" in flags and "ACK" not in flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
                     self.send_TCP_SYN_ACK(packet)
-                elif "SYN" in packet.header['flags'] and "ACK" in packet.header['flags']:
+                elif "SYN" in flags and "ACK" in flags:
                     # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
                     self.send_TCP_ACK(packet, final_ack=True)
-                elif "ACK" in packet.header['flags']:
+                elif "ACK" in flags:
                     # ACKパケットを受信した場合、接続が確立されたとみなす
                     self.establish_TCP_connection(packet)
-                elif "FIN" in packet.header['flags']:
+                elif "FIN" in flags:
                     # FINパケットを受信した場合、接続を終了
                     self.terminate_TCP_connection(packet)
-                elif "PSH" in packet.header['flags'] or "PSH-ACK" in packet.header['flags']:
+                elif "PSH" in flags or "PSH-ACK" in flags:
                     # データ転送パケット（PSH）を受信した場合、データを処理
                     self.process_data_packet(packet)
                 else:
