@@ -503,6 +503,7 @@ class Node:
                 "original_data_id": original_data_id
             }
 
+            print(kwargs)
             if protocol == "UDP":
                 packet = UDPPacket(
                     source_mac=self.mac_address,
