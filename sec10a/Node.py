@@ -21,6 +21,7 @@ class Node:
         self.used_ports = set()  # 使用中のポート番号を保持するセット
         self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
         self.tcp_connections = {}  # 接続状態を追跡する辞書
+        self.pending_tcp_data = {}  # 未確立のTCP接続に対するデータを一時的に保存する辞書
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
         self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
         self.dns_server_ip = dns_server  # DNSサーバのIPアドレス
@@ -156,11 +157,7 @@ class Node:
         print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
 
     def process_ARP_packet(self, packet):
-        print(f"Node {self.node_id} received ARP packet: {packet}")
-        print(f"Destination MAC: {packet.header['destination_mac']}, Destination IP: {packet.header['destination_ip']}")
         if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":  # ブロードキャスト
-            print(f"Node {self.node_id} received ARP broadcast")
-            print(f"Operation: {packet.payload.get('operation')}, Destination IP: {packet.payload.get('destination_ip')}")
             if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
                 self._send_arp_reply(packet)
                 return
@@ -238,8 +235,7 @@ class Node:
                     # データ転送パケット（PSH）を受信した場合、データを処理
                     self.process_data_packet(packet)
                 else:
-                    # その他のフラグに対する処理
-                    pass
+                    self.process_data_packet(packet)
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
@@ -280,6 +276,13 @@ class Node:
             print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         self.tcp_connections[connection_key] = "ESTABLISHED"
+
+        # 接続が確立されたら、保存しておいたデータがあれば送信
+        if connection_key in self.pending_tcp_data:
+            pending_data = self.pending_tcp_data.pop(connection_key)
+            data_to_send = pending_data["data"]
+            kwargs_to_use = pending_data["kwargs"]
+            self._send_tcp_packet(packet.header["source_ip"], packet.header["source_mac"], data_to_send, **kwargs_to_use)
 
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
@@ -416,6 +419,9 @@ class Node:
             elif protocol == "TCP":
                 # TCP接続の状態を確認
                 if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
+                    # データを一時的に保存
+                    connection_key = (destination_ip, kwargs.get('destination_port'))
+                    self.pending_tcp_data[connection_key] = {"data": data, "kwargs": kwargs}
                     # 接続が未確立の場合、ハンドシェイクを開始
                     self.initiate_tcp_handshake(destination_ip, destination_mac, **kwargs)
                 else:
