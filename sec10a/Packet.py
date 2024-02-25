@@ -50,17 +50,31 @@ class Packet:
 class TCPPacket(Packet):
     def __init__(self, source_port, destination_port, sequence_number, acknowledgment_number, flags, **kwargs):
         super().__init__(**kwargs)
-        self.source_port = source_port
-        self.destination_port = destination_port
-        self.sequence_number = sequence_number
-        self.acknowledgment_number = acknowledgment_number
-        self.flags = flags
+        self.tcp_header = {
+            "source_port": source_port,
+            "destination_port": destination_port,
+            "sequence_number": sequence_number,
+            "acknowledgment_number": acknowledgment_number,
+            "flags": flags
+        }
+
+    @property
+    def header(self):
+        # MACヘッダ、IPヘッダ、TCPヘッダを統合して返す
+        return {**self.mac_header, **self.ip_header, **self.tcp_header}
 
 class UDPPacket(Packet):
     def __init__(self, source_port, destination_port, **kwargs):
         super().__init__(**kwargs)
-        self.source_port = source_port
-        self.destination_port = destination_port
+        self.udp_header = {
+            "source_port": source_port,
+            "destination_port": destination_port
+        }
+
+    @property
+    def header(self):
+        # MACヘッダ、IPヘッダ、UDPヘッダを統合して返す
+        return {**self.mac_header, **self.ip_header, **self.udp_header}
 
 class ARPPacket(Packet):
     def __init__(self, source_mac, destination_mac, source_ip, destination_ip, operation, network_event_scheduler):
