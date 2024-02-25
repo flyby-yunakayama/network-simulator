@@ -156,6 +156,8 @@ class Node:
         print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
 
     def process_ARP_packet(self, packet):
+        print(f"Node {self.node_id} received ARP packet: {packet}")
+        print(f"Destination MAC: {packet.header['destination_mac']}, Destination IP: {packet.header['destination_ip']}")
         if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":  # ブロードキャスト
             if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
                 self._send_arp_reply(packet)
@@ -290,13 +292,13 @@ class Node:
             self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
         elif isinstance(packet, ARPPacket):  # ARPパケットの処理
             self.process_ARP_packet(packet)
-        elif isinstance(packet, DHCPPacket):
+        elif isinstance(packet, DHCPPacket):  # DHCPパケットの処理
             self.process_DHCP_packet(packet)
-        elif isinstance(packet, DNSPacket):
+        elif isinstance(packet, DNSPacket):  # DNSパケットの処理
             self.process_DNS_packet(packet)
-        elif isinstance(packet, UDPPacket):
+        elif isinstance(packet, UDPPacket):  # UDPパケットの処理
             self.process_UDP_packet(packet)
-        elif isinstance(packet, TCPPacket):
+        elif isinstance(packet, TCPPacket):  # TCPパケットの処理
             self.process_TCP_packet(packet)
         else:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
