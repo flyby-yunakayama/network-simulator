@@ -159,6 +159,8 @@ class Node:
         print(f"Node {self.node_id} received ARP packet: {packet}")
         print(f"Destination MAC: {packet.header['destination_mac']}, Destination IP: {packet.header['destination_ip']}")
         if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":  # ブロードキャスト
+            print(f"Node {self.node_id} received ARP broadcast")
+            print(f"Operation: {packet.payload.get('operation')}, Destination IP: {packet.payload.get('destination_ip')}")
             if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
                 self._send_arp_reply(packet)
                 return
