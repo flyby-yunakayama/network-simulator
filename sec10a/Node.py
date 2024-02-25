@@ -529,6 +529,7 @@ class Node:
             # パケットのペイロードにフラグメントデータを設定
             packet.payload = fragment_data
             # パケットの送信
+            print(packet)
             self._send_packet(packet)
 
             # 次のフラグメントのオフセットへ
