@@ -503,7 +503,6 @@ class Node:
                 "original_data_id": original_data_id
             }
 
-            print(kwargs)
             if protocol == "UDP":
                 packet = UDPPacket(
                     source_mac=self.mac_address,
@@ -533,9 +532,9 @@ class Node:
                     payload_size=payload_size,
                     source_port=kwargs.get('source_port'),
                     destination_port=kwargs.get('destination_port'),
-                    sequence_number=kwargs.get('sequence_number'),
-                    acknowledgment_number=kwargs.get('acknowledgment_number'),
-                    flags=kwargs.get('flags')
+                    sequence_number=kwargs.get('sequence_number', ''),
+                    acknowledgment_number=kwargs.get('acknowledgment_number', ''),
+                    flags=kwargs.get('flags', '')
                 )
 
             # パケットのペイロードにフラグメントデータを設定
