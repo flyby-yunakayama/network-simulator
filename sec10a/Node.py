@@ -594,7 +594,7 @@ class Node:
         destination_port = self.select_random_port()  # 実際のアプリケーションでは、適切な宛先ポートを指定する必要があります
 
         def generate_packet():
-            if self.network_event_scheduler.current_time < end_time and self.is_tcp_connection_established(destination_ip, source_port, destination_port):
+            if self.network_event_scheduler.current_time < end_time:
                 data = b'X' * payload_size
                 self.send_packet(destination_ip, data, protocol, source_port=source_port, destination_port=destination_port)
 
