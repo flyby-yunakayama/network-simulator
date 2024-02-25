@@ -466,7 +466,6 @@ class Node:
         ip_header_size = 20  # IPヘッダは20バイト
         header_size = tcp_header_size + ip_header_size
 
-        print(f"Sending TCP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
@@ -474,17 +473,16 @@ class Node:
         IPパケットを送信するための内部メソッド。TCP/UDPの区別に応じて適切なパケットを生成します。
         """
         original_data_id = str(uuid.uuid4())
-        total_size = len(data)
+        total_size = len(data) if data else 1  # データが空の場合でもループを一度実行するために1を設定
         offset = 0
 
-        print(f"Sending IP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
         while offset < total_size:
             # MTUからヘッダサイズを引いた値が、このフラグメントの最大ペイロードサイズ
             max_payload_size = self.mtu - header_size
             # 実際のペイロードサイズは、残りのデータサイズとmax_payload_sizeの小さい方
-            payload_size = min(max_payload_size, total_size - offset)
+            payload_size = min(max_payload_size, total_size - offset) if data else 0
             # フラグメントデータの切り出し
-            fragment_data = data[offset:offset + payload_size]
+            fragment_data = data[offset:offset + payload_size] if data else b""
             fragment_offset = offset
 
             # フラグメントフラグの設定
@@ -532,6 +530,10 @@ class Node:
             packet.payload = fragment_data
             # パケットの送信
             self._send_packet(packet)
+
+            # データが空の場合はループを抜ける
+            if not data:
+                break
 
             # 次のフラグメントのオフセットへ
             offset += payload_size
