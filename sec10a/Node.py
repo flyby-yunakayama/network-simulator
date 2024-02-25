@@ -436,7 +436,7 @@ class Node:
         # 接続状態を確認し、未確立の場合にのみSYNパケットを送信
         if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{destination_port} from port {source_port}")
+                print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{kwargs.get('destination_port')} from port {kwargs.get('source_port')}")
 
             # SYNフラグをセットしてTCPパケットを送信
             control_packet_kwargs = kwargs.copy()
