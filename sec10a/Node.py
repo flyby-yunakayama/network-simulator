@@ -466,6 +466,7 @@ class Node:
         ip_header_size = 20  # IPヘッダは20バイト
         header_size = tcp_header_size + ip_header_size
 
+        print(f"Sending TCP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
@@ -476,6 +477,7 @@ class Node:
         total_size = len(data)
         offset = 0
 
+        print(f"Sending IP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
         while offset < total_size:
             # MTUからヘッダサイズを引いた値が、このフラグメントの最大ペイロードサイズ
             max_payload_size = self.mtu - header_size
@@ -529,7 +531,6 @@ class Node:
             # パケットのペイロードにフラグメントデータを設定
             packet.payload = fragment_data
             # パケットの送信
-            print(packet)
             self._send_packet(packet)
 
             # 次のフラグメントのオフセットへ
