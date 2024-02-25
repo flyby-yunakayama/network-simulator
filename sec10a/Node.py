@@ -218,19 +218,19 @@ class Node:
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
                 # TCPフラグを確認して適切な処理を行う
-                if "SYN" in packet.flags and not "ACK" in packet.flags:
+                if "SYN" in packet.header['flags'] and not "ACK" in packet.flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
                     self.send_TCP_SYN_ACK(packet)
-                elif "SYN" in packet.flags and "ACK" in packet.flags:
+                elif "SYN" in packet.header['flags'] and "ACK" in packet.flags:
                     # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
                     self.send_TCP_ACK(packet, final_ack=True)
-                elif "ACK" in packet.flags:
+                elif "ACK" in packet.header['flags']:
                     # ACKパケットを受信した場合、接続が確立されたとみなす
                     self.establish_TCP_connection(packet)
-                elif "FIN" in packet.flags:
+                elif "FIN" in packet.header['flags']:
                     # FINパケットを受信した場合、接続を終了
                     self.terminate_TCP_connection(packet)
-                elif "PSH" in packet.flags or "PSH-ACK" in packet.flags:
+                elif "PSH" in packet.header['flags'] or "PSH-ACK" in packet.flags:
                     # データ転送パケット（PSH）を受信した場合、データを処理
                     self.process_data_packet(packet)
                 else:
