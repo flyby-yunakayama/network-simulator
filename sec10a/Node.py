@@ -295,7 +295,10 @@ class Node:
 
     def receive_packet(self, packet, received_link):
         if packet.arrival_time == -1:
-            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
+            if isinstance(packet, TCPPacket):
+                self.network_event_scheduler.log_packet_info(packet, "TCPPacket lost", self.node_id)
+            else:
+                self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
         elif isinstance(packet, ARPPacket):  # ARPパケットの処理
             self.process_ARP_packet(packet)
         elif isinstance(packet, DHCPPacket):  # DHCPパケットの処理
