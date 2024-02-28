@@ -158,6 +158,8 @@ class Node:
 
     def process_ARP_packet(self, packet):
         if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":  # ブロードキャスト
+            self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+            packet.set_arrived(self.network_event_scheduler.current_time)
             if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
                 self._send_arp_reply(packet)
                 return
@@ -174,6 +176,8 @@ class Node:
 
     def process_DHCP_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
+            self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+            packet.set_arrived(self.network_event_scheduler.current_time)
             if packet.message_type == "OFFER":
                 # DHCP Offerパケットの処理
                 self.network_event_scheduler.log_packet_info(packet, "DHCP Offer received", self.node_id)
@@ -201,6 +205,8 @@ class Node:
 
     def process_DNS_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
+            self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+            packet.set_arrived(self.network_event_scheduler.current_time)
             # DNSレスポンスの処理
             self.network_event_scheduler.log_packet_info(packet, "DNS packet received", self.node_id)                
             if packet.query_domain and "resolved_ip" in packet.dns_data:
@@ -242,6 +248,8 @@ class Node:
 
     def send_TCP_SYN_ACK(self, packet):
         # SYN-ACKパケットを送信する処理
+        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+        packet.set_arrived(self.network_event_scheduler.current_time)
         if self.network_event_scheduler.tcp_verbose:
             print(f"Sending SYN-ACK to {packet.header['source_ip']}:{packet.header['source_port']}")
         syn_ack_packet_flags = "SYN,ACK"
@@ -256,6 +264,8 @@ class Node:
 
     def send_TCP_ACK(self, packet, final_ack=False):
         # ACKパケットを送信して接続を確立する処理
+        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+        packet.set_arrived(self.network_event_scheduler.current_time)
         if self.network_event_scheduler.tcp_verbose:
             print(f"Sending ACK to {packet.header['source_ip']}:{packet.header['source_port']}, Final ACK: {final_ack}")
         ack_packet_flags = "ACK"
@@ -273,6 +283,8 @@ class Node:
 
     def establish_TCP_connection(self, packet):
         # TCP接続を確立する処理
+        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+        packet.set_arrived(self.network_event_scheduler.current_time)
         if self.network_event_scheduler.tcp_verbose:
             print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -287,6 +299,8 @@ class Node:
 
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
+        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+        packet.set_arrived(self.network_event_scheduler.current_time)
         if self.network_event_scheduler.tcp_verbose:
             print(f"Terminating TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}") 
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -295,10 +309,7 @@ class Node:
 
     def receive_packet(self, packet, received_link):
         if packet.arrival_time == -1:
-            if isinstance(packet, TCPPacket):
-                self.network_event_scheduler.log_packet_info(packet, "TCPPacket lost", self.node_id)
-            else:
-                self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
+            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
         elif isinstance(packet, ARPPacket):  # ARPパケットの処理
             self.process_ARP_packet(packet)
         elif isinstance(packet, DHCPPacket):  # DHCPパケットの処理
