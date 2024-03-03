@@ -282,15 +282,25 @@ class Node:
             self.establish_TCP_connection(packet)
 
     def establish_TCP_connection(self, packet):
-        # TCP接続を確立する処理
+        """
+        TCP接続を確立する処理です。接続が確立されたら、保存しておいたデータがあれば送信します。
+        """
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        
+        # すでに接続が確立されている場合は、この処理をスキップします。
+        if self.is_tcp_connection_established(*connection_key):
+            return
+
+        # ログ出力とデバッグ情報の表示
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
         packet.set_arrived(self.network_event_scheduler.current_time)
         if self.network_event_scheduler.tcp_verbose:
             print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        self.tcp_connections[connection_key] = "ESTABLISHED"
 
-        # 接続が確立されたら、保存しておいたデータがあれば送信
+        # 接続状態を「ESTABLISHED」に更新します。
+        self.update_tcp_connection_state(*connection_key, "ESTABLISHED")
+
+        # 保存しておいたデータがあれば送信します。
         if connection_key in self.pending_tcp_data:
             pending_data = self.pending_tcp_data.pop(connection_key)
             data_to_send = pending_data["data"]
@@ -306,6 +316,19 @@ class Node:
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
             del self.tcp_connections[connection_key]
+
+    def print_tcp_connections(self):
+        """
+        このノードのすべてのTCPコネクションの状態を表示します。
+        """
+        if not self.tcp_connections:
+            print("現在、アクティブなTCPコネクションはありません。")
+            return
+
+        print("アクティブなTCPコネクションの状態:")
+        for connection, state in self.tcp_connections.items():
+            destination_ip, destination_port = connection
+            print(f"宛先IP: {destination_ip}, 宛先ポート: {destination_port}, 状態: {state['state']}")
 
     def receive_packet(self, packet, received_link):
         if packet.arrival_time == -1:
@@ -449,9 +472,13 @@ class Node:
         return self.tcp_connections.get(key, {}).get("state") == "ESTABLISHED"
 
     def update_tcp_connection_state(self, destination_ip, destination_port, new_state):
-        # 指定された宛先に対するTCP接続の状態を更新します。
+        """
+        指定された宛先に対するTCP接続の状態を更新します。
+        """
         key = (destination_ip, destination_port)
         self.tcp_connections[key] = {"state": new_state}
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"TCP connection state updated to {new_state} for {destination_ip}:{destination_port}")
 
     def initiate_tcp_handshake(self, destination_ip, destination_mac, **kwargs):
         """
