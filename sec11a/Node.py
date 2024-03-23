@@ -261,7 +261,7 @@ class Node:
         if connection_key not in self.tcp_connections:
             self.tcp_connections[connection_key] = {
                 'state': 'SYN_RECEIVED',
-                'sequence_number': self.get_initial_sequence_number(),
+                'sequence_number': syn_sequence_number + 1,
                 'data': b''
             }
         
