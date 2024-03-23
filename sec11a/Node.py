@@ -279,7 +279,7 @@ class Node:
         self._send_tcp_packet(
             destination_ip=packet.header["source_ip"],
             destination_mac=packet.header["source_mac"],
-            data="",
+            data=b"",
             flags=syn_ack_packet_flags,
             source_port=packet.header["destination_port"],
             destination_port=packet.header["source_port"],
@@ -311,7 +311,7 @@ class Node:
         self._send_tcp_packet(
             destination_ip=packet.header["source_ip"],
             destination_mac=packet.header["source_mac"],
-            data="",
+            data=b"",
             flags=ack_packet_flags,
             source_port=packet.header["destination_port"],
             destination_port=packet.header["source_port"],
