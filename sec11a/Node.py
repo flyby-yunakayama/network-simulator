@@ -250,20 +250,31 @@ class Node:
         # SYN-ACKパケットを送信する処理
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
         packet.set_arrived(self.network_event_scheduler.current_time)
-
+        
         # 受信したSYNパケットのシーケンス番号を取得
         syn_sequence_number = packet.header["sequence_number"]
         
+        # コネクションキーを生成
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        
+        # 新しい接続情報を初期化
+        if connection_key not in self.tcp_connections:
+            self.tcp_connections[connection_key] = {
+                'state': 'SYN_RECEIVED',
+                'sequence_number': self.get_initial_sequence_number(),
+                'data': b''
+            }
+        
         # SYN-ACKパケットのシーケンス番号とACK番号を設定
-        syn_ack_sequence_number = self.tcp_connections[(packet.header["source_ip"], packet.header["source_port"])]["sequence_number"]
+        syn_ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
         syn_ack_ack_number = syn_sequence_number + 1
-
+        
         if self.network_event_scheduler.tcp_verbose:
             print(f"Sending SYN-ACK to {packet.header['source_ip']}:{packet.header['source_port']}")
             print(f"Received SYN Sequence Number: {syn_sequence_number}")
             print(f"SYN-ACK Sequence Number: {syn_ack_sequence_number}")
             print(f"SYN-ACK ACK Number: {syn_ack_ack_number}")
-
+        
         syn_ack_packet_flags = "SYN,ACK"
         self._send_tcp_packet(
             destination_ip=packet.header["source_ip"],
