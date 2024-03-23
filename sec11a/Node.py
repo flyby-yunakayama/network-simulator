@@ -573,9 +573,10 @@ class Node:
                 'data': b''
             }
         sequence_number = self.tcp_connections[connection_key]['sequence_number']
+        kwargs['sequence_number'] = sequence_number
 
         # パケットを送信
-        self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", sequence_number=sequence_number, **kwargs)
+        self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
         # シーケンス番号とデータを更新
         self.tcp_connections[connection_key]['sequence_number'] += len(data)
