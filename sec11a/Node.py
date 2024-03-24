@@ -788,7 +788,7 @@ class Node:
                 'state': 'CLOSED',
                 'sequence_number': 0,
                 'acknowledgment_number': 0,
-                'data': b''
+                'data': b'X' * (int(bitrate * duration) // 8)  # 送信するデータを初期化
             }
         
         # トラフィック情報をself.tcp_connectionsに保存
@@ -798,7 +798,7 @@ class Node:
             'header_size': header_size,
             'bitrate': bitrate,
             'burstiness': burstiness,
-            'remaining_data': b'X' * (int(bitrate * duration) // 8),  # 送信するデータを初期化
+            'remaining_data': self.tcp_connections[connection_key]['data'],
             'next_sequence_number': self.tcp_connections[connection_key]['sequence_number']  # 次に送信するシーケンス番号を保存
         }
 
