@@ -732,6 +732,10 @@ class Node:
                 data = b'X' * payload_size
                 self.send_packet(destination_ip, data, protocol, source_port=source_port, destination_port=destination_port)
 
+                # シーケンス番号を更新
+                connection_key = (destination_ip, destination_port)
+                self.tcp_connections[connection_key]['sequence_number'] += len(data)
+
                 packet_size = header_size + payload_size
                 interval = (packet_size * 8) / bitrate * burstiness
                 self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
