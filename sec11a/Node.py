@@ -591,21 +591,19 @@ class Node:
                 # 送信するデータを取得
                 remaining_data = traffic_info['remaining_data']
                 payload_size = traffic_info['payload_size']
-                next_sequence_number = traffic_info['next_sequence_number']
+                next_sequence_number = self.tcp_connections[connection_key]['sequence_number']
+                
+                # 送信データがある場合のみシーケンス番号を更新
                 data_to_send = remaining_data[:payload_size]
-                
-                # シーケンス番号の更新
-                current_sequence_number = self.tcp_connections[connection_key]['sequence_number']
-                
-                # ACK番号の設定（受信した最後のパケットのシーケンス番号 + 1）
-                acknowledgment_number = self.tcp_connections[connection_key].get('acknowledgment_number', 0)
+                if data_to_send:
+                    next_sequence_number += len(data_to_send)  # データ長に基づいてシーケンス番号を更新
 
                 # パラメータ設定
                 data_packet_kwargs = {
                     "source_port": packet.header["destination_port"],
                     "destination_port": packet.header["source_port"],
-                    "sequence_number": current_sequence_number,
-                    "acknowledgment_number": acknowledgment_number,
+                    "sequence_number": next_sequence_number,
+                    "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
                     "flags": "PSH"
                 }
 
@@ -618,9 +616,8 @@ class Node:
                 )
 
                 # シーケンス番号と送信済みデータを更新
-                self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)
                 traffic_info['remaining_data'] = remaining_data[payload_size:]
-                traffic_info['next_sequence_number'] = self.tcp_connections[connection_key]['sequence_number']
+                self.tcp_connections[connection_key]['sequence_number'] = next_sequence_number  # 更新後のシーケンス番号を保存
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
