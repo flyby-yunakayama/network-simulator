@@ -239,12 +239,14 @@ class Node:
                     self.establish_TCP_connection(packet)
                     # 送信データがある場合にのみデータパケットを送信
                     self.send_tcp_data_packet(packet)
+                elif "PSH" in flags or "PSH-ACK" in flags:
+                    # データパケットを受信した場合、ACKを送信
+                    self.send_TCP_ACK(packet)
+                    # データを処理
+                    self.process_data_packet(packet)
                 elif "FIN" in flags:
                     # FINパケットを受信した場合、接続を終了
                     self.terminate_TCP_connection(packet)
-                elif "PSH" in flags or "PSH-ACK" in flags:
-                    # データ転送パケット（PSH）を受信した場合、データを処理
-                    self.process_data_packet(packet)
                 else:
                     self.process_data_packet(packet)
             else:
@@ -612,6 +614,10 @@ class Node:
             }
         sequence_number = self.tcp_connections[connection_key]['sequence_number']
         kwargs['sequence_number'] = sequence_number
+
+        # データパケットの場合、PSHフラグを設定
+        if len(data) > 0:
+            kwargs['flags'] = 'PSH'
 
         # パケットを送信
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
