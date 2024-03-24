@@ -275,13 +275,6 @@ class Node:
         syn_ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
         syn_ack_ack_number = syn_sequence_number + 1
         
-        if self.network_event_scheduler.tcp_verbose:
-            print('-----------------------------')
-            print(f"Sending SYN-ACK to {packet.header['source_ip']}:{packet.header['source_port']}")
-            print(f"Received SYN Sequence Number: {syn_sequence_number}")
-            print(f"SYN-ACK Sequence Number: {syn_ack_sequence_number}")
-            print(f"SYN-ACK ACK Number: {syn_ack_ack_number}")
-
         # パラメータ設定
         control_packet_kwargs = {
             "flags": "SYN,ACK",
@@ -320,12 +313,6 @@ class Node:
         # ACKパケットのシーケンス番号とACK番号を設定
         ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
         ack_ack_number = syn_ack_sequence_number + 1
-
-        if self.network_event_scheduler.tcp_verbose:
-            print('-----------------------------')
-            print(f"Sending ACK to {packet.header['source_ip']}:{packet.header['source_port']}, Final ACK: {final_ack}")
-            print(f"ACK Sequence Number: {ack_sequence_number}")
-            print(f"ACK ACK Number: {ack_ack_number}")
 
         # パラメータ設定
         control_packet_kwargs = {
@@ -661,6 +648,7 @@ class Node:
             print('-----------------------------')
             print(f"Sending TCP packet to {destination_ip}:{kwargs['destination_port']}")
             print(f"Sequence Number: {sequence_number}")
+            print(f"Acknowledgment Number: {kwargs.get('acknowledgment_number', 0)}")
             print(f"Data Length: {len(data)}")
             print(f"Flags: {kwargs.get('flags', '')}")
 
