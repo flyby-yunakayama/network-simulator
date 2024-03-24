@@ -467,7 +467,6 @@ class Node:
             network_event_scheduler=self.network_event_scheduler
         )
         self.network_event_scheduler.log_packet_info(arp_request_packet, "ARP request", self.node_id)
-        print(f"Node {self.node_id} is sending an ARP request for IP address {ip_address}.")
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
@@ -778,7 +777,7 @@ class Node:
         }
 
         # 最初のSYNパケットを送信してTCP接続を開始
-        self.initiate_tcp_handshake(destination_ip, self.get_mac_address_from_ip(destination_ip), source_port=source_port, destination_port=destination_port)
+        self.send_packet(destination_ip, b"", protocol="TCP", source_port=source_port, destination_port=destination_port, flags="SYN")
 
     def resolve_destination_ip(self, destination_url):
         # 与えられた宛先URLに対応するIPアドレスをurl_to_ip_mappingから検索します。
