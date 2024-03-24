@@ -579,6 +579,7 @@ class Node:
                 return
 
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
+            print(f"Sending data packet for {connection_key}, traffic_info={traffic_info}")
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
                 # 送信するデータを取得
                 remaining_data = traffic_info['remaining_data']
