@@ -226,7 +226,6 @@ class Node:
             if packet.header["destination_ip"] == self.ip_address:
                 # TCPフラグを確認して適切な処理を行う
                 flags = packet.header.get('flags', '')  # flagsがNoneの場合、デフォルト値として空文字列を使用
-                print(flags)
                 if "SYN" in flags and "ACK" not in flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
                     self.send_TCP_SYN_ACK(packet)
@@ -645,7 +644,7 @@ class Node:
                     destination_port=kwargs.get('destination_port'),
                     sequence_number=kwargs.get('sequence_number', 0),
                     acknowledgment_number=kwargs.get('acknowledgment_number', 0),
-                    flags=kwargs.get('flags', 0)
+                    flags=kwargs.get('flags', '')
                 )
 
             # パケットのペイロードにフラグメントデータを設定
