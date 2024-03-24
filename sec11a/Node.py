@@ -487,6 +487,7 @@ class Node:
         汎用的なパケット送信メソッド。プロトコルに基づいて適切なパケットを送信します。
         """
         destination_mac = self.get_mac_address_from_ip(destination_ip)
+
         if destination_mac is None:
             # ARPリクエストを送信し、パケットを待機リストに追加
             self.send_arp_request(destination_ip)
@@ -499,11 +500,14 @@ class Node:
             elif protocol == "TCP":
                 # TCP接続の状態を確認
                 if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
+                    # データを一時的に保存
+                    connection_key = (destination_ip, kwargs.get('destination_port'))
+                    self.pending_tcp_data[connection_key] = {"data": data, "kwargs": kwargs}
                     # 接続が未確立の場合、ハンドシェイクを開始
                     self.initiate_tcp_handshake(destination_ip, destination_mac, **kwargs)
                 else:
-                    # 接続が確立されている場合、send_tcp_data_packetメソッドを呼び出す
-                    self.send_tcp_data_packet(destination_ip, destination_mac, data, **kwargs)
+                    # 接続が確立されている場合、データパケットを送信
+                    self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
 
     def is_tcp_connection_established(self, destination_ip, destination_port):
         # 接続が確立されているかどうかを確認
@@ -552,17 +556,33 @@ class Node:
         header_size = udp_header_size + ip_header_size
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="UDP", **kwargs)
 
-    def send_tcp_data_packet(self, destination_ip, destination_mac, data, **kwargs):
+    def send_tcp_data_packet(self, packet):
         """
         ACKを受信したときにデータパケットを送信します。
         """
-        connection_key = (destination_ip, kwargs.get('destination_port'))
-        if self.is_tcp_connection_established(*connection_key):
-            # 接続が確立されている場合、データパケットを送信
-            self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
-        else:
-            # 接続が未確立の場合、データを一時的に保存
-            self.pending_tcp_data[connection_key] = {"data": data, "kwargs": kwargs}
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        print(f"send_tcp_data_packet: {connection_key}")
+        print(f"self.tcp_connections: {self.tcp_connections}")
+        
+        if connection_key in self.tcp_connections and 'traffic_info' in self.tcp_connections[connection_key]:
+            traffic_info = self.tcp_connections[connection_key]['traffic_info']
+            if self.network_event_scheduler.current_time < traffic_info['end_time']:
+                # 送信するデータを取得
+                remaining_data = traffic_info['remaining_data']
+                payload_size = traffic_info['payload_size']
+                data_to_send = remaining_data[:payload_size]
+                
+                # パケットを送信
+                self._send_tcp_packet(
+                    destination_ip=packet.header["source_ip"],
+                    destination_mac=packet.header["source_mac"],
+                    data=data_to_send,
+                    source_port=packet.header["destination_port"],
+                    destination_port=packet.header["source_port"]
+                )
+                
+                # 送信済みデータを更新
+                traffic_info['remaining_data'] = remaining_data[payload_size:]
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
