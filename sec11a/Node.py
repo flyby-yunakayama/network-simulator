@@ -355,6 +355,7 @@ class Node:
         ACKを受信したときにデータパケットを送信します。
         """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        print(f"send_tcp_data_packet: {connection_key}")
         
         if connection_key in self.tcp_connections and 'traffic_info' in self.tcp_connections[connection_key]:
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
