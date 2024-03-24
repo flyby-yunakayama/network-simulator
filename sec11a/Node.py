@@ -235,6 +235,8 @@ class Node:
                 elif "ACK" in flags:
                     # ACKパケットを受信した場合、接続が確立されたとみなす
                     self.establish_TCP_connection(packet)
+                    # データパケットを送信
+                    self.send_tcp_data_packet(packet)
                 elif "FIN" in flags:
                     # FINパケットを受信した場合、接続を終了
                     self.terminate_TCP_connection(packet)
@@ -348,13 +350,31 @@ class Node:
         # シーケンス番号を更新
         self.tcp_connections[connection_key]["sequence_number"] += 1
 
-        # 保存しておいたデータがあれば送信します。
-        if connection_key in self.pending_tcp_data:
-            pending_data = self.pending_tcp_data.pop(connection_key)
-            data_to_send = pending_data["data"]
-            kwargs_to_use = pending_data["kwargs"]
-            kwargs_to_use["sequence_number"] = self.tcp_connections[connection_key]["sequence_number"]
-            self._send_tcp_packet(packet.header["source_ip"], packet.header["source_mac"], data_to_send, **kwargs_to_use)
+    def send_tcp_data_packet(self, packet):
+        """
+        ACKを受信したときにデータパケットを送信します。
+        """
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        
+        if connection_key in self.tcp_connections and 'traffic_info' in self.tcp_connections[connection_key]:
+            traffic_info = self.tcp_connections[connection_key]['traffic_info']
+            if self.network_event_scheduler.current_time < traffic_info['end_time']:
+                # 送信するデータを取得
+                remaining_data = traffic_info['remaining_data']
+                payload_size = traffic_info['payload_size']
+                data_to_send = remaining_data[:payload_size]
+                
+                # パケットを送信
+                self._send_tcp_packet(
+                    destination_ip=packet.header["source_ip"],
+                    destination_mac=packet.header["source_mac"],
+                    data=data_to_send,
+                    source_port=packet.header["destination_port"],
+                    destination_port=packet.header["source_port"]
+                )
+                
+                # 送信済みデータを更新
+                traffic_info['remaining_data'] = remaining_data[payload_size:]
 
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
@@ -726,21 +746,22 @@ class Node:
         end_time = start_time + duration
         source_port = self.select_random_port()
         destination_port = self.select_random_port()  # 実際のアプリケーションでは、適切な宛先ポートを指定する必要があります
-
-        def generate_packet():
-            if self.network_event_scheduler.current_time < end_time:
-                data = b'X' * payload_size
-                self.send_packet(destination_ip, data, protocol, source_port=source_port, destination_port=destination_port)
-
-                # シーケンス番号を更新
-                connection_key = (destination_ip, destination_port)
-                self.tcp_connections[connection_key]['sequence_number'] += len(data)
-
-                packet_size = header_size + payload_size
-                interval = (packet_size * 8) / bitrate * burstiness
-                self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
-
-        self.network_event_scheduler.schedule_event(start_time + 1, generate_packet)  # ハンドシェイクに少し時間を与える
+        
+        # コネクションキーを生成
+        connection_key = (destination_ip, destination_port)
+        
+        # トラフィック情報をself.tcp_connectionsに保存
+        self.tcp_connections[connection_key]['traffic_info'] = {
+            'end_time': end_time,
+            'payload_size': payload_size,
+            'header_size': header_size,
+            'bitrate': bitrate,
+            'burstiness': burstiness,
+            'remaining_data': b'X' * (bitrate * duration // 8)  # 送信するデータを初期化
+        }
+        
+        # 最初のデータパケットを送信
+        self.send_packet(destination_ip, b'X' * payload_size, protocol, source_port=source_port, destination_port=destination_port)
 
     def resolve_destination_ip(self, destination_url):
         # 与えられた宛先URLに対応するIPアドレスをurl_to_ip_mappingから検索します。
