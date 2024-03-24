@@ -281,17 +281,20 @@ class Node:
             print(f"Received SYN Sequence Number: {syn_sequence_number}")
             print(f"SYN-ACK Sequence Number: {syn_ack_sequence_number}")
             print(f"SYN-ACK ACK Number: {syn_ack_ack_number}")
-        
-        syn_ack_packet_flags = "SYN,ACK"
+
+        # パラメータ設定
+        control_packet_kwargs = {
+            "flags": "SYN,ACK",
+            "sequence_number": syn_ack_sequence_number,
+            "acknowledgment_number": syn_ack_ack_number,
+            "source_port": packet.header["destination_port"],
+            "destination_port": packet.header["source_port"]
+        }
         self._send_tcp_packet(
             destination_ip=packet.header["source_ip"],
             destination_mac=packet.header["source_mac"],
             data=b"",
-            flags=syn_ack_packet_flags,
-            source_port=packet.header["destination_port"],
-            destination_port=packet.header["source_port"],
-            sequence_number=syn_ack_sequence_number,
-            acknowledgment_number=syn_ack_ack_number
+            **control_packet_kwargs
         )
 
     def send_TCP_ACK(self, packet, final_ack=False):
@@ -325,19 +328,21 @@ class Node:
             print(f"ACK Sequence Number: {ack_sequence_number}")
             print(f"ACK ACK Number: {ack_ack_number}")
 
-        ack_packet_flags = "ACK"
+        # パラメータ設定
+        control_packet_kwargs = {
+            "flags": "ACK",
+            "sequence_number": ack_sequence_number,
+            "acknowledgment_number": ack_ack_number,
+            "source_port": packet.header["destination_port"],
+            "destination_port": packet.header["source_port"]
+        }
         self._send_tcp_packet(
             destination_ip=packet.header["source_ip"],
             destination_mac=packet.header["source_mac"],
             data=b"",
-            flags=ack_packet_flags,
-            source_port=packet.header["destination_port"],
-            destination_port=packet.header["source_port"],
-            sequence_number=ack_sequence_number,
-            acknowledgment_number=ack_ack_number
+            **control_packet_kwargs
         )
         if final_ack:
-            # 最終的なACKの後に接続を確立する処理
             self.establish_TCP_connection(packet)
             self.update_tcp_connection_state(packet.header["source_ip"], packet.header["source_port"], "ESTABLISHED")
 
@@ -584,7 +589,6 @@ class Node:
                 return
 
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
-            print(f"Sending data packet for {connection_key}, traffic_info={traffic_info}")
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
                 # 送信するデータを取得
                 remaining_data = traffic_info['remaining_data']
@@ -595,15 +599,23 @@ class Node:
                 # シーケンス番号を更新
                 self.tcp_connections[connection_key]['sequence_number'] = traffic_info['next_sequence_number']
 
+                # パラメータ設定
+                data_packet_kwargs = {
+                    "source_port": packet.header["destination_port"],
+                    "destination_port": packet.header["source_port"],
+                    "sequence_number": next_sequence_number,
+                    "acknowledgment_number": self.tcp_connections[connection_key]['sequence_number'],  # ACK番号を更新する場合
+                    "flags": "PSH"
+                }
+
                 # パケットを送信
                 self._send_tcp_packet(
                     destination_ip=packet.header["source_ip"],
                     destination_mac=packet.header["source_mac"],
                     data=data_to_send,
-                    source_port=packet.header["destination_port"],
-                    destination_port=packet.header["source_port"]
+                    **data_packet_kwargs
                 )
-                
+
                 # 送信済みデータを更新
                 traffic_info['remaining_data'] = remaining_data[payload_size:]
                 traffic_info['next_sequence_number'] = next_sequence_number + len(data_to_send)
@@ -643,7 +655,6 @@ class Node:
             print(f"Sequence Number: {sequence_number}")
             print(f"Data Length: {len(data)}")
             print(f"Flags: {kwargs.get('flags', '')}")
-            print(f"Packet Data: {data}")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
         """
@@ -685,8 +696,6 @@ class Node:
                     destination_port=kwargs.get('destination_port')
                 )
             elif protocol == "TCP":
-                if kwargs['flags'] == None:
-                    kwargs['flags'] = 'PSH'
                 packet = TCPPacket(
                     source_mac=self.mac_address,
                     destination_mac=destination_mac,
