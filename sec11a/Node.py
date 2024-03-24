@@ -338,6 +338,7 @@ class Node:
         if final_ack:
             # 最終的なACKの後に接続を確立する処理
             self.establish_TCP_connection(packet)
+            self.update_tcp_connection_state(packet.header["source_ip"], packet.header["source_port"], "ESTABLISHED")
 
     def establish_TCP_connection(self, packet):
         """
@@ -345,9 +346,12 @@ class Node:
         """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         
-        # すでに接続が確立されている場合は、この処理をスキップします。
-        if self.is_tcp_connection_established(*connection_key):
-            return
+        if connection_key in self.tcp_connections:
+            # 接続状態をESTABLISHEDに設定
+            self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
+            print(f"Connection with {packet.header['source_ip']}:{packet.header['source_port']} established.")
+        else:
+            print("Error: Connection key not found in tcp_connections.")
 
         # ログ出力とデバッグ情報の表示
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
