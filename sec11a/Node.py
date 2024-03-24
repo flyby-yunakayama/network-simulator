@@ -570,8 +570,12 @@ class Node:
                 # 送信するデータを取得
                 remaining_data = traffic_info['remaining_data']
                 payload_size = traffic_info['payload_size']
+                next_sequence_number = traffic_info['next_sequence_number']
                 data_to_send = remaining_data[:payload_size]
                 
+                # シーケンス番号を更新
+                self.tcp_connections[connection_key]['sequence_number'] = traffic_info['next_sequence_number']
+
                 # パケットを送信
                 self._send_tcp_packet(
                     destination_ip=packet.header["source_ip"],
@@ -583,6 +587,7 @@ class Node:
                 
                 # 送信済みデータを更新
                 traffic_info['remaining_data'] = remaining_data[payload_size:]
+                traffic_info['next_sequence_number'] = next_sequence_number + len(data_to_send)
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
@@ -767,7 +772,8 @@ class Node:
             'header_size': header_size,
             'bitrate': bitrate,
             'burstiness': burstiness,
-            'remaining_data': b'X' * (int(bitrate * duration) // 8)  # 送信するデータを初期化
+            'remaining_data': b'X' * (int(bitrate * duration) // 8),  # 送信するデータを初期化
+            'next_sequence_number': self.tcp_connections[connection_key]['sequence_number']  # 次に送信するシーケンス番号を保存
         }
 
         # 最初のSYNパケットを送信してTCP接続を開始
