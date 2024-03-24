@@ -268,6 +268,7 @@ class Node:
             self.tcp_connections[connection_key] = {
                 'state': 'SYN_RECEIVED',
                 'sequence_number': syn_sequence_number + 1,
+                'acknowledgment_number': syn_sequence_number + 1,
                 'data': b''
             }
         
@@ -307,6 +308,7 @@ class Node:
             self.tcp_connections[connection_key] = {
                 'state': 'ESTABLISHED',
                 'sequence_number': syn_ack_ack_number,
+                'acknowledgment_number': syn_ack_ack_number + 1,
                 'data': b''
             }
 
