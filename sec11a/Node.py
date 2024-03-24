@@ -293,7 +293,6 @@ class Node:
         )
 
     def send_TCP_ACK(self, packet, final_ack=False):
-        # ACKパケットを送信して接続を確立する処理
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
         packet.set_arrived(self.network_event_scheduler.current_time)
 
@@ -301,17 +300,28 @@ class Node:
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
 
         if connection_key in self.tcp_connections:
-            # 受信したSYN-ACKパケットのシーケンス番号に基づくACK番号を設定
-            ack_ack_number = packet.header["sequence_number"] + 1  # 次に期待する受信データのシーケンス番号
-            
-            # コネクションのシーケンス番号を更新 (ここでは送信データの量に基づく更新は行わない)
-            ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
-            
+            flags = packet.header.get('flags', '')
+
+            if 'SYN' in flags and 'ACK' in flags:
+                # SYN+ACKの場合、次に期待するシーケンス番号をACK番号として設定
+                ack_ack_number = packet.header["sequence_number"] + 1
+            elif 'PSH' in flags or 'PSH,ACK' in flags:
+                # データパケットの場合、受信したデータの長さを考慮
+                ack_ack_number = packet.header["sequence_number"] + len(packet.payload) + 1
+            else:
+                # その他のパケット
+                ack_ack_number = packet.header["sequence_number"] + 1
+
+            # ACK番号を更新
+            self.tcp_connections[connection_key]["acknowledgment_number"] = ack_ack_number
+
             if final_ack:
                 # 最終的なACKを送信する際は、状態をESTABLISHEDに更新
                 self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
-                self.tcp_connections[connection_key]["acknowledgment_number"] = ack_ack_number  # ACK番号を更新
-                self.establish_TCP_connection(packet)  # このメソッド内で状態の更新などの処理を行う
+                self.establish_TCP_connection(packet)
+
+            # コネクションのシーケンス番号を使用
+            ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
 
             # パラメータ設定
             control_packet_kwargs = {
@@ -327,6 +337,8 @@ class Node:
                 data=b"",
                 **control_packet_kwargs
             )
+        else:
+            print("Error: Connection key not found in tcp_connections.")
 
     def establish_TCP_connection(self, packet):
         """
