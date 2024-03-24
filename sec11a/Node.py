@@ -635,6 +635,7 @@ class Node:
 
             # tcp_verboseがtrueの場合、送信情報を表示
             if self.network_event_scheduler.tcp_verbose:
+                print('--------------------')
                 print(f"Sending TCP packet to {destination_ip}:{kwargs.get('destination_port')}")
                 print(f"Sequence Number: {kwargs.get('sequence_number')}")
                 print(f"Acknowledgment Number: {kwargs.get('acknowledgment_number')}")
