@@ -467,6 +467,7 @@ class Node:
             network_event_scheduler=self.network_event_scheduler
         )
         self.network_event_scheduler.log_packet_info(arp_request_packet, "ARP request", self.node_id)
+        print(f"Node {self.node_id} is sending an ARP request for IP address {ip_address}.")
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
