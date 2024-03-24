@@ -615,10 +615,6 @@ class Node:
         sequence_number = self.tcp_connections[connection_key]['sequence_number']
         kwargs['sequence_number'] = sequence_number
 
-        # データパケットの場合、PSHフラグを設定
-        if len(data) > 0:
-            kwargs['flags'] = 'PSH'
-
         # パケットを送信
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
@@ -674,6 +670,7 @@ class Node:
                     destination_port=kwargs.get('destination_port')
                 )
             elif protocol == "TCP":
+                kwargs['flags'] = 'PSH'
                 packet = TCPPacket(
                     source_mac=self.mac_address,
                     destination_mac=destination_mac,
