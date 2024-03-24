@@ -281,7 +281,8 @@ class Node:
             print(f"SYN-ACK Sequence Number: {syn_ack_sequence_number}")
             print(f"SYN-ACK ACK Number: {syn_ack_ack_number}")
         
-        syn_ack_packet_flags = "SYN ,ACK"
+        syn_ack_packet_flags = "SYN,ACK"
+        print(f"Sending SYN-ACK to {packet.header['source_ip']}:{packet.header['source_port']}")
         self._send_tcp_packet(
             destination_ip=packet.header["source_ip"],
             destination_mac=packet.header["source_mac"],
