@@ -623,34 +623,31 @@ class Node:
         ip_header_size = 20  # IPヘッダは20バイト
         header_size = tcp_header_size + ip_header_size
 
-        # コネクションキーを生成
-        connection_key = (destination_ip, kwargs['destination_port'])
+        connection_key = (destination_ip, kwargs.get('destination_port'))
+        if connection_key in self.tcp_connections:
+            conn_info = self.tcp_connections[connection_key]
+            if 'sequence_number' not in conn_info or 'acknowledgment_number' not in conn_info:
+                # 初期シーケンス番号とACK番号の設定
+                conn_info['sequence_number'] = 0
+                conn_info['acknowledgment_number'] = 0
+            
+            # シーケンス番号とACK番号をkwargsに設定
+            kwargs.setdefault('sequence_number', conn_info['sequence_number'])
+            kwargs.setdefault('acknowledgment_number', conn_info['acknowledgment_number'])
 
-        # シーケンス番号を取得または初期化
-        if connection_key not in self.tcp_connections:
-            self.tcp_connections[connection_key] = {
-                'state': 'ESTABLISHED',
-                'sequence_number': 0,
-                'data': b''
-            }
-        sequence_number = self.tcp_connections[connection_key]['sequence_number']
-        kwargs['sequence_number'] = sequence_number
+            # データ送信によるシーケンス番号の更新
+            conn_info['sequence_number'] += len(data)
 
         # パケットを送信
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
-        # シーケンス番号とデータを更新
-        self.tcp_connections[connection_key]['sequence_number'] += len(data)
-        self.tcp_connections[connection_key]['data'] += data
-
         # tcp_verboseがtrueの場合、送信情報を表示
         if self.network_event_scheduler.tcp_verbose:
-            print('-----------------------------')
-            print(f"Sending TCP packet to {destination_ip}:{kwargs['destination_port']}")
-            print(f"Sequence Number: {sequence_number}")
-            print(f"Acknowledgment Number: {kwargs.get('acknowledgment_number', 0)}")
+            print(f"Sending TCP packet to {destination_ip}:{kwargs.get('destination_port')}")
+            print(f"Sequence Number: {kwargs.get('sequence_number')}")
+            print(f"Acknowledgment Number: {kwargs.get('acknowledgment_number')}")
             print(f"Data Length: {len(data)}")
-            print(f"Flags: {kwargs.get('flags', '')}")
+            print(f"Flags: {kwargs.get('flags')}")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
         """
