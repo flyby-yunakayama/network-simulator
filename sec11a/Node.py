@@ -638,6 +638,7 @@ class Node:
 
         # tcp_verboseがtrueの場合、送信情報を表示
         if self.network_event_scheduler.tcp_verbose:
+            print('-----------------------------')
             print(f"Sending TCP packet to {destination_ip}:{kwargs['destination_port']}")
             print(f"Sequence Number: {sequence_number}")
             print(f"Data Length: {len(data)}")
@@ -684,7 +685,7 @@ class Node:
                     destination_port=kwargs.get('destination_port')
                 )
             elif protocol == "TCP":
-                if 'flags' not in kwargs or not kwargs['flags']:
+                if kwargs['flags'] == None:
                     kwargs['flags'] = 'PSH'
                 packet = TCPPacket(
                     source_mac=self.mac_address,
