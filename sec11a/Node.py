@@ -625,29 +625,28 @@ class Node:
 
         connection_key = (destination_ip, kwargs.get('destination_port'))
         if connection_key in self.tcp_connections:
-            conn_info = self.tcp_connections[connection_key]
-            if 'sequence_number' not in conn_info or 'acknowledgment_number' not in conn_info:
-                # 初期シーケンス番号とACK番号の設定
-                conn_info['sequence_number'] = 0
-                conn_info['acknowledgment_number'] = 0
+
+            # データ送信時、シーケンス番号を更新
+            if data and kwargs.get('flags') == 'PSH':
+                self.tcp_connections[connection_key]['sequence_number'] += len(data)
+            
+            sequence_number = self.tcp_connections[connection_key]['sequence_number']
+            acknowledgment_number = self.tcp_connections[connection_key]['acknowledgment_number']
             
             # シーケンス番号とACK番号をkwargsに設定
-            kwargs.setdefault('sequence_number', conn_info['sequence_number'])
-            kwargs.setdefault('acknowledgment_number', conn_info['acknowledgment_number'])
+            kwargs.setdefault('sequence_number', sequence_number)
+            kwargs.setdefault('acknowledgment_number', acknowledgment_number)
 
-            # データ送信によるシーケンス番号の更新
-            conn_info['sequence_number'] += len(data)
+            # パケットを送信
+            self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
-        # パケットを送信
-        self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
-
-        # tcp_verboseがtrueの場合、送信情報を表示
-        if self.network_event_scheduler.tcp_verbose:
-            print(f"Sending TCP packet to {destination_ip}:{kwargs.get('destination_port')}")
-            print(f"Sequence Number: {kwargs.get('sequence_number')}")
-            print(f"Acknowledgment Number: {kwargs.get('acknowledgment_number')}")
-            print(f"Data Length: {len(data)}")
-            print(f"Flags: {kwargs.get('flags')}")
+            # tcp_verboseがtrueの場合、送信情報を表示
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Sending TCP packet to {destination_ip}:{kwargs.get('destination_port')}")
+                print(f"Sequence Number: {kwargs.get('sequence_number')}")
+                print(f"Acknowledgment Number: {kwargs.get('acknowledgment_number')}")
+                print(f"Data Length: {len(data)}")
+                print(f"Flags: {kwargs.get('flags')}")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
         """
@@ -786,6 +785,7 @@ class Node:
             self.tcp_connections[connection_key] = {
                 'state': 'CLOSED',
                 'sequence_number': 0,
+                'acknowledgment_number': 0,
                 'data': b''
             }
         
