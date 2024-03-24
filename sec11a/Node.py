@@ -296,9 +296,13 @@ class Node:
         syn_ack_sequence_number = packet.header["sequence_number"]
         syn_ack_ack_number = packet.header["acknowledgment_number"]
         
+        # コネクションキーを生成
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+
         # ACKパケットのシーケンス番号とACK番号を設定
-        ack_sequence_number = syn_ack_ack_number
+        ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
         ack_ack_number = syn_ack_sequence_number + 1
+
 
         if self.network_event_scheduler.tcp_verbose:
             print(f"Sending ACK to {packet.header['source_ip']}:{packet.header['source_port']}, Final ACK: {final_ack}")
@@ -341,11 +345,15 @@ class Node:
         # 接続状態を「ESTABLISHED」に更新します。
         self.update_tcp_connection_state(*connection_key, "ESTABLISHED")
 
+        # シーケンス番号を更新
+        self.tcp_connections[connection_key]["sequence_number"] += 1
+
         # 保存しておいたデータがあれば送信します。
         if connection_key in self.pending_tcp_data:
             pending_data = self.pending_tcp_data.pop(connection_key)
             data_to_send = pending_data["data"]
             kwargs_to_use = pending_data["kwargs"]
+            kwargs_to_use["sequence_number"] = self.tcp_connections[connection_key]["sequence_number"]
             self._send_tcp_packet(packet.header["source_ip"], packet.header["source_mac"], data_to_send, **kwargs_to_use)
 
     def terminate_TCP_connection(self, packet):
@@ -588,6 +596,7 @@ class Node:
             print(f"Sequence Number: {sequence_number}")
             print(f"Data Length: {len(data)}")
             print(f"Flags: {kwargs.get('flags', '')}")
+            print(f"Packet Data: {data}")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
         """
