@@ -231,7 +231,6 @@ class Node:
 
                 # TCPフラグを確認して適切な処理を行う
                 flags = packet.header.get('flags', '')
-                print(self.node_id, "received TCP Packet with Flags:" flags, " Sequence no.:", packet.header["sequence_number"], " Ack no.", packet.header["acknowledgment_number"])
                 if "SYN" in flags and "ACK" not in flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
                     self.send_TCP_SYN_ACK(packet)
