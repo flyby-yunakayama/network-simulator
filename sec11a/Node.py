@@ -226,6 +226,7 @@ class Node:
             if packet.header["destination_ip"] == self.ip_address:
                 # TCPフラグを確認して適切な処理を行う
                 flags = packet.header.get('flags', '')  # flagsがNoneの場合、デフォルト値として空文字列を使用
+                print(f"Received TCP packet with flags: {flags}")
                 if "SYN" in flags and "ACK" not in flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
                     self.send_TCP_SYN_ACK(packet)
@@ -282,7 +283,6 @@ class Node:
             print(f"SYN-ACK ACK Number: {syn_ack_ack_number}")
         
         syn_ack_packet_flags = "SYN,ACK"
-        print(f"Sending SYN-ACK to {packet.header['source_ip']}:{packet.header['source_port']}")
         self._send_tcp_packet(
             destination_ip=packet.header["source_ip"],
             destination_mac=packet.header["source_mac"],
