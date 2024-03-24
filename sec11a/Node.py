@@ -323,8 +323,6 @@ class Node:
 
         if self.network_event_scheduler.tcp_verbose:
             print(f"Sending ACK to {packet.header['source_ip']}:{packet.header['source_port']}, Final ACK: {final_ack}")
-            print(f"Received SYN-ACK Sequence Number: {syn_ack_sequence_number}")
-            print(f"Received SYN-ACK ACK Number: {syn_ack_ack_number}")
             print(f"ACK Sequence Number: {ack_sequence_number}")
             print(f"ACK ACK Number: {ack_ack_number}")
 
@@ -344,7 +342,6 @@ class Node:
         )
         if final_ack:
             self.establish_TCP_connection(packet)
-            self.update_tcp_connection_state(packet.header["source_ip"], packet.header["source_port"], "ESTABLISHED")
 
     def establish_TCP_connection(self, packet):
         """
@@ -352,6 +349,9 @@ class Node:
         """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         
+        if connection_key in self.tcp_connections and self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
+            return
+
         if connection_key in self.tcp_connections:
             # 接続状態をESTABLISHEDに設定
             self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
