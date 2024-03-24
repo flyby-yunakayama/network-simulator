@@ -225,7 +225,7 @@ class Node:
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
                 # TCPフラグを確認して適切な処理を行う
-                flags = packet.header.get('flags', '')  # flagsがNoneの場合、デフォルト値として空文字列を使用
+                flags = packet.header.get('flags', '')
                 print(f"Received TCP packet with flags: {flags}")
                 if "SYN" in flags and "ACK" not in flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
@@ -555,7 +555,10 @@ class Node:
         # 接続状態を確認し、未確立の場合にのみSYNパケットを送信
         if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
             if self.network_event_scheduler.tcp_verbose:
+                # TCPハンドシェイク開始の詳細情報を出力
                 print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{kwargs.get('destination_port')} from port {kwargs.get('source_port')}")
+                print(f"Flags set to: SYN")
+                print(f"Payload size for control packet: 0 bytes")
 
             # SYNフラグをセットしてTCPパケットを送信
             control_packet_kwargs = kwargs.copy()
@@ -563,9 +566,13 @@ class Node:
                 "flags": "SYN",
                 "payload_size": 0  # コントロールパケットにはペイロードがない
             })
+            self._send_tcp_packet(destination_ip, destination_mac, b"", **control_packet_kwargs)
+            
             # 接続状態を「SYN_SENT」に更新
             self.update_tcp_connection_state(destination_ip, kwargs.get('destination_port'), "SYN_SENT")
-            self._send_tcp_packet(destination_ip, destination_mac, b"", **control_packet_kwargs)
+            if self.network_event_scheduler.tcp_verbose:
+                # 接続状態の更新情報を出力
+                print(f"Connection state updated to SYN_SENT for {destination_ip}:{kwargs.get('destination_port')}")
 
     def _send_udp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
