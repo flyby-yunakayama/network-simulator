@@ -750,6 +750,14 @@ class Node:
         # コネクションキーを生成
         connection_key = (destination_ip, destination_port)
         
+        # self.tcp_connectionsにコネクションキーが存在しない場合、新しく追加する
+        if connection_key not in self.tcp_connections:
+            self.tcp_connections[connection_key] = {
+                'state': 'CLOSED',
+                'sequence_number': 0,
+                'data': b''
+            }
+        
         # トラフィック情報をself.tcp_connectionsに保存
         self.tcp_connections[connection_key]['traffic_info'] = {
             'end_time': end_time,
@@ -759,7 +767,7 @@ class Node:
             'burstiness': burstiness,
             'remaining_data': b'X' * (int(bitrate * duration) // 8)  # 送信するデータを初期化
         }
-        
+
         # 最初のデータパケットを送信
         self.send_packet(destination_ip, b'X' * payload_size, protocol, source_port=source_port, destination_port=destination_port)
 
