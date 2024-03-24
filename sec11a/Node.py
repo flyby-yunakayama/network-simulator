@@ -232,10 +232,12 @@ class Node:
                 elif "SYN" in flags and "ACK" in flags:
                     # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
                     self.send_TCP_ACK(packet, final_ack=True)
+                    # データパケットの送信を開始
+                    self.send_tcp_data_packet(packet)
                 elif "ACK" in flags:
                     # ACKパケットを受信した場合、接続が確立されたとみなす
                     self.establish_TCP_connection(packet)
-                    # データパケットを送信
+                    # 送信データがある場合にのみデータパケットを送信
                     self.send_tcp_data_packet(packet)
                 elif "FIN" in flags:
                     # FINパケットを受信した場合、接続を終了
@@ -561,19 +563,12 @@ class Node:
         ACKを受信したときにデータパケットを送信します。
         """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        print(f"send_tcp_data_packet: {connection_key}")
-        print(f"self.tcp_connections: {self.tcp_connections}")
         
         if connection_key in self.tcp_connections:
             if 'traffic_info' not in self.tcp_connections[connection_key]:
-                # Initialize traffic_info if it's not present
-                self.tcp_connections[connection_key]['traffic_info'] = {
-                    'remaining_data': b'',  # or some initial value
-                    'payload_size': 0,  # or some initial value
-                    'next_sequence_number': 0,  # or some initial value
-                }
+                return
+
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
-            
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
                 # 送信するデータを取得
                 remaining_data = traffic_info['remaining_data']
