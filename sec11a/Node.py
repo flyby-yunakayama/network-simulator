@@ -575,6 +575,7 @@ class Node:
         
         if connection_key in self.tcp_connections:
             if 'traffic_info' not in self.tcp_connections[connection_key]:
+                print(f"No traffic info found for {connection_key}")
                 return
 
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
