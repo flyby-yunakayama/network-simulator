@@ -1,6 +1,7 @@
 import uuid
 import re
 import random
+from random import randint
 from ipaddress import ip_interface, ip_network
 from sec11a.Switch import Switch
 from sec11a.Router import Router
