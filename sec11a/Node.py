@@ -592,13 +592,12 @@ class Node:
                 remaining_data = traffic_info['remaining_data']
                 payload_size = traffic_info['payload_size']
                 next_sequence_number = self.tcp_connections[connection_key]['sequence_number']
+                print(remaining_data, payload_size, next_sequence_number)
                 
                 # 送信データがある場合のみシーケンス番号を更新
                 data_to_send = remaining_data[:payload_size]
                 if data_to_send:
                     next_sequence_number += len(data_to_send)  # データ長に基づいてシーケンス番号を更新
-
-                print(f"Sending data to {connection_key} with sequence number {next_sequence_number}")
 
                 # パラメータ設定
                 data_packet_kwargs = {
