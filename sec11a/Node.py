@@ -305,10 +305,17 @@ class Node:
         # コネクションキーを生成
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
 
+        # connection_keyが存在しない場合は、新しい接続として初期化
+        if connection_key not in self.tcp_connections:
+            self.tcp_connections[connection_key] = {
+                'state': 'ESTABLISHED',
+                'sequence_number': syn_ack_ack_number,
+                'data': b''
+            }
+
         # ACKパケットのシーケンス番号とACK番号を設定
         ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
         ack_ack_number = syn_ack_sequence_number + 1
-
 
         if self.network_event_scheduler.tcp_verbose:
             print(f"Sending ACK to {packet.header['source_ip']}:{packet.header['source_port']}, Final ACK: {final_ack}")
