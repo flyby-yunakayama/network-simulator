@@ -757,7 +757,7 @@ class Node:
             'header_size': header_size,
             'bitrate': bitrate,
             'burstiness': burstiness,
-            'remaining_data': b'X' * (bitrate * duration // 8)  # 送信するデータを初期化
+            'remaining_data': b'X' * (int(bitrate * duration) // 8)  # 送信するデータを初期化
         }
         
         # 最初のデータパケットを送信
