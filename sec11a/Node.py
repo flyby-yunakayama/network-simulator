@@ -225,6 +225,10 @@ class Node:
     def process_TCP_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
+                # log
+                self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+                packet.set_arrived(self.network_event_scheduler.current_time)
+
                 # TCPフラグを確認して適切な処理を行う
                 flags = packet.header.get('flags', '')
                 if "SYN" in flags and "ACK" not in flags:
@@ -254,10 +258,6 @@ class Node:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
     def send_TCP_SYN_ACK(self, packet):
-        # SYN-ACKパケットを送信する処理
-        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-        packet.set_arrived(self.network_event_scheduler.current_time)
-        
         # 受信したSYNパケットのシーケンス番号を取得
         syn_sequence_number = packet.header["sequence_number"]
         
@@ -293,9 +293,6 @@ class Node:
         )
 
     def send_TCP_ACK(self, packet, final_ack=False):
-        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-        packet.set_arrived(self.network_event_scheduler.current_time)
-
         # コネクションキーを生成
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
 
@@ -357,8 +354,6 @@ class Node:
             print("Error: Connection key not found in tcp_connections.")
 
         # ログ出力とデバッグ情報の表示
-        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-        packet.set_arrived(self.network_event_scheduler.current_time)
         if self.network_event_scheduler.tcp_verbose:
             print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
 
@@ -370,8 +365,6 @@ class Node:
 
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
-        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-        packet.set_arrived(self.network_event_scheduler.current_time)
         if self.network_event_scheduler.tcp_verbose:
             print(f"Terminating TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}") 
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
