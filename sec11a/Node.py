@@ -267,14 +267,14 @@ class Node:
         if connection_key not in self.tcp_connections:
             self.tcp_connections[connection_key] = {
                 'state': 'SYN_RECEIVED',
-                'sequence_number': syn_sequence_number + 1,
-                'acknowledgment_number': syn_sequence_number + 1,
+                'sequence_number': randint(1, 10000),  # 新しい接続のためのシーケンス番号をランダムに設定
+                'acknowledgment_number': syn_sequence_number + 1,  # 受信したSYNのシーケンス番号に1を加えたもの
                 'data': b''
             }
         
         # SYN-ACKパケットのシーケンス番号とACK番号を設定
         syn_ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
-        syn_ack_ack_number = syn_sequence_number + 1
+        syn_ack_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
         
         # パラメータ設定
         control_packet_kwargs = {
@@ -296,42 +296,36 @@ class Node:
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
         packet.set_arrived(self.network_event_scheduler.current_time)
 
-        # 受信したSYN-ACKパケットのシーケンス番号とACK番号を取得
-        syn_ack_sequence_number = packet.header["sequence_number"]
-        syn_ack_ack_number = packet.header["acknowledgment_number"]
-        
         # コネクションキーを生成
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
 
-        # connection_keyが存在しない場合は、新しい接続として初期化
-        if connection_key not in self.tcp_connections:
-            self.tcp_connections[connection_key] = {
-                'state': 'ESTABLISHED',
-                'sequence_number': syn_ack_ack_number,
-                'acknowledgment_number': syn_ack_ack_number + 1,
-                'data': b''
+        if connection_key in self.tcp_connections:
+            # 受信したSYN-ACKパケットのシーケンス番号に基づくACK番号を設定
+            ack_ack_number = packet.header["sequence_number"] + 1  # 次に期待する受信データのシーケンス番号
+            
+            # コネクションのシーケンス番号を更新 (ここでは送信データの量に基づく更新は行わない)
+            ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
+            
+            if final_ack:
+                # 最終的なACKを送信する際は、状態をESTABLISHEDに更新
+                self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
+                self.tcp_connections[connection_key]["acknowledgment_number"] = ack_ack_number  # ACK番号を更新
+                self.establish_TCP_connection(packet)  # このメソッド内で状態の更新などの処理を行う
+
+            # パラメータ設定
+            control_packet_kwargs = {
+                "flags": "ACK",
+                "sequence_number": ack_sequence_number,
+                "acknowledgment_number": ack_ack_number,
+                "source_port": packet.header["destination_port"],
+                "destination_port": packet.header["source_port"]
             }
-
-        # ACKパケットのシーケンス番号とACK番号を設定
-        ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
-        ack_ack_number = syn_ack_sequence_number + 1
-
-        # パラメータ設定
-        control_packet_kwargs = {
-            "flags": "ACK",
-            "sequence_number": ack_sequence_number,
-            "acknowledgment_number": ack_ack_number,
-            "source_port": packet.header["destination_port"],
-            "destination_port": packet.header["source_port"]
-        }
-        self._send_tcp_packet(
-            destination_ip=packet.header["source_ip"],
-            destination_mac=packet.header["source_mac"],
-            data=b"",
-            **control_packet_kwargs
-        )
-        if final_ack:
-            self.establish_TCP_connection(packet)
+            self._send_tcp_packet(
+                destination_ip=packet.header["source_ip"],
+                destination_mac=packet.header["source_mac"],
+                data=b"",
+                **control_packet_kwargs
+            )
 
     def establish_TCP_connection(self, packet):
         """
