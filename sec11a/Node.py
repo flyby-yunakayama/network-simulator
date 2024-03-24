@@ -598,6 +598,8 @@ class Node:
                 if data_to_send:
                     next_sequence_number += len(data_to_send)  # データ長に基づいてシーケンス番号を更新
 
+                print(f"Sending data to {connection_key} with sequence number {next_sequence_number}")
+
                 # パラメータ設定
                 data_packet_kwargs = {
                     "source_port": packet.header["destination_port"],
