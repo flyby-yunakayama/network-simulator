@@ -623,16 +623,12 @@ class Node:
         connection_key = (destination_ip, kwargs.get('destination_port'))
         if connection_key in self.tcp_connections:
 
-            # データ送信時、シーケンス番号を更新
-            if data and kwargs.get('flags') == 'PSH':
+            if data:
                 self.tcp_connections[connection_key]['sequence_number'] += len(data)
-            
-            sequence_number = self.tcp_connections[connection_key]['sequence_number']
-            acknowledgment_number = self.tcp_connections[connection_key]['acknowledgment_number']
-            
-            # シーケンス番号とACK番号をkwargsに設定
-            kwargs.setdefault('sequence_number', sequence_number)
-            kwargs.setdefault('acknowledgment_number', acknowledgment_number)
+
+            # パケット送信前のシーケンス番号とACK番号を設定
+            kwargs['sequence_number'] = self.tcp_connections[connection_key]['sequence_number']
+            kwargs['acknowledgment_number'] = self.tcp_connections[connection_key].get('acknowledgment_number', 0)
 
             # パケットを送信
             self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
