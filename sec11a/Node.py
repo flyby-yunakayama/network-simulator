@@ -569,7 +569,7 @@ class Node:
         """
         UDPパケットを送信するための内部メソッド。
         """
-        print(f"Sending UDP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
+        #print(f"Sending UDP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
         udp_header_size = 8  # UDPヘッダは8バイト
         ip_header_size = 20  # IPヘッダは20バイト
         header_size = udp_header_size + ip_header_size
@@ -592,7 +592,6 @@ class Node:
                 remaining_data = self.tcp_connections[connection_key]['data']
                 payload_size = traffic_info['payload_size']
                 next_sequence_number = self.tcp_connections[connection_key]['sequence_number']
-                print(len(remaining_data), next_sequence_number, self.tcp_connections[connection_key]['acknowledgment_number'])
                 
                 # 送信データがある場合のみシーケンス番号を更新
                 data_to_send = remaining_data[:payload_size]
@@ -643,12 +642,7 @@ class Node:
 
             # tcp_verboseがtrueの場合、送信情報を表示
             if self.network_event_scheduler.tcp_verbose:
-                print('--------------------')
-                print(f"Sending TCP packet to {destination_ip}:{kwargs.get('destination_port')}")
-                print(f"Sequence Number: {kwargs.get('sequence_number')}")
-                print(f"Acknowledgment Number: {kwargs.get('acknowledgment_number')}")
-                print(f"Data Length: {len(data)}")
-                print(f"Flags: {kwargs.get('flags')}")
+                print(f"Sending TCP packet from {self.node_id} to {destination_ip}:{kwargs.get('destination_port')} with Flags: {kwargs.get('flags')}, Data Length: {len(data)}, Sequence Number: {kwargs.get('sequence_number')}, Acknowledgment Number: {kwargs.get('acknowledgment_number')}, ")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
         """
