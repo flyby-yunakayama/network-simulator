@@ -564,8 +564,16 @@ class Node:
         print(f"send_tcp_data_packet: {connection_key}")
         print(f"self.tcp_connections: {self.tcp_connections}")
         
-        if connection_key in self.tcp_connections and 'traffic_info' in self.tcp_connections[connection_key]:
+        if connection_key in self.tcp_connections:
+            if 'traffic_info' not in self.tcp_connections[connection_key]:
+                # Initialize traffic_info if it's not present
+                self.tcp_connections[connection_key]['traffic_info'] = {
+                    'remaining_data': b'',  # or some initial value
+                    'payload_size': 0,  # or some initial value
+                    'next_sequence_number': 0,  # or some initial value
+                }
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
+            
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
                 # 送信するデータを取得
                 remaining_data = traffic_info['remaining_data']
