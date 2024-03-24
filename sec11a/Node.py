@@ -684,7 +684,8 @@ class Node:
                     destination_port=kwargs.get('destination_port')
                 )
             elif protocol == "TCP":
-                kwargs['flags'] = 'PSH'
+                if 'flags' not in kwargs or not kwargs['flags']:
+                    kwargs['flags'] = 'PSH'
                 packet = TCPPacket(
                     source_mac=self.mac_address,
                     destination_mac=destination_mac,
