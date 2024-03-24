@@ -589,10 +589,10 @@ class Node:
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
                 # 送信するデータを取得
-                remaining_data = traffic_info['remaining_data']
+                remaining_data = self.tcp_connections[connection_key]['data']
                 payload_size = traffic_info['payload_size']
                 next_sequence_number = self.tcp_connections[connection_key]['sequence_number']
-                print(self.tcp_connections[connection_key]['data'], remaining_data, next_sequence_number, self.tcp_connections[connection_key]['acknowledgment_number'])
+                print(remaining_data, next_sequence_number, self.tcp_connections[connection_key]['acknowledgment_number'])
                 
                 # 送信データがある場合のみシーケンス番号を更新
                 data_to_send = remaining_data[:payload_size]
@@ -617,7 +617,7 @@ class Node:
                 )
 
                 # シーケンス番号と送信済みデータを更新
-                traffic_info['remaining_data'] = remaining_data[payload_size:]
+                self.tcp_connections[connection_key]['data'] = remaining_data[payload_size:]
                 self.tcp_connections[connection_key]['sequence_number'] = next_sequence_number  # 更新後のシーケンス番号を保存
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
@@ -798,7 +798,6 @@ class Node:
             'header_size': header_size,
             'bitrate': bitrate,
             'burstiness': burstiness,
-            'remaining_data': self.tcp_connections[connection_key]['data'],
             'next_sequence_number': self.tcp_connections[connection_key]['sequence_number']  # 次に送信するシーケンス番号を保存
         }
 
