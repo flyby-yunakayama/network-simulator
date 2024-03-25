@@ -660,6 +660,7 @@ class Node:
         original_data_id = str(uuid.uuid4())
         total_size = len(data) if data else 1  # データが空の場合でもループを一度実行するために1を設定
         offset = 0
+        print(f"Sending IP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
 
         while offset < total_size:
             # MTUからヘッダサイズを引いた値が、このフラグメントの最大ペイロードサイズ
@@ -676,6 +677,8 @@ class Node:
                 "more_fragments": more_fragments,
                 "original_data_id": original_data_id
             }
+
+            print(f"Sending fragment with offset {fragment_offset}, payload size {payload_size}, more fragments: {more_fragments}")
 
             if protocol == "UDP":
                 packet = UDPPacket(
