@@ -304,7 +304,7 @@ class Node:
                 ack_ack_number = packet.header["sequence_number"] + 1
             elif 'PSH' in flags or 'PSH,ACK' in flags:
                 # データパケットの場合、受信したデータの長さを考慮
-                ack_ack_number = packet.header["sequence_number"] + len(packet.payload) + 1
+                ack_ack_number = packet.header["sequence_number"] + len(packet.payload)
             else:
                 # その他のパケット
                 ack_ack_number = packet.header["sequence_number"] + 1
