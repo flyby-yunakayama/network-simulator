@@ -660,7 +660,7 @@ class Node:
         original_data_id = str(uuid.uuid4())
         total_size = len(data) if data else 1  # データが空の場合でもループを一度実行するために1を設定
         offset = 0
-        print(f"Sending IP packet to {destination_ip}, {len(data)} bytes., kwargs={kwargs}")
+        print(f"Sending IP packet to {destination_ip}, {total_size} bytes., kwargs={kwargs}")
 
         while offset < total_size:
             # MTUからヘッダサイズを引いた値が、このフラグメントの最大ペイロードサイズ
@@ -672,7 +672,7 @@ class Node:
             fragment_offset = offset
 
             # フラグメントフラグの設定
-            more_fragments = offset + payload_size < total_size
+            more_fragments = False if total_size == 0 else offset + payload_size < total_size
             fragment_flags = {
                 "more_fragments": more_fragments,
                 "original_data_id": original_data_id
