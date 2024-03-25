@@ -218,6 +218,10 @@ class Node:
     def process_UDP_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
+                # Log
+                self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
+                packet.set_arrived(self.network_event_scheduler.current_time)
+
                 self.process_data_packet(packet)
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
@@ -410,12 +414,9 @@ class Node:
             self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
     def process_data_packet(self, packet):
-        # 宛先IPがこのノードの場合
-        self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
-        packet.set_arrived(self.network_event_scheduler.current_time)
-
         # 'more_fragments'キーが存在しない場合はFalseをデフォルト値として使用
         more_fragments = packet.header.get("fragment_flags", {}).get("more_fragments", False)
+        print(f"More fragments: {more_fragments}", packet.header["fragment_flags"]["original_data_id"])
 
         # フラグメントされたパケットの処理
         if more_fragments:
