@@ -234,15 +234,16 @@ class Node:
                 if "SYN" in flags and "ACK" not in flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
                     self.send_TCP_SYN_ACK(packet)
-                elif "SYN" in flags and "ACK" in flags:
-                    # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
-                    self.send_TCP_ACK(packet, final_ack=True)
-                    # データパケットの送信を開始
-                    self.send_tcp_data_packet(packet)
                 elif "ACK" in flags:
-                    # ACKパケットを受信した場合、接続が確立されたとみなす
-                    self.establish_TCP_connection(packet)
-                    # 送信データがある場合にのみデータパケットを送信
+                    # ACKパケットの処理
+                    self.handle_received_ack(packet)
+                    if "SYN" in flags:
+                        # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
+                        self.send_TCP_ACK(packet)
+                    else:
+                        # その他のACKパケットの場合、接続が確立されたとみなす
+                        self.establish_TCP_connection(packet)
+                    # データパケットの送信を開始
                     self.send_tcp_data_packet(packet)
                 elif "PSH" in flags or "PSH-ACK" in flags:
                     # データパケットを受信した場合、ACKを送信
@@ -256,6 +257,26 @@ class Node:
                     self.process_data_packet(packet)
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
+
+    def handle_received_ack(self, packet):
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        if connection_key in self.tcp_connections:
+            # パケットフラグに基づく処理を行う
+            flags = packet.header.get('flags', '')
+            if 'SYN' in flags and 'ACK' in flags:
+                # SYN+ACKパケットを受信した場合
+                self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
+                self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
+                self.establish_TCP_connection(packet)
+            elif 'PSH' in flags or 'PSH,ACK' in flags:
+                # PSHフラグが含まれるパケットを受信した場合（データ受信）
+                self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + len(packet.payload)
+            else:
+                # その他のパケット
+                self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
+
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Updated ACK number to {self.tcp_connections[connection_key]['acknowledgment_number']} for connection {connection_key}")
 
     def send_TCP_SYN_ACK(self, packet):
         # 受信したSYNパケットのシーケンス番号を取得
@@ -292,39 +313,16 @@ class Node:
             **control_packet_kwargs
         )
 
-    def send_TCP_ACK(self, packet, final_ack=False):
+    def send_TCP_ACK(self, packet):
         # コネクションキーを生成
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
 
         if connection_key in self.tcp_connections:
-            flags = packet.header.get('flags', '')
-
-            if 'SYN' in flags and 'ACK' in flags:
-                # SYN+ACKの場合、次に期待するシーケンス番号をACK番号として設定
-                ack_ack_number = packet.header["sequence_number"] + 1
-            elif 'PSH' in flags or 'PSH,ACK' in flags:
-                # データパケットの場合、受信したデータの長さを考慮
-                ack_ack_number = packet.header["sequence_number"] + len(packet.payload)
-            else:
-                # その他のパケット
-                ack_ack_number = packet.header["sequence_number"] + 1
-
-            # ACK番号を更新
-            self.tcp_connections[connection_key]["acknowledgment_number"] = ack_ack_number
-
-            if final_ack:
-                # 最終的なACKを送信する際は、状態をESTABLISHEDに更新
-                self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
-                self.establish_TCP_connection(packet)
-
-            # コネクションのシーケンス番号を使用
-            ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
-
             # パラメータ設定
             control_packet_kwargs = {
                 "flags": "ACK",
-                "sequence_number": ack_sequence_number,
-                "acknowledgment_number": ack_ack_number,
+                "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
+                "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
                 "source_port": packet.header["destination_port"],
                 "destination_port": packet.header["source_port"]
             }
