@@ -416,13 +416,18 @@ class Node:
     def process_data_packet(self, packet):
         # 'more_fragments'キーが存在しない場合はFalseをデフォルト値として使用
         more_fragments = packet.header.get("fragment_flags", {}).get("more_fragments", False)
-        print(f"More fragments: {more_fragments}", packet.header["fragment_flags"]["original_data_id"])
 
         # フラグメントされたパケットの処理
         if more_fragments:
             self._store_fragment(packet)
         else:
-            self._reassemble_and_process_packet(packet)
+            # original_data_idのチェックを追加
+            original_data_id = packet.header.get("fragment_flags", {}).get("original_data_id")
+            if original_data_id and original_data_id in self.fragmented_packets:
+                self._reassemble_and_process_packet(packet)
+            else:
+                # フラグメントされていないパケットの処理
+                self.direct_process_packet(packet)
 
     def _store_fragment(self, fragment):
         original_data_id = fragment.header["fragment_flags"]["original_data_id"]
@@ -464,6 +469,12 @@ class Node:
             return
 
         self.network_event_scheduler.log_packet_info(last_fragment, "reassembled", self.node_id)
+
+    def direct_process_packet(self, packet):
+        # フラグメントされていないパケットの直接処理
+        # ここでパケットのペイロードを処理するロジックを実装
+        print(f"Directly processing packet with data: {packet.payload}")
+        # 例: ペイロードのログ出力、特定のデータの解析、応答の送信など
 
     def on_arp_reply_received(self, destination_ip, destination_mac):
         # ARPリプライを受信したら、待機中のパケットに対して処理を行う
@@ -660,7 +671,6 @@ class Node:
         original_data_id = str(uuid.uuid4())
         total_size = len(data) if data else 0
         offset = 0
-        print(f"Sending IP packet to {destination_ip}, {total_size} bytes., kwargs={kwargs}")
 
         while offset < total_size or (offset == 0 and total_size == 0):
             # MTUからヘッダサイズを引いた値が、このフラグメントの最大ペイロードサイズ
@@ -674,11 +684,10 @@ class Node:
             # フラグメントフラグの設定
             more_fragments = False if total_size == 0 else offset + payload_size < total_size
             fragment_flags = {
-                "more_fragments": more_fragments,
-                "original_data_id": original_data_id
+                "more_fragments": more_fragments
             }
-
-            print(f"Sending fragment with offset {fragment_offset}, payload size {payload_size}, more fragments: {more_fragments}")
+            if more_fragments or payload_size > 0:
+                fragment_flags["original_data_id"] = original_data_id
 
             if protocol == "UDP":
                 packet = UDPPacket(
