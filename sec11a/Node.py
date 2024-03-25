@@ -309,15 +309,11 @@ class Node:
                 'data': b''
             }
         
-        # SYN-ACKパケットのシーケンス番号とACK番号を設定
-        syn_ack_sequence_number = self.tcp_connections[connection_key]["sequence_number"]
-        syn_ack_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
-        
         # パラメータ設定
         control_packet_kwargs = {
             "flags": "SYN,ACK",
-            "sequence_number": syn_ack_sequence_number,
-            "acknowledgment_number": syn_ack_ack_number,
+            "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
+            "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
             "source_port": packet.header["destination_port"],
             "destination_port": packet.header["source_port"]
         }
