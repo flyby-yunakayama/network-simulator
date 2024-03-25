@@ -472,8 +472,8 @@ class Node:
 
     def direct_process_packet(self, packet):
         # フラグメントされていないパケットの直接処理
+        pass
         # ここでパケットのペイロードを処理するロジックを実装
-        print(f"Directly processing packet with data: {packet.payload}")
         # 例: ペイロードのログ出力、特定のデータの解析、応答の送信など
 
     def on_arp_reply_received(self, destination_ip, destination_mac):
