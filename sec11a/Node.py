@@ -658,11 +658,11 @@ class Node:
         IPパケットを送信するための内部メソッド。TCP/UDPの区別に応じて適切なパケットを生成します。
         """
         original_data_id = str(uuid.uuid4())
-        total_size = len(data) if data else 1  # データが空の場合でもループを一度実行するために1を設定
+        total_size = len(data) if data else 0
         offset = 0
         print(f"Sending IP packet to {destination_ip}, {total_size} bytes., kwargs={kwargs}")
 
-        while offset < total_size:
+        while offset < total_size or (offset == 0 and total_size == 0):
             # MTUからヘッダサイズを引いた値が、このフラグメントの最大ペイロードサイズ
             max_payload_size = self.mtu - header_size
             # 実際のペイロードサイズは、残りのデータサイズとmax_payload_sizeの小さい方
