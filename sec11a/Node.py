@@ -229,26 +229,37 @@ class Node:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
 
-                # TCPフラグを確認して適切な処理を行う
+                # Retrieve the connection key
+                connection_key = (packet.header["source_ip"], packet.header["source_port"])
+                
+                # Ensure connection info exists
+                if connection_key not in self.tcp_connections:
+                    self.tcp_connections[connection_key] = {'state': 'CLOSED', 'sequence_number': 0, 'acknowledgment_number': 0}
+
+                # Check TCP flags for processing
                 flags = packet.header.get('flags', '')
+        
                 if "SYN" in flags and "ACK" not in flags:
                     # SYNパケットを受信した場合、SYN-ACKを送信
                     self.send_TCP_SYN_ACK(packet)
                 elif "ACK" in flags:
-                    # ACKパケットの処理
-                    self.handle_received_ack(packet)
+                    # ACK番号の更新
+                    self.update_ack_number_for_received_data(packet)
                     if "SYN" in flags:
                         # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
                         self.send_TCP_ACK(packet)
+                    elif "PSH" in flags or "PSH-ACK" in flags:
+                        self.send_TCP_ACK(packet)
+                        self.process_data_packet(packet)
                     else:
                         # その他のACKパケットの場合、接続が確立されたとみなす
                         self.establish_TCP_connection(packet)
                     # データパケットの送信を開始
                     self.send_tcp_data_packet(packet)
                 elif "PSH" in flags or "PSH-ACK" in flags:
-                    # データパケットを受信した場合、ACKを送信
+                    # データパケットを受信した場合、ACK番号を更新し、ACKを送信し、データを処理
+                    self.update_ack_number_for_received_data(packet)
                     self.send_TCP_ACK(packet)
-                    # データを処理
                     self.process_data_packet(packet)
                 elif "FIN" in flags:
                     # FINパケットを受信した場合、接続を終了
@@ -258,7 +269,7 @@ class Node:
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
-    def handle_received_ack(self, packet):
+    def update_ack_number_for_received_data(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
             # パケットフラグに基づく処理を行う
