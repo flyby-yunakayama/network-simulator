@@ -147,6 +147,8 @@ class Link:
 
             # ドロップ判断
             if self.should_drop_packet(packet):
+                if self.network_event_scheduler.verbose:
+                    print(f"{self.network_event_scheduler.current_time:.6f}: Packet dropped at Link {self.node_x}-{self.node_y}.")
                 packet.set_arrived(-1)
             else:
                 pass
