@@ -2,6 +2,7 @@ import heapq
 import random
 from sec11b.Switch import Switch
 from sec11b.Router import Router
+from sec11b.Packet import Packet, TCPPacket, UDPPacket
 
 class Link:
     def __init__(self, node_x, node_y, bandwidth, delay, loss_rate, network_event_scheduler):
@@ -144,8 +145,11 @@ class Link:
             dequeue_time, packet, _ = heapq.heappop(queue)
             packet_transfer_time = (packet.size * 8) / self.bandwidth
 
-            if random.random() < self.loss_rate:
+            # ドロップ判断
+            if self.should_drop_packet(packet):
                 packet.set_arrived(-1)
+            else:
+                pass
 
             next_node = self.node_x if from_node != self.node_x else self.node_y
             self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + self.delay, next_node.receive_packet, packet, self)
@@ -154,6 +158,17 @@ class Link:
             if queue:
                 next_packet_time = queue[0][0]
                 self.network_event_scheduler.schedule_event(next_packet_time, self.transfer_packet, from_node)
+
+    def should_drop_packet(self, packet):
+        """パケットがドロップされるべきかどうかを判断するメソッド"""
+        # パケットがUDPPacketの場合、ロス率に応じてドロップする
+        if isinstance(packet, UDPPacket):
+            return random.random() < self.loss_rate
+        # パケットがTCPPacketでフラグがPSHの場合、ロス率に応じてドロップする
+        elif isinstance(packet, TCPPacket) and "PSH" in packet.header.get('flags', ''):
+            return random.random() < self.loss_rate
+        # それ以外の場合はドロップしない
+        return False
 
     def add_to_queue_time(self, from_node, packet_transfer_time):
         if from_node == self.node_x:
