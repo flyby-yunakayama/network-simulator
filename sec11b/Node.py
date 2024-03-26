@@ -285,20 +285,24 @@ class Node:
         重複ACKの検出と再送処理を行います。
         """
         if connection_key in self.tcp_connections:
-            if self.tcp_connections[connection_key]["last_ack_number"] == received_ack_number:
-                self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
+            connection_info = self.tcp_connections[connection_key]
+            
+            # 最後に受信したACK番号を取得
+            last_ack_number = connection_info.get("last_ack_number", None)
+            
+            if last_ack_number is not None and last_ack_number == received_ack_number:
+                # 受信したACK番号が前回と同じ場合、重複ACKとみなす
+                connection_info["duplicate_ack_count"] += 1
             else:
-                self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
-                self.tcp_connections[connection_key]["last_ack_number"] = received_ack_number
+                # 受信したACK番号が異なる場合、カウントをリセットし、新しいACK番号を記録
+                connection_info["duplicate_ack_count"] = 1
+                connection_info["last_ack_number"] = received_ack_number
 
             # 3回以上の重複ACKを受け取った場合、再送処理を行う
-            if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
+            if connection_info["duplicate_ack_count"] >= 3:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Detected triple duplicate ACKs for {connection_key}. Initiating retransmission.")
-                # 最後にACKされたシーケンス番号の次のパケットを再送
-                next_expected_sequence_number = self.tcp_connections[connection_key]["last_ack_number"]
-                self.retransmit_packet(connection_key, next_expected_sequence_number)
-
+                self.retransmit_packet(connection_key, received_ack_number)
 
 
     def update_ack_number_for_received_data(self, packet):
