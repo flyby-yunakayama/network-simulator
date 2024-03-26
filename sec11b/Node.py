@@ -284,17 +284,22 @@ class Node:
         """
         重複ACKの検出と再送処理を行います。
         """
-        # 重複ACKのカウントと最後に受け取ったACK番号を更新
-        if self.tcp_connections[connection_key]["last_ack_number"] == received_ack_number:
-            self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
-        else:
-            self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
-            self.tcp_connections[connection_key]["last_ack_number"] = received_ack_number
+        if connection_key in self.tcp_connections:
+            if self.tcp_connections[connection_key]["last_ack_number"] == received_ack_number:
+                self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
+            else:
+                self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
+                self.tcp_connections[connection_key]["last_ack_number"] = received_ack_number
 
-        # 3回以上の重複ACKを受け取った場合、再送処理を行う
-        if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
-            print(f"Detected triple duplicate ACKs for {connection_key}. Initiating retransmission.")
-            self.retransmit_packet(connection_key)
+            # 3回以上の重複ACKを受け取った場合、再送処理を行う
+            if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Detected triple duplicate ACKs for {connection_key}. Initiating retransmission.")
+                # 最後にACKされたシーケンス番号の次のパケットを再送
+                next_expected_sequence_number = self.tcp_connections[connection_key]["last_ack_number"]
+                self.retransmit_packet(connection_key, next_expected_sequence_number)
+
+
 
     def update_ack_number_for_received_data(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -383,7 +388,8 @@ class Node:
                 **control_packet_kwargs
             )
         else:
-            print("Error: Connection key not found in tcp_connections.")
+            if self.network_event_scheduler.tcp_verbose:
+                print("Error: Connection key not found in tcp_connections.")
 
     def establish_TCP_connection(self, packet):
         """
@@ -397,9 +403,11 @@ class Node:
         if connection_key in self.tcp_connections:
             # 接続状態をESTABLISHEDに設定
             self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
-            print(f"Connection with {packet.header['source_ip']}:{packet.header['source_port']} established.")
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Connection with {packet.header['source_ip']}:{packet.header['source_port']} established.")
         else:
-            print("Error: Connection key not found in tcp_connections.")
+            if self.network_event_scheduler.tcp_verbose:
+                print("Error: Connection key not found in tcp_connections.")
 
         # ログ出力とデバッグ情報の表示
         if self.network_event_scheduler.tcp_verbose:
@@ -638,7 +646,8 @@ class Node:
         
         if connection_key in self.tcp_connections:
             if 'traffic_info' not in self.tcp_connections[connection_key]:
-                print(f"No traffic info found for {connection_key}")
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"No traffic info found for {connection_key}")
                 return
 
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
@@ -722,7 +731,8 @@ class Node:
                 kwargs = packet_info['kwargs']
                 self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
             else:
-                print(f"No packet with sequence number {sequence_number} found in history for retransmission.")
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"No packet with sequence number {sequence_number} found in history for retransmission.")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
         """
