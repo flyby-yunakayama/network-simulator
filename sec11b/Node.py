@@ -301,7 +301,7 @@ class Node:
             # 3回以上の重複ACKを受け取った場合、再送処理を行う
             if connection_info["duplicate_ack_count"] >= 3:
                 if self.network_event_scheduler.tcp_verbose:
-                    print(f"Detected triple duplicate ACKs for {connection_key}. Initiating retransmission.")
+                    print(f"Detected triple duplicate ACKs for {received_ack_number}. Initiating retransmission.")
                 self.retransmit_packet(connection_key, received_ack_number)
 
 
