@@ -286,22 +286,22 @@ class Node:
         """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
-            # パケットにデータが含まれているかどうかをチェック
-            has_data = len(packet.payload) > 0
-
             # 最後に受信したACK番号と現在のACK番号を比較
             last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
             current_ack_number = packet.header["acknowledgment_number"]
 
-            if last_ack_number is not None and last_ack_number == current_ack_number and not has_data:
+            # パケットにデータが含まれているかどうかをチェック
+            has_data = len(packet.payload) > 0
+
+            if last_ack_number == current_ack_number and not has_data:
                 # データを含まないACKパケットが重複している場合、カウントを増やす
                 self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
-            else:
-                # 新しいACK番号またはデータを含むACKの場合、カウントをリセット
+            elif last_ack_number != current_ack_number:
+                # 新しいACK番号の場合、カウントをリセット
                 self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
 
-            print(f"Received ACK for {packet.header['acknowledgment_number']} with data: {has_data} payload length: {len(packet.payload)}")
-            print(last_ack_number, current_ack_number, has_data, self.tcp_connections[connection_key]["duplicate_ack_count"])
+            print(f"Received ACK for {current_ack_number} with data: {has_data}, payload length: {len(packet.payload)}")
+            print(f"Last ACK: {last_ack_number}, Current ACK: {current_ack_number}, Duplicate ACK count: {self.tcp_connections[connection_key]['duplicate_ack_count']}")
 
             # 最後に受信したACK番号を更新
             self.tcp_connections[connection_key]["last_ack_number"] = current_ack_number
