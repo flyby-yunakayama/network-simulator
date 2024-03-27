@@ -315,8 +315,7 @@ class Node:
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
             # 重複ACKの検出と再送処理
-            received_ack_number = packet.header["acknowledgment_number"]
-            self.handle_duplicate_acks(connection_key, received_ack_number)
+            self.handle_duplicate_acks(packet)
 
             # パケットフラグに基づく処理を行う
             flags = packet.header.get('flags', '')
