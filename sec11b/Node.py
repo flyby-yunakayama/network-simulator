@@ -288,11 +288,13 @@ class Node:
         if connection_key in self.tcp_connections:
             # パケットにデータが含まれているかどうかをチェック
             has_data = len(packet.payload) > 0
-            print(f"Received ACK for {packet.header['acknowledgment_number']} with data: {has_data} payload length: {len(packet.payload)}")
 
             # 最後に受信したACK番号と現在のACK番号を比較
             last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
             current_ack_number = packet.header["acknowledgment_number"]
+
+            print(f"Received ACK for {packet.header['acknowledgment_number']} with data: {has_data} payload length: {len(packet.payload)}")
+            print(last_ack_number, current_ack_number, has_data)
 
             if last_ack_number is not None and last_ack_number == current_ack_number and not has_data:
                 # データを含まないACKパケットが重複している場合、カウントを増やす
