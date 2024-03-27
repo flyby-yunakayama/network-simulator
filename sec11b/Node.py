@@ -238,119 +238,108 @@ class Node:
                 
                 # Ensure connection info exists
                 if connection_key not in self.tcp_connections:
-                    self.tcp_connections[connection_key] = {
-                        'state': 'CLOSED', 
-                        'sequence_number': 0, 
-                        'acknowledgment_number': 0, 
-                        'last_ack_number': None, 
-                        'duplicate_ack_count': 0,
-                        'packet_history': {}  # シーケンス番号をキー、パケットデータを値とする辞書
-                    }
+                    self.initialize_connection_info(connection_key=connection_key)
 
                 # Check TCP flags for processing
                 flags = packet.header.get('flags', '')
-        
-                if "SYN" in flags and "ACK" not in flags:
-                    # SYNパケットを受信した場合、SYN-ACKを送信
-                    self.send_TCP_SYN_ACK(packet)
-                elif "ACK" in flags:
-                    # ACK番号の更新
-                    self.update_ack_number_for_received_data(packet)
-                    if "SYN" in flags:
-                        # SYN-ACKパケットを受信した場合、ACKを送信して接続を確立
-                        self.send_TCP_ACK(packet)
-                    elif "PSH" in flags or "PSH-ACK" in flags:
-                        self.send_TCP_ACK(packet)
-                        self.process_data_packet(packet)
+
+                # SYNパケットの処理
+                if "SYN" in flags:
+                    if "ACK" in flags:  # SYN-ACKパケットを受信した場合
+                        self.establish_TCP_connection(packet)  # 接続情報を更新
+                        self.send_TCP_ACK(packet)  # ACKを送信
+                        self.send_tcp_data_packet(packet)  # パケットを送信
                     else:
-                        # その他のACKパケットの場合、接続が確立されたとみなす
-                        self.establish_TCP_connection(packet)
-                    # データパケットの送信を開始
-                    self.send_tcp_data_packet(packet)
-                elif "PSH" in flags or "PSH-ACK" in flags:
-                    # データパケットを受信した場合、ACK番号を更新し、ACKを送信し、データを処理
-                    self.update_ack_number_for_received_data(packet)
-                    self.send_TCP_ACK(packet)
-                    self.process_data_packet(packet)
-                elif "FIN" in flags:
-                    # FINパケットを受信した場合、接続を終了
+                        self.establish_TCP_connection(packet)  # 接続情報を更新
+                        self.send_TCP_SYN_ACK(packet)  # SYN-ACKを送信
+
+                # ACKパケットの処理
+                if "ACK" in flags:
+                    self.count_duplicated_ACK(packet)  # 重複ACKのカウント
+                    self.update_ACK_number(packet)  # ACK番号の更新
+                    if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
+                        self.retransmit_packet(packet)  # パケットの再送
+                    else:
+                        self.send_tcp_data_packet(packet)  # パケットの送信
+
+                # PSHパケットの処理
+                if "PSH" in flags:
+                    self.update_ACK_number(packet)  # ACK番号の更新
+                    self.send_TCP_ACK(packet)  # ACKを送信
+                    self.process_data_packet(packet)  # データパケットの処理
+
+                # Process FIN packets
+                if "FIN" in flags:
                     self.terminate_TCP_connection(packet)
-                else:
-                    self.process_data_packet(packet)
+
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
-    def handle_duplicate_acks(self, packet):
-        """
-        受信したACKパケットを処理し、必要に応じてパケットの再送を行います。
-        """
+    def initialize_connection_info(self, connection_key=None, state='CLOSED', sequence_number=0, acknowledgment_number=0, data=b''):
+        """Initialize TCP connection information for a new connection key."""
+        self.tcp_connections[connection_key] = {
+            'state': 'CLOSED',
+            'sequence_number': 0,
+            'acknowledgment_number': 0,
+            'data': b'',
+            'last_ack_number': None,
+            'duplicate_ack_count': 0,
+            'packet_history': {}  # Packet history for potential retransmission
+        }
+
+    def count_duplicated_ACK(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        if connection_key in self.tcp_connections:
-            # 最後に受信したACK番号と現在のACK番号を比較
-            last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
-            current_ack_number = packet.header["acknowledgment_number"]
+        current_ack_number = packet.header["acknowledgment_number"]
 
-            # パケットにデータが含まれているかどうかをチェック
-            flags = packet.header.get('flags', '')
-            has_data = "PSH" in flags
+        if connection_key not in self.tcp_connections:
+            return  # コネクションが存在しない場合は何もしない
 
-            if has_data:
-                # データを含むACKの場合、重複ACKのカウントを行う
-                if last_ack_number == current_ack_number:
-                    # 重複している場合、カウントを増やす
-                    self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
-                else:
-                    # 新しいACK番号の場合、カウントをリセット
-                    self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
-            else:
-                # データを含まないACKの場合、カウントをリセット
-                self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
+        # 最後に受け取ったACK番号を取得
+        last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
 
-            print(f"Received ACK for {current_ack_number} with data: {has_data}, payload length: {len(packet.payload)}")
-            print(f"Last ACK: {last_ack_number}, Current ACK: {current_ack_number}, Duplicate ACK count: {self.tcp_connections[connection_key]['duplicate_ack_count']}")
-
-            # 最後に受信したACK番号を更新
+        if current_ack_number == last_ack_number:
+            # 重複ACKとみなしてカウントアップ
+            self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
+        else:
+            # 新しいACK番号の場合は、カウントをリセットしてACK番号を更新
+            self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
             self.tcp_connections[connection_key]["last_ack_number"] = current_ack_number
 
-            # 3回以上の重複ACKを受け取った場合、再送処理を行う
+    def check_duplication_threshold(self, connection_key):
+        if connection_key in self.tcp_connections:
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
                 if self.network_event_scheduler.tcp_verbose:
-                    print(f"Detected triple duplicate ACKs for {current_ack_number}. Initiating retransmission.")
-                # 再送すべきパケットのシーケンス番号を特定
-                sequence_number_to_retransmit = self.tcp_connections[connection_key]["last_ack_number"]
-                self.retransmit_packet(connection_key, sequence_number_to_retransmit)
-
-    def update_ack_number_for_received_data(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        if connection_key in self.tcp_connections:
-            # 重複ACKの検出と再送処理
-            self.handle_duplicate_acks(packet)
-
-            # パケットフラグに基づく処理を行う
-            flags = packet.header.get('flags', '')
-            received_sequence_number = packet.header["sequence_number"]
-            expected_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
-            payload_length = len(packet.payload)
-
-            if 'SYN' in flags and 'ACK' in flags:
-                # SYN+ACKパケットを受信した場合
-                new_ack_number = received_sequence_number + 1
-                self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
-                self.establish_TCP_connection(packet)
-            elif 'PSH' in flags or 'PSH,ACK' in flags:
-                # PSHフラグが含まれるパケットを受信した場合（データ受信）
-                # 受信したシーケンス番号が期待していたACK番号と一致する場合のみ更新
-                new_ack_number = received_sequence_number + payload_length if received_sequence_number == expected_ack_number else expected_ack_number
+                    print(f"Duplicate ACK threshold reached for connection {connection_key}")
+                return True
             else:
-                # その他のパケット
-                new_ack_number = received_sequence_number + 1 if received_sequence_number == expected_ack_number else expected_ack_number
+                return False
+        return False
 
-            # ACK番号が期待していた値よりも大きくない場合、または正確に期待値に一致する場合のみ更新
-            if new_ack_number >= expected_ack_number:
-                self.tcp_connections[connection_key]["acknowledgment_number"] = new_ack_number
+    def update_ACK_number(self, packet):
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        if connection_key not in self.tcp_connections:
+            return  # コネクション情報が存在しない場合は処理をスキップ
 
+        # 受信したパケットの情報を取得
+        received_sequence_number = packet.header["sequence_number"]
+        received_ack_number = packet.header["acknowledgment_number"]
+        flags = packet.header.get('flags', '')
+        payload_length = len(packet.payload)
+
+        # 現在のACK番号を取得
+        current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
+
+        if 'PSH' in flags:  # データパケットの場合
+            new_ack_number = max(received_sequence_number + payload_length, current_ack_number)
+        else:  # ACKパケットの場合
+            new_ack_number = max(received_ack_number, current_ack_number)
+
+        # ACK番号を更新
+        if new_ack_number > current_ack_number:
+            self.tcp_connections[connection_key]["acknowledgment_number"] = new_ack_number
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Updated ACK number to {new_ack_number} for connection {connection_key}")
+                print(f"Updated ACK number to {new_ack_number} for connection {connection_key}.")
+
 
     def send_TCP_SYN_ACK(self, packet):
         # 受信したSYNパケットのシーケンス番号を取得
@@ -361,15 +350,7 @@ class Node:
         
         # 新しい接続情報を初期化
         if connection_key not in self.tcp_connections:
-            self.tcp_connections[connection_key] = {
-                'state': 'SYN_RECEIVED',
-                'sequence_number': randint(1, 10000),  # 新しい接続のためのシーケンス番号をランダムに設定
-                'acknowledgment_number': syn_sequence_number + 1,  # 受信したSYNのシーケンス番号に1を加えたもの
-                'data': b'',
-                'last_ack_number': None,
-                'duplicate_ack_count': 0,
-                'packet_history': {}  # シーケンス番号をキー、パケットデータを値とする辞書
-            }
+            self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=randint(1, 10000), acknowledgment_number=(syn_sequence_number + 1), data=b'')
         
         # パラメータ設定
         control_packet_kwargs = {
@@ -414,28 +395,14 @@ class Node:
         TCP接続を確立する処理です。接続が確立されたら、保存しておいたデータがあれば送信します。
         """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        
         if connection_key in self.tcp_connections and self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
             return
-
-        if connection_key in self.tcp_connections:
-            # 接続状態をESTABLISHEDに設定
-            self.tcp_connections[connection_key]['state'] = 'ESTABLISHED'
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"Connection with {packet.header['source_ip']}:{packet.header['source_port']} established.")
         else:
+            self.update_tcp_connection_state(connection_key, "ESTABLISHED")
             if self.network_event_scheduler.tcp_verbose:
-                print("Error: Connection key not found in tcp_connections.")
-
-        # ログ出力とデバッグ情報の表示
-        if self.network_event_scheduler.tcp_verbose:
-            print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
-
-        # 接続状態を「ESTABLISHED」に更新します。
-        self.update_tcp_connection_state(*connection_key, "ESTABLISHED")
-
-        # シーケンス番号を更新
-        self.tcp_connections[connection_key]["sequence_number"] += 1
+                print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
+            # シーケンス番号を更新
+            self.tcp_connections[connection_key]["sequence_number"] += 1
 
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
@@ -444,6 +411,9 @@ class Node:
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
             del self.tcp_connections[connection_key]
+            print(f"TCP connection terminated with {connection_key}")
+        else:
+            print("Error: Connection key not found.")
 
     def print_tcp_connections(self):
         """
@@ -607,17 +577,16 @@ class Node:
         key = (destination_ip, destination_port)
         return self.tcp_connections.get(key, {}).get("state") == "ESTABLISHED"
 
-    def update_tcp_connection_state(self, destination_ip, destination_port, new_state):
+    def update_tcp_connection_state(self, connection_key, new_state):
         """
         指定された宛先に対するTCP接続の状態を更新します。
         """
-        key = (destination_ip, destination_port)
-        if key not in self.tcp_connections:
-            self.tcp_connections[key] = {"state": new_state, "sequence_number": 0, "data": b''}
+        if connection_key not in self.tcp_connections:
+            self.initialize_connection_info(connection_key=connection_key, state=new_state)
         else:
-            self.tcp_connections[key]["state"] = new_state
+            self.tcp_connections[connection_key]["state"] = new_state
         if self.network_event_scheduler.tcp_verbose:
-            print(f"TCP connection state updated to {new_state} for {destination_ip}:{destination_port}")
+            print(f"TCP connection state updated to {new_state} for {connection_key}")
 
     def initiate_tcp_handshake(self, destination_ip, destination_mac, **kwargs):
         """
@@ -641,7 +610,8 @@ class Node:
             self._send_tcp_packet(destination_ip, destination_mac, b"", **control_packet_kwargs)
             
             # 接続状態を「SYN_SENT」に更新
-            self.update_tcp_connection_state(destination_ip, kwargs.get('destination_port'), "SYN_SENT")
+            connection_key = (destination_ip, kwargs.get('destination_port'))
+            self.update_tcp_connection_state(connection_key, "SYN_SENT")
             if self.network_event_scheduler.tcp_verbose:
                 # 接続状態の更新情報を出力
                 print(f"Connection state updated to SYN_SENT for {destination_ip}:{kwargs.get('destination_port')}")
@@ -887,15 +857,8 @@ class Node:
         
         # self.tcp_connectionsにコネクションキーが存在しない場合、新しく追加する
         if connection_key not in self.tcp_connections:
-            self.tcp_connections[connection_key] = {
-                'state': 'CLOSED',
-                'sequence_number': 0,
-                'acknowledgment_number': 0,
-                'data': b'X' * (int(bitrate * duration) // 8),  # 送信するデータを初期化
-                'last_ack_number': None,
-                'duplicate_ack_count': 0,
-                'packet_history': {}  # シーケンス番号をキー、パケットデータを値とする辞書
-            }
+            data = b'X' * (int(bitrate * duration) // 8)
+            self.initialize_connection_info(connection_key=connection_key, data=data)
         
         # トラフィック情報をself.tcp_connectionsに保存
         self.tcp_connections[connection_key]['traffic_info'] = {
