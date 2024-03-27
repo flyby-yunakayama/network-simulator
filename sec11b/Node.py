@@ -288,6 +288,7 @@ class Node:
         if connection_key in self.tcp_connections:
             # パケットにデータが含まれているかどうかをチェック
             has_data = len(packet.payload) > 0
+            print(f"Received ACK for {packet.header['acknowledgment_number']} with data: {has_data} payload length: {len(packet.payload)}")
 
             # 最後に受信したACK番号と現在のACK番号を比較
             last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
