@@ -293,16 +293,16 @@ class Node:
             last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
             current_ack_number = packet.header["acknowledgment_number"]
 
-            print(f"Received ACK for {packet.header['acknowledgment_number']} with data: {has_data} payload length: {len(packet.payload)}")
-            print(last_ack_number, current_ack_number, has_data)
-
             if last_ack_number is not None and last_ack_number == current_ack_number and not has_data:
                 # データを含まないACKパケットが重複している場合、カウントを増やす
                 self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
             else:
                 # 新しいACK番号またはデータを含むACKの場合、カウントをリセット
                 self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
-            
+
+            print(f"Received ACK for {packet.header['acknowledgment_number']} with data: {has_data} payload length: {len(packet.payload)}")
+            print(last_ack_number, current_ack_number, has_data, self.tcp_connections[connection_key]["duplicate_ack_count"])
+
             # 最後に受信したACK番号を更新
             self.tcp_connections[connection_key]["last_ack_number"] = current_ack_number
 
