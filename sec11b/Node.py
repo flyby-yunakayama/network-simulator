@@ -291,7 +291,8 @@ class Node:
             current_ack_number = packet.header["acknowledgment_number"]
 
             # パケットにデータが含まれているかどうかをチェック
-            has_data = len(packet.payload) > 0
+            flags = packet.header.get('flags', '')
+            has_data = "PSH" in flags
 
             if has_data:
                 # データを含むACKの場合、重複ACKのカウントを行う
