@@ -293,8 +293,8 @@ class Node:
             # パケットにデータが含まれているかどうかをチェック
             has_data = len(packet.payload) > 0
 
-            if not has_data:
-                # データを含まないACKの場合
+            if has_data:
+                # データを含むACKの場合、重複ACKのカウントを行う
                 if last_ack_number == current_ack_number:
                     # 重複している場合、カウントを増やす
                     self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
@@ -302,7 +302,7 @@ class Node:
                     # 新しいACK番号の場合、カウントをリセット
                     self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
             else:
-                # データを含むパケットの場合、重複ACKのカウントをリセット
+                # データを含まないACKの場合、カウントをリセット
                 self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
 
             print(f"Received ACK for {current_ack_number} with data: {has_data}, payload length: {len(packet.payload)}")
