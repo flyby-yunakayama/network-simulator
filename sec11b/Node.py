@@ -357,7 +357,7 @@ class Node:
         control_packet_kwargs = {
             "flags": "SYN,ACK",
             "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
-            "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
+            "acknowledgment_number": syn_sequence_number + 1,
             "source_port": packet.header["destination_port"],
             "destination_port": packet.header["source_port"]
         }
