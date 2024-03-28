@@ -337,9 +337,6 @@ class Node:
         # 新しい接続情報を初期化
         if connection_key not in self.tcp_connections:
             self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=sequence_number, acknowledgment_number=acknowledgment_number, data=b'')
-            print("SYN_RECEIVED")
-        print("SYN_RECEIVED")
-        print(self.tcp_connections[connection_key])
 
         # パラメータ設定
         control_packet_kwargs = {
@@ -622,9 +619,6 @@ class Node:
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="UDP", **kwargs)
 
     def send_tcp_data_packet(self, packet):
-        """
-        ACKを受信したときにデータパケットを送信します。
-        """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         
         if connection_key in self.tcp_connections:
@@ -638,18 +632,13 @@ class Node:
                 # 送信するデータを取得
                 remaining_data = self.tcp_connections[connection_key]['data']
                 payload_size = traffic_info['payload_size']
-                next_sequence_number = self.tcp_connections[connection_key]['sequence_number']
-
-                # 送信データがある場合のみシーケンス番号を更新
                 data_to_send = remaining_data[:payload_size]
-                if data_to_send:
-                    next_sequence_number += len(data_to_send)  # データ長に基づいてシーケンス番号を更新
 
                 # パラメータ設定
                 data_packet_kwargs = {
                     "source_port": packet.header["destination_port"],
                     "destination_port": packet.header["source_port"],
-                    "sequence_number": next_sequence_number,
+                    "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
                     "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
                     "flags": "PSH"
                 }
@@ -664,7 +653,7 @@ class Node:
 
                 # シーケンス番号と送信済みデータを更新
                 self.tcp_connections[connection_key]['data'] = remaining_data[payload_size:]
-                self.tcp_connections[connection_key]['sequence_number'] = next_sequence_number  # 更新後のシーケンス番号を保存
+                self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)  # 更新後のシーケンス番号を保存
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
