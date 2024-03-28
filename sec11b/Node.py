@@ -665,10 +665,6 @@ class Node:
 
         connection_key = (destination_ip, kwargs.get('destination_port'))
         if connection_key in self.tcp_connections:
-
-            if data:
-                self.tcp_connections[connection_key]['sequence_number'] += len(data)
-
             # 送信するパケットの情報
             packet_info = {
                 'destination_ip': destination_ip,
