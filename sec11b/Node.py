@@ -257,7 +257,6 @@ class Node:
                 # ACKパケットの処理
                 if "ACK" in flags:
                     self.count_duplicated_ACK(packet)  # 重複ACKのカウント
-                    self.update_ACK_number(packet)  # ACK番号の更新
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
                         self.retransmit_packet(packet)  # パケットの再送
                     else:
@@ -330,10 +329,7 @@ class Node:
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
 
-        if 'PSH' in flags:  # データパケットの場合
-            new_ack_number = max(received_sequence_number + payload_length, current_ack_number)
-        else:  # ACKパケットの場合
-            new_ack_number = max(received_ack_number, current_ack_number)
+        new_ack_number = max(received_sequence_number + payload_length, current_ack_number)
 
         # ACK番号を更新
         if new_ack_number > current_ack_number:
