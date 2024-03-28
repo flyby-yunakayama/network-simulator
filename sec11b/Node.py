@@ -712,7 +712,6 @@ class Node:
                 'kwargs': kwargs
             }
             # 送信したパケット情報を履歴に記録
-            print(self.tcp_connections[connection_key])
             self.tcp_connections[connection_key]['packet_history'][kwargs['sequence_number']] = packet_info
 
             # パケットを送信
