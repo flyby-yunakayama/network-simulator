@@ -323,10 +323,11 @@ class Node:
         # 受信したパケットの情報を取得
         received_sequence_number = packet.header["sequence_number"]
         payload_length = len(packet.payload)
-        print(f"Received sequence number: {received_sequence_number}, Payload length: {payload_length}")
 
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
+
+        print(f"Received sequence number: {received_sequence_number}, Payload length: {payload_length}, Current ACK number: {current_ack_number}")
 
         new_ack_number = max(received_sequence_number + payload_length, current_ack_number)
 
