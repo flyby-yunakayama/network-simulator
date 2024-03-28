@@ -368,7 +368,10 @@ class Node:
             **control_packet_kwargs
         )
 
-        self.tcp_connections[connection_key] = {'sequence_number': sequence_number + 1, 'acknowledgment_number': acknowledgment_number + 1}
+        connection_info = self.tcp_connections[connection_key]
+        connection_info['sequence_number'] = sequence_number + 1
+        connection_info['acknowledgment_number'] = acknowledgment_number + 1
+        self.tcp_connections[connection_key] = connection_info
 
     def send_TCP_ACK(self, packet):
         # コネクションキーを生成
