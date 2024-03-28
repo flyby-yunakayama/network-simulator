@@ -364,6 +364,11 @@ class Node:
             **control_packet_kwargs
         )
 
+        connection_info = self.tcp_connections[connection_key]
+        connection_info['sequence_number'] = sequence_number + 1
+        connection_info['acknowledgment_number'] = acknowledgment_number + 1
+        self.tcp_connections[connection_key] = connection_info
+
     def send_TCP_ACK(self, packet):
         # コネクションキーを生成
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -699,7 +704,8 @@ class Node:
                 'kwargs': kwargs
             }
             # 送信したパケット情報を履歴に記録
-            self.tcp_connections[connection_key]['packet_history'][kwargs['sequence_number']] = packet_info
+            sequence_number = self.tcp_connections[connection_key]['sequence_number']
+            self.tcp_connections[connection_key]['packet_history'][sequence_number] = packet_info
 
             # パケットを送信
             self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
