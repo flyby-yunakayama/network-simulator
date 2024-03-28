@@ -233,13 +233,6 @@ class Node:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
 
-                # Retrieve the connection key
-                connection_key = (packet.header["source_ip"], packet.header["source_port"])
-                
-                # Ensure connection info exists
-                if connection_key not in self.tcp_connections:
-                    self.initialize_connection_info(connection_key=connection_key)
-
                 # Check TCP flags for processing
                 flags = packet.header.get('flags', '')
 
