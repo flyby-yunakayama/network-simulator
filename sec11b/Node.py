@@ -280,9 +280,9 @@ class Node:
         """Initialize TCP connection information for a new connection key."""
         self.tcp_connections[connection_key] = {
             'state': 'CLOSED',
-            'sequence_number': 0,
-            'acknowledgment_number': 0,
-            'data': b'',
+            'sequence_number': sequence_number,
+            'acknowledgment_number': acknowledgment_number,
+            'data': data,
             'last_ack_number': None,
             'duplicate_ack_count': 0,
             'packet_history': {}  # Packet history for potential retransmission
