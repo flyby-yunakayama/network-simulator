@@ -344,7 +344,9 @@ class Node:
         # 新しい接続情報を初期化
         if connection_key not in self.tcp_connections:
             self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=sequence_number, acknowledgment_number=acknowledgment_number, data=b'')
-            print(self.tcp_connections[connection_key])
+            print("SYN_RECEIVED")
+        print("SYN_RECEIVED")
+        print(self.tcp_connections[connection_key])
 
         # パラメータ設定
         control_packet_kwargs = {
@@ -590,8 +592,6 @@ class Node:
             if self.network_event_scheduler.tcp_verbose:
                 # TCPハンドシェイク開始の詳細情報を出力
                 print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{kwargs.get('destination_port')} from port {kwargs.get('source_port')}")
-                print(f"Flags set to: SYN")
-                print(f"Payload size for control packet: 0 bytes")
 
             connection_key = (destination_ip, kwargs.get('destination_port'))
             if connection_key not in self.tcp_connections:
