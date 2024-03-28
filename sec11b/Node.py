@@ -611,17 +611,26 @@ class Node:
                 print(f"Flags set to: SYN")
                 print(f"Payload size for control packet: 0 bytes")
 
-            # SYNフラグをセットしてTCPパケットを送信
-            control_packet_kwargs = kwargs.copy()
-            control_packet_kwargs.update({
-                "flags": "SYN",
-                "payload_size": 0  # コントロールパケットにはペイロードがない
-            })
-            self._send_tcp_packet(destination_ip, destination_mac, b"", **control_packet_kwargs)
-            
-            # 接続状態を「SYN_SENT」に更新
             connection_key = (destination_ip, kwargs.get('destination_port'))
-            self.update_tcp_connection_state(connection_key, "SYN_SENT")
+            if connection_key not in self.tcp_connections:
+                self.initialize_connection_info(connection_key=connection_key, state='SYN_SENT', sequence_number=randint(1, 10000), acknowledgment_number=0, data=b'')
+
+            # SYNフラグをセットしてTCPパケットを送信
+            control_packet_kwargs = {
+                "flags": "SYN",
+                "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
+                "acknowledgment_number": 0,
+                "source_port": kwargs.get('source_port'),
+                "destination_port": kwargs.get('destination_port'),
+                "payload_size": 0
+            }
+            self._send_tcp_packet(
+                destination_ip=destination_ip,
+                destination_mac=destination_mac,
+                data=b"",
+                **control_packet_kwargs
+            )
+
             if self.network_event_scheduler.tcp_verbose:
                 # 接続状態の更新情報を出力
                 print(f"Connection state updated to SYN_SENT for {destination_ip}:{kwargs.get('destination_port')}")
