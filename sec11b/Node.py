@@ -373,11 +373,14 @@ class Node:
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
 
         if connection_key in self.tcp_connections:
+            received_sequence_number = packet.header["sequence_number"]
+            acknowledgment_number = received_sequence_number + 1  # 受信したパケットのシーケンス番号+1をACK番号として設定
+
             # パラメータ設定
             control_packet_kwargs = {
                 "flags": "ACK",
                 "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
-                "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
+                "acknowledgment_number": acknowledgment_number,
                 "source_port": packet.header["destination_port"],
                 "destination_port": packet.header["source_port"]
             }
@@ -387,6 +390,10 @@ class Node:
                 data=b"",
                 **control_packet_kwargs
             )
+
+            # 受信したパケットに対するACK番号をローカルのtcp_connectionsに更新
+            self.tcp_connections[connection_key]["acknowledgment_number"] = acknowledgment_number
+
         else:
             if self.network_event_scheduler.tcp_verbose:
                 print("Error: Connection key not found in tcp_connections.")
