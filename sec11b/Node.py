@@ -405,14 +405,15 @@ class Node:
         TCP接続を確立する処理です。接続が確立されたら、保存しておいたデータがあれば送信します。
         """
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        if connection_key in self.tcp_connections and self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
-            return
-        else:
-            self.update_tcp_connection_state(connection_key, "ESTABLISHED")
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
-            # シーケンス番号を更新
-            self.tcp_connections[connection_key]["sequence_number"] += 1
+        if connection_key in self.tcp_connections:
+            if self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
+                return
+            else:
+                self.update_tcp_connection_state(connection_key, "ESTABLISHED")
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Establishing TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}")
+                # シーケンス番号を更新
+                self.tcp_connections[connection_key]["sequence_number"] += 1
 
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
@@ -708,6 +709,7 @@ class Node:
                 'kwargs': kwargs
             }
             # 送信したパケット情報を履歴に記録
+            print(self.tcp_connections[connection_key])
             self.tcp_connections[connection_key]['packet_history'][kwargs['sequence_number']] = packet_info
 
             # パケットを送信
