@@ -252,6 +252,7 @@ class Node:
                     else:
                         self.establish_TCP_connection(packet)  # 接続情報を更新
                         self.send_TCP_SYN_ACK(packet)  # SYN-ACKを送信
+                    return
 
                 # ACKパケットの処理
                 if "ACK" in flags:
