@@ -279,7 +279,7 @@ class Node:
     def initialize_connection_info(self, connection_key=None, state='CLOSED', sequence_number=0, acknowledgment_number=0, data=b''):
         """Initialize TCP connection information for a new connection key."""
         self.tcp_connections[connection_key] = {
-            'state': 'CLOSED',
+            'state': state,
             'sequence_number': sequence_number,
             'acknowledgment_number': acknowledgment_number,
             'data': data,
@@ -343,21 +343,21 @@ class Node:
 
 
     def send_TCP_SYN_ACK(self, packet):
-        # 受信したSYNパケットのシーケンス番号を取得
-        syn_sequence_number = packet.header["sequence_number"]
-        
-        # コネクションキーを生成
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         
+        sequence_number = randint(1, 10000)
+        # 受信したSYNパケットのシーケンス番号に1を加えたものがACK番号
+        acknowledgment_number = packet.header["sequence_number"] + 1
+
         # 新しい接続情報を初期化
         if connection_key not in self.tcp_connections:
-            self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=randint(1, 10000), acknowledgment_number=(syn_sequence_number + 1), data=b'')
-        
+            self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=sequence_number, acknowledgment_number=acknowledgment_number, data=b'')
+
         # パラメータ設定
         control_packet_kwargs = {
             "flags": "SYN,ACK",
-            "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
-            "acknowledgment_number": syn_sequence_number + 1,
+            "sequence_number": sequence_number,
+            "acknowledgment_number": acknowledgment_number,
             "source_port": packet.header["destination_port"],
             "destination_port": packet.header["source_port"]
         }
@@ -367,6 +367,8 @@ class Node:
             data=b"",
             **control_packet_kwargs
         )
+
+        self.tcp_connections[connection_key] = {'sequence_number': sequence_number + 1, 'acknowledgment_number': acknowledgment_number + 1}
 
     def send_TCP_ACK(self, packet):
         # コネクションキーを生成
