@@ -646,11 +646,6 @@ class Node:
                 payload_size = traffic_info['payload_size']
                 next_sequence_number = self.tcp_connections[connection_key]['sequence_number']
 
-                print(f"Sending data packet with payload size {payload_size} bytes")
-                print(f"Remaining data: {len(remaining_data)} bytes")
-                print(f"Next sequence number: {next_sequence_number}")
-                print(f"ACK number: {packet.header['acknowledgment_number']}")
-                
                 # 送信データがある場合のみシーケンス番号を更新
                 data_to_send = remaining_data[:payload_size]
                 if data_to_send:
@@ -864,7 +859,7 @@ class Node:
         # self.tcp_connectionsにコネクションキーが存在しない場合、新しく追加する
         if connection_key not in self.tcp_connections:
             data = b'X' * (int(bitrate * duration) // 8)
-            self.initialize_connection_info(connection_key=connection_key, data=data)
+            self.initialize_connection_info(connection_key=connection_key, sequence_number=randint(1, 10000), data=data)
         
         # トラフィック情報をself.tcp_connectionsに保存
         self.tcp_connections[connection_key]['traffic_info'] = {
