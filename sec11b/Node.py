@@ -269,9 +269,9 @@ class Node:
                     self.send_TCP_ACK(packet)  # ACKを送信
                     self.process_data_packet(packet)  # データパケットの処理
 
-                # Process FIN packets
+                # FINパケットの処理
                 if "FIN" in flags:
-                    self.terminate_TCP_connection(packet)
+                    self.terminate_TCP_connection(packet)  # TCP接続を終了
 
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
@@ -645,6 +645,11 @@ class Node:
                 remaining_data = self.tcp_connections[connection_key]['data']
                 payload_size = traffic_info['payload_size']
                 next_sequence_number = self.tcp_connections[connection_key]['sequence_number']
+
+                print(f"Sending data packet with payload size {payload_size} bytes")
+                print(f"Remaining data: {len(remaining_data)} bytes")
+                print(f"Next sequence number: {next_sequence_number}")
+                print(f"ACK number: {packet.header['acknowledgment_number']}")
                 
                 # 送信データがある場合のみシーケンス番号を更新
                 data_to_send = remaining_data[:payload_size]
