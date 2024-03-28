@@ -322,9 +322,8 @@ class Node:
 
         # 受信したパケットの情報を取得
         received_sequence_number = packet.header["sequence_number"]
-        received_ack_number = packet.header["acknowledgment_number"]
-        flags = packet.header.get('flags', '')
         payload_length = len(packet.payload)
+        print(f"Received sequence number: {received_sequence_number}, Payload length: {payload_length}")
 
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
