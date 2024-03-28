@@ -695,10 +695,6 @@ class Node:
             if data:
                 self.tcp_connections[connection_key]['sequence_number'] += len(data)
 
-            # パケット送信前のシーケンス番号とACK番号を設定
-            kwargs['sequence_number'] = self.tcp_connections[connection_key]['sequence_number']
-            kwargs['acknowledgment_number'] = self.tcp_connections[connection_key].get('acknowledgment_number', 0)
-
             # 送信するパケットの情報
             packet_info = {
                 'destination_ip': destination_ip,
