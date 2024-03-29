@@ -341,6 +341,8 @@ class Node:
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
 
+        print(f"Received sequence number: {received_sequence_number}, payload length: {payload_length}, current ACK number: {current_ack_number}")
+
         # 受信したシーケンス番号をセットに追加
         received_sequence_numbers = self.tcp_connections[connection_key].setdefault('received_sequence_numbers', set())
         for seq in range(received_sequence_number, received_sequence_number + payload_length):
