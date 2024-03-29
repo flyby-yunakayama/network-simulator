@@ -24,7 +24,7 @@ class Node:
         self.tcp_connections = {}  # 接続状態を追跡する辞書
         self.window_size = 10  # 例としてウィンドウサイズを10に設定
         self.max_attempts = 5  # パケット再送の最大試行回数
-        self.windows = []  # ウィンドウ内のパケットのシーケンス番号を追跡
+        self.windows = {}  # ウィンドウ内のパケットのシーケンス番号を追跡
         self.timeout_interval = 5  # タイムアウトまでの時間(秒)
         self.scheduled_timeouts = {}  # タイムアウトイベントを管理
         self.pending_tcp_data = {}  # 未確立のTCP接続に対するデータを一時的に保存する辞書
@@ -670,7 +670,7 @@ class Node:
                     # 送信したパケット情報を履歴に記録
                     sequence_number = self.tcp_connections[connection_key]['sequence_number']
                     if connection_key not in self.windows:
-                        self.windows[connection_key] = {}
+                        self.windows[connection_key] = []
                     self.windows[connection_key][sequence_number] = {
                         "packet_info": {
                             'destination_ip': packet.header["source_ip"],
