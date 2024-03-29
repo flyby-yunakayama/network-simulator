@@ -22,10 +22,10 @@ class Node:
         self.used_ports = set()  # 使用中のポート番号を保持するセット
         self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
         self.tcp_connections = {}  # 接続状態を追跡する辞書
-        self.window_size = 10  # 例としてウィンドウサイズを10に設定
-        self.max_attempts = 5  # パケット再送の最大試行回数
+        self.window_size = 4  # ウィンドウサイズ
+        self.max_attempts = 3  # パケット再送の最大試行回数
         self.windows = {}  # ウィンドウ内のパケットのシーケンス番号を追跡
-        self.timeout_interval = 5  # タイムアウトまでの時間(秒)
+        self.timeout_interval = 3  # タイムアウトまでの時間(秒)
         self.scheduled_timeouts = {}  # タイムアウトイベントを管理
         self.pending_tcp_data = {}  # 未確立のTCP接続に対するデータを一時的に保存する辞書
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
