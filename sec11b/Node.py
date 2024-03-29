@@ -315,7 +315,7 @@ class Node:
             self.cancel_timeout(connection_key, ack_number)
             del self.windows[connection_key][ack_number]
             # ウィンドウに空きができたので、新たなパケットを送信可能
-            self.send_tcp_data_packet(self, packet)
+            self.send_tcp_data_packet(packet)
 
     def check_duplication_threshold(self, connection_key):
         if connection_key in self.tcp_connections:
