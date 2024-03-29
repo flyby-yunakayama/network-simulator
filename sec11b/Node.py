@@ -335,11 +335,6 @@ class Node:
         if connection_key not in self.tcp_connections:
             return  # コネクション情報が存在しない場合は処理をスキップ
 
-        # コネクション情報にreceived_sequence_numbersがなければ初期化する
-        if 'received_sequence_numbers' not in self.tcp_connections[connection_key]:
-            self.tcp_connections[connection_key]['received_sequence_numbers'] = set()
-
-        received_sequence_numbers = self.tcp_connections[connection_key]['received_sequence_numbers']
         received_sequence_number = packet.header["sequence_number"]
         payload_length = len(packet.payload)
 
@@ -347,6 +342,7 @@ class Node:
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
 
         # 受信したシーケンス番号をセットに追加
+        received_sequence_numbers = self.tcp_connections[connection_key].setdefault('received_sequence_numbers', set())
         for seq in range(received_sequence_number, received_sequence_number + payload_length):
             received_sequence_numbers.add(seq)
 
@@ -360,6 +356,9 @@ class Node:
             self.tcp_connections[connection_key]["acknowledgment_number"] = next_expected_seq
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated ACK number to {next_expected_seq} for connection {connection_key}.")
+        else:
+            # 受け取っていないパケットが存在する場合、現在のACK番号をそのまま使用
+            pass
 
     def send_TCP_SYN_ACK(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
