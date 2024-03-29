@@ -301,14 +301,17 @@ class Node:
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
 
         # ACK番号に一致するパケットをウィンドウから削除
-        if ack_number in self.windows[connection_key]:
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"ACK number {ack_number} received for connection {connection_key}.")
-            # タイムアウトイベントのキャンセル
-            self.cancel_timeout(connection_key, ack_number)
-            del self.windows[connection_key][ack_number]
+        for seq, packet_info in list(self.windows[connection_key].items()):
+            if packet_info["expected_ack_number"] <= ack_number:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
+                # タイムアウトイベントのキャンセル
+                self.cancel_timeout(connection_key, seq)
+                del self.windows[connection_key][seq]
+
             # ウィンドウに空きができたので、新たなパケットを送信可能
-            self.send_tcp_data_packet(packet)
+            if self.tcp_connections[connection_key]['data']:
+                self.send_tcp_data_packet(packet)
 
     def check_duplication_threshold(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -691,6 +694,7 @@ class Node:
 
                     # 送信したパケット情報を履歴に記録
                     sequence_number = self.tcp_connections[connection_key]['sequence_number']
+                    expected_ack_number = sequence_number + len(data_to_send)
                     self.windows[connection_key][sequence_number] = {
                         "packet_info": {
                             'destination_ip': packet.header["source_ip"],
@@ -698,6 +702,7 @@ class Node:
                             'data': data_to_send,
                             'kwargs': data_packet_kwargs
                         },
+                        "expected_ack_number": expected_ack_number,
                         "attempt": attempt
                     }
                     # タイムアウトイベントをスケジュール
