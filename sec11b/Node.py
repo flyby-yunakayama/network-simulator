@@ -22,6 +22,11 @@ class Node:
         self.used_ports = set()  # 使用中のポート番号を保持するセット
         self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
         self.tcp_connections = {}  # 接続状態を追跡する辞書
+        self.window_size = 10  # 例としてウィンドウサイズを10に設定
+        self.max_attempts = 5  # パケット再送の最大試行回数
+        self.windows = []  # ウィンドウ内のパケットのシーケンス番号を追跡
+        self.timeout_interval = 5  # タイムアウトまでの時間(秒)
+        self.scheduled_timeouts = {}  # タイムアウトイベントを管理
         self.pending_tcp_data = {}  # 未確立のTCP接続に対するデータを一時的に保存する辞書
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル
         self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
@@ -296,6 +301,17 @@ class Node:
             # 新しいACK番号の場合は、カウントをリセットしてACK番号を更新
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
             self.tcp_connections[connection_key]["last_ack_number"] = current_ack_number
+            # 対応するパケットをウィンドウから削除
+            self.handle_acknowledgement(packet, connection_key, current_ack_number)
+
+    def handle_acknowledgement(self, packet, connection_key, ack_number):
+        # ACK番号に一致するパケットをウィンドウから削除
+        if ack_number in self.windows[connection_key]:
+            # タイムアウトイベントのキャンセル
+            self.cancel_timeout(connection_key, ack_number)
+            del self.windows[connection_key][ack_number]
+            # ウィンドウに空きができたので、新たなパケットを送信可能
+            self.send_tcp_data_packet(self, packet)
 
     def check_duplication_threshold(self, connection_key):
         if connection_key in self.tcp_connections:
@@ -618,9 +634,8 @@ class Node:
         header_size = udp_header_size + ip_header_size
         self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="UDP", **kwargs)
 
-    def send_tcp_data_packet(self, packet):
+    def send_tcp_data_packet(self, packet, attempt=0):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        
         if connection_key in self.tcp_connections:
             if 'traffic_info' not in self.tcp_connections[connection_key]:
                 if self.network_event_scheduler.tcp_verbose:
@@ -629,31 +644,51 @@ class Node:
 
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
-                # 送信するデータを取得
-                remaining_data = self.tcp_connections[connection_key]['data']
-                payload_size = traffic_info['payload_size']
-                data_to_send = remaining_data[:payload_size]
+                if len(self.windows[connection_key]) < self.window_size:  # ウィンドウサイズ未満の場合
+                    # 送信するデータを取得
+                    remaining_data = self.tcp_connections[connection_key]['data']
+                    payload_size = traffic_info['payload_size']
+                    data_to_send = remaining_data[:payload_size]
 
-                # パラメータ設定
-                data_packet_kwargs = {
-                    "source_port": packet.header["destination_port"],
-                    "destination_port": packet.header["source_port"],
-                    "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
-                    "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
-                    "flags": "PSH"
-                }
+                    # パラメータ設定
+                    data_packet_kwargs = {
+                        "source_port": packet.header["destination_port"],
+                        "destination_port": packet.header["source_port"],
+                        "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
+                        "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
+                        "flags": "PSH"
+                    }
 
-                # パケットを送信
-                self._send_tcp_packet(
-                    destination_ip=packet.header["source_ip"],
-                    destination_mac=packet.header["source_mac"],
-                    data=data_to_send,
-                    **data_packet_kwargs
-                )
+                    # パケットを送信
+                    self._send_tcp_packet(
+                        destination_ip=packet.header["source_ip"],
+                        destination_mac=packet.header["source_mac"],
+                        data=data_to_send,
+                        **data_packet_kwargs
+                    )
 
-                # シーケンス番号と送信済みデータを更新
-                self.tcp_connections[connection_key]['data'] = remaining_data[payload_size:]
-                self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)  # 更新後のシーケンス番号を保存
+                    # 送信したパケット情報を履歴に記録
+                    sequence_number = self.tcp_connections[connection_key]['sequence_number']
+                    if connection_key not in self.windows:
+                        self.windows[connection_key] = {}
+                    self.windows[connection_key][sequence_number] = {
+                        "packet_info": {
+                            'destination_ip': packet.header["source_ip"],
+                            'destination_mac': packet.header["source_mac"],
+                            'data': data_to_send,
+                            'kwargs': data_packet_kwargs
+                        },
+                        "attempt": attempt
+                    }
+                    # タイムアウトイベントをスケジュール
+                    self.schedule_timeout(connection_key, sequence_number)
+
+                    # シーケンス番号と送信済みデータを更新
+                    self.tcp_connections[connection_key]['data'] = remaining_data[payload_size:]
+                    self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)  # 更新後のシーケンス番号を保存
+
+                    # 再帰的に呼び出し
+                    self.send_tcp_data_packet(packet, attempt)
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
@@ -665,24 +700,47 @@ class Node:
 
         connection_key = (destination_ip, kwargs.get('destination_port'))
         if connection_key in self.tcp_connections:
-            # 送信するパケットの情報
-            packet_info = {
-                'destination_ip': destination_ip,
-                'destination_mac': destination_mac,
-                'data': data,
-                'header_size': header_size,
-                'kwargs': kwargs
-            }
-            # 送信したパケット情報を履歴に記録
-            sequence_number = self.tcp_connections[connection_key]['sequence_number']
-            self.tcp_connections[connection_key]['packet_history'][sequence_number] = packet_info
-
             # パケットを送信
             self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
 
             # tcp_verboseがtrueの場合、送信情報を表示
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Sending TCP packet from {self.node_id} to {destination_ip}:{kwargs.get('destination_port')} with Flags: {kwargs.get('flags')}, Data Length: {len(data)}, Sequence Number: {kwargs.get('sequence_number')}, Acknowledgment Number: {kwargs.get('acknowledgment_number')}, ")
+
+    def schedule_timeout(self, connection_key, sequence_number):
+        event_time = self.network_event_scheduler.current_time + self.timeout_interval
+        # タイムアウトイベントにconnection_keyも渡す
+        event_id = self.scheduler.schedule_event(event_time, self.handle_timeout, connection_key, sequence_number)
+
+        # イベントIDを接続情報に保存
+        if 'timeout_event_ids' not in self.tcp_connections[connection_key]:
+            self.tcp_connections[connection_key]['timeout_event_ids'] = []
+        self.tcp_connections[connection_key]['timeout_event_ids'].append(event_id)
+
+    def handle_timeout(self, connection_key, sequence_number):
+        """
+        タイムアウトしたパケットに対する処理を行います。
+        """
+        if connection_key in self.windows and sequence_number in self.windows[connection_key]:
+            attempt = self.windows[connection_key][sequence_number]["attempt"]
+            packet_info = self.windows[connection_key][sequence_number]["packet_info"]
+            
+            # 再送試行回数をチェック
+            if attempt < self.max_attempts - 1:
+                # パケット情報から再送するパケットを再構築
+                self.retransmit_packet(connection_key, sequence_number)
+                self.windows[connection_key][sequence_number]["attempt"] += 1
+            else:
+                # 最大試行回数に達した場合、パケットをドロップ
+                print(f"Maximum attempts reached for sequence number: {sequence_number}. Dropping packet.")
+                del self.windows[connection_key][sequence_number]  # タイムアウトしたパケットをウィンドウから削除
+
+    def cancel_timeout(self, connection_key, sequence_number):
+        if connection_key in self.tcp_connections and 'timeout_event_ids' in self.tcp_connections[connection_key]:
+            for event_id in self.tcp_connections[connection_key]['timeout_event_ids']:
+                self.network_event_scheduler.cancel_event(event_id)
+            # イベントIDリストをクリア
+            self.tcp_connections[connection_key]['timeout_event_ids'] = []
 
     def retransmit_packet(self, connection_key, sequence_number):
         if connection_key in self.tcp_connections:
@@ -692,9 +750,8 @@ class Node:
                 destination_ip = packet_info['destination_ip']
                 destination_mac = packet_info['destination_mac']
                 data = packet_info['data']
-                header_size = packet_info['header_size']
                 kwargs = packet_info['kwargs']
-                self._send_ip_packet_data(destination_ip, destination_mac, data, header_size, protocol="TCP", **kwargs)
+                self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
             else:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"No packet with sequence number {sequence_number} found in history for retransmission.")

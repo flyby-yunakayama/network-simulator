@@ -9,6 +9,7 @@ class NetworkEventScheduler:
         self.current_time = 0
         self.events = []
         self.event_id = 0
+        self.cancelled_events = set()  # キャンセルされたイベントIDを保持するセット
         self.packet_logs = {}
         self.log_enabled = log_enabled
         self.verbose = verbose
@@ -89,6 +90,11 @@ class NetworkEventScheduler:
         event = (event_time, self.event_id, callback, args)
         heapq.heappush(self.events, event)
         self.event_id += 1
+        return self.event_id - 1  # スケジュールしたイベントのIDを返す
+
+    def cancel_event(self, event_id):
+        # 指定されたイベントIDをキャンセルされたイベントのセットに追加
+        self.cancelled_events.add(event_id)
 
     def log_packet_info(self, packet, event_type, node_id=None):
         if self.log_enabled:
@@ -225,12 +231,18 @@ class NetworkEventScheduler:
 
     def run(self):
         while self.events:
-            event_time, _, callback, args = heapq.heappop(self.events)
+            event_time, event_id, callback, args = heapq.heappop(self.events)
+            if event_id in self.cancelled_events:
+                self.cancelled_events.remove(event_id)  # キャンセルされたイベントをセットから削除
+                continue  # キャンセルされたイベントはスキップ
             self.current_time = event_time
             callback(*args)
 
     def run_until(self, end_time):
         while self.events and self.events[0][0] <= end_time:
             event_time, event_id, callback, args = heapq.heappop(self.events)
+            if event_id in self.cancelled_events:
+                self.cancelled_events.remove(event_id)  # キャンセルされたイベントをセットから削除
+                continue  # キャンセルされたイベントはスキップ
             self.current_time = event_time
             callback(*args)
