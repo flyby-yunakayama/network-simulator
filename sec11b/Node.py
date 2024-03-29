@@ -359,8 +359,6 @@ class Node:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated ACK number to {next_expected_seq} for connection {connection_key}.")
 
-        print(self.node_id, " received_seq: ", received_sequence_number, " current:", current_ack_number, " new:", next_expected_seq)
-
     def send_TCP_SYN_ACK(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         
