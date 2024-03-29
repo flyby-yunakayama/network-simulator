@@ -644,6 +644,9 @@ class Node:
 
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
+                if connection_key not in self.windows:
+                    self.windows[connection_key] = []
+
                 if len(self.windows[connection_key]) < self.window_size:  # ウィンドウサイズ未満の場合
                     # 送信するデータを取得
                     remaining_data = self.tcp_connections[connection_key]['data']
@@ -669,8 +672,6 @@ class Node:
 
                     # 送信したパケット情報を履歴に記録
                     sequence_number = self.tcp_connections[connection_key]['sequence_number']
-                    if connection_key not in self.windows:
-                        self.windows[connection_key] = []
                     self.windows[connection_key][sequence_number] = {
                         "packet_info": {
                             'destination_ip': packet.header["source_ip"],
