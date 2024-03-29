@@ -711,7 +711,7 @@ class Node:
     def schedule_timeout(self, connection_key, sequence_number):
         event_time = self.network_event_scheduler.current_time + self.timeout_interval
         # タイムアウトイベントにconnection_keyも渡す
-        event_id = self.scheduler.schedule_event(event_time, self.handle_timeout, connection_key, sequence_number)
+        event_id = self.network_event_scheduler.schedule_event(event_time, self.handle_timeout, connection_key, sequence_number)
 
         # イベントIDを接続情報に保存
         if 'timeout_event_ids' not in self.tcp_connections[connection_key]:
