@@ -310,6 +310,9 @@ class Node:
 
         # ACK番号に一致するパケットをウィンドウから削除
         if ack_number in self.windows[connection_key]:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"ACK number {ack_number} received for connection {connection_key}.")
+                print(self.windows[connection_key][ack_number])
             # タイムアウトイベントのキャンセル
             self.cancel_timeout(connection_key, ack_number)
             del self.windows[connection_key][ack_number]
