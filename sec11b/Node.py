@@ -353,7 +353,7 @@ class Node:
             new_ack_number = current_ack_number
 
         # ACK番号を更新
-        print("exptected: ", expected_sequence_number, " current:", current_ack_number, " new:", new_ack_number)
+        print("received_seq: ", received_sequence_number, " current:", current_ack_number, " new:", new_ack_number)
         if new_ack_number != current_ack_number:
             self.tcp_connections[connection_key]["acknowledgment_number"] = new_ack_number
             if self.network_event_scheduler.tcp_verbose:
