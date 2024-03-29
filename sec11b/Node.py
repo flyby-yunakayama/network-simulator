@@ -645,7 +645,7 @@ class Node:
             traffic_info = self.tcp_connections[connection_key]['traffic_info']
             if self.network_event_scheduler.current_time < traffic_info['end_time']:
                 if connection_key not in self.windows:
-                    self.windows[connection_key] = []
+                    self.windows[connection_key] = {}  # connection_keyごとの辞書を初期化
 
                 if len(self.windows[connection_key]) < self.window_size:  # ウィンドウサイズ未満の場合
                     # 送信するデータを取得
