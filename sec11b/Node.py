@@ -293,6 +293,7 @@ class Node:
         # 最後に受け取ったACK番号を取得
         last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
 
+        print(f"{self.node_id} Last ACK number: {last_ack_number}, Current ACK number: {current_ack_number}, self.tcp_connections[connection_key]["duplicate_ack_count"]")
         if current_ack_number == last_ack_number:
             # 重複ACKとみなしてカウントアップ
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
