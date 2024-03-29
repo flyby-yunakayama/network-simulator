@@ -281,7 +281,6 @@ class Node:
             'data': data,
             'last_ack_number': None,
             'duplicate_ack_count': 0,
-            'packet_history': {}  # Packet history for potential retransmission
         }
 
     def count_duplicated_ACK(self, packet):
@@ -734,7 +733,6 @@ class Node:
             if attempt < self.max_attempts - 1:
                 # パケット情報から再送するパケットを再構築
                 self.retransmit_packet(connection_key, sequence_number)
-                self.windows[connection_key][sequence_number]["attempt"] += 1
             else:
                 # 最大試行回数に達した場合、パケットをドロップ
                 print(f"Maximum attempts reached for sequence number: {sequence_number}. Dropping packet.")
@@ -748,18 +746,24 @@ class Node:
             self.tcp_connections[connection_key]['timeout_event_ids'] = []
 
     def retransmit_packet(self, connection_key, sequence_number):
-        if connection_key in self.tcp_connections:
-            packet_history = self.tcp_connections[connection_key]['packet_history']
-            if sequence_number in packet_history:
-                packet_info = packet_history[sequence_number]
-                destination_ip = packet_info['destination_ip']
-                destination_mac = packet_info['destination_mac']
-                data = packet_info['data']
-                kwargs = packet_info['kwargs']
-                self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
-            else:
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"No packet with sequence number {sequence_number} found in history for retransmission.")
+        if connection_key in self.windows and sequence_number in self.windows[connection_key]:
+            # パケット情報を windows 辞書から取得
+            packet_info = self.windows[connection_key][sequence_number]["packet_info"]
+            destination_ip = packet_info['destination_ip']
+            destination_mac = packet_info['destination_mac']
+            data = packet_info['data']
+            kwargs = packet_info['kwargs']
+            # パケットを再送信
+            self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
+            # 再送したので、再送試行回数をインクリメント
+            self.windows[connection_key][sequence_number]["attempt"] += 1
+            # 再送試行回数が閾値を超えた場合
+            if self.windows[connection_key][sequence_number]["attempt"] >= self.max_attempts:
+                print(f"Maximum retransmission attempts reached for packet with sequence number {sequence_number}. Dropping the packet.")
+                del self.windows[connection_key][sequence_number]
+        else:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"No packet with sequence number {sequence_number} found in history for retransmission.")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, header_size, protocol, **kwargs):
         """
