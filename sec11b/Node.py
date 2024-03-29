@@ -255,7 +255,7 @@ class Node:
                 if "ACK" in flags:
                     self.count_duplicated_ACK(packet)  # 重複ACKのカウント
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
-                        self.retransmit_packet(packet)  # パケットの再送
+                        self.check_and_retransmit_packets(packet)  # パケットの再送
                     else:
                         self.send_tcp_data_packet(packet)  # パケットの送信
 
@@ -321,8 +321,6 @@ class Node:
 
     def check_duplication_threshold(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        n = self.tcp_connections[connection_key]["duplicate_ack_count"]
-        print(f"{self.node_id} duplication: {n}")
         if connection_key in self.tcp_connections:
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
                 if self.network_event_scheduler.tcp_verbose:
@@ -331,6 +329,14 @@ class Node:
             else:
                 return False
         return False
+
+    def check_and_retransmit_packets(self, packet):
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        sequence_number = self.find_retransmit_sequence_number(connection_key)
+        if sequence_number is not None:
+            self.retransmit_packet(connection_key, sequence_number)
+        else:
+            print(f"No packets to retransmit for connection {connection_key}")
 
     def update_ACK_number(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -765,10 +771,21 @@ class Node:
             # イベントIDリストをクリア
             self.tcp_connections[connection_key]['timeout_event_ids'] = []
 
+    def find_retransmit_sequence_number(self, connection_key):
+        # この接続のウィンドウ内で最も小さい未ACKのシーケンス番号を探す
+        if connection_key in self.windows:
+            unacknowledged_sequence_numbers = self.windows[connection_key].keys()
+            if unacknowledged_sequence_numbers:
+                # シーケンス番号が未ACKのものだけを抽出し、最小のものを返す
+                min_unack_seq_num = min(unacknowledged_sequence_numbers)
+                return min_unack_seq_num
+        return None  # 再送すべきパケットがない場合
+
     def retransmit_packet(self, connection_key, sequence_number):
         if connection_key in self.windows and sequence_number in self.windows[connection_key]:
             # パケット情報を windows 辞書から取得
             packet_info = self.windows[connection_key][sequence_number]["packet_info"]
+
             destination_ip = packet_info['destination_ip']
             destination_mac = packet_info['destination_mac']
             data = packet_info['data']
