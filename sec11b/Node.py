@@ -253,7 +253,7 @@ class Node:
 
                 # ACKパケットの処理
                 if "ACK" in flags:
-                    self.count_duplicated_ACK(packet)  # 重複ACKのカウント
+                    self.handle_acknowledgement(packet)  # 重複ACKのカウント
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
                         self.check_and_retransmit_packets(packet)  # パケットの再送
                     else:
@@ -283,31 +283,22 @@ class Node:
             'duplicate_ack_count': 0,
         }
 
-    def count_duplicated_ACK(self, packet):
+    def handle_acknowledgement(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        current_ack_number = packet.header["acknowledgment_number"]
+        ack_number = packet.header["acknowledgment_number"]
 
         if connection_key not in self.tcp_connections:
             return  # コネクションが存在しない場合は何もしない
-
-        # 最後に受け取ったACK番号を取得
-        last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
-
-        if current_ack_number == last_ack_number:
-            # 重複ACKとみなしてカウントアップ
-            self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
-        else:
-            # 新しいACK番号の場合は、カウントをリセットしてACK番号を更新
-            self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
-            self.tcp_connections[connection_key]["last_ack_number"] = current_ack_number
-            # 対応するパケットをウィンドウから削除
-            self.handle_acknowledgement(packet, current_ack_number)
-
-    def handle_acknowledgement(self, packet, ack_number):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        
         if connection_key not in self.windows:
             self.windows[connection_key] = {}  # 必要に応じて初期化、またはreturn文で処理をスキップ
-            return  # この場合はここで処理を終了
+
+        if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
+            # 重複ACKのカウントを増やす
+            self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
+        else:
+            self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
+            self.tcp_connections[connection_key]["last_ack_number"] = ack_number
 
         # ACK番号に一致するパケットをウィンドウから削除
         if ack_number in self.windows[connection_key]:
