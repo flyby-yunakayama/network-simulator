@@ -25,7 +25,7 @@ class Node:
         self.window_size = 4  # ウィンドウサイズ
         self.max_attempts = 3  # パケット再送の最大試行回数
         self.windows = {}  # ウィンドウ内のパケットのシーケンス番号を追跡
-        self.timeout_interval = 3  # タイムアウトまでの時間(秒)
+        self.timeout_interval = 2  # タイムアウトまでの時間(秒)
         self.scheduled_timeouts = {}  # タイムアウトイベントを管理
         self.pending_tcp_data = {}  # 未確立のTCP接続に対するデータを一時的に保存する辞書
         self.arp_table = {}  # IPアドレスとMACアドレスのマッピングを保持するARPテーブル

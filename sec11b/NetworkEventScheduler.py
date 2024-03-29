@@ -147,7 +147,7 @@ class NetworkEventScheduler:
             data["sent_bytes"] += log["size"]
             data["min_creation_time"] = min(data["min_creation_time"], log["creation_time"])
 
-            if "arrival_time" in log and log["arrival_time"] is not None:
+            if "arrival_time" in log and log["arrival_time"] is not None and log["arrival_time"] > 0:
                 data["received_packets"] += 1
                 data["received_bytes"] += log["size"]
                 data["total_delay"] += log["arrival_time"] - log["creation_time"]
