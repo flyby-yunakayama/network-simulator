@@ -334,32 +334,51 @@ class Node:
         if connection_key not in self.tcp_connections:
             return  # コネクション情報が存在しない場合は処理をスキップ
 
-        # 受信したパケットの情報を取得
+        # コネクション情報にreceived_sequence_numbersがなければ初期化する
+        if 'received_sequence_numbers' not in self.tcp_connections[connection_key]:
+            self.tcp_connections[connection_key]['received_sequence_numbers'] = set()
+
+        received_sequence_numbers = self.tcp_connections[connection_key]['received_sequence_numbers']
         received_sequence_number = packet.header["sequence_number"]
         payload_length = len(packet.payload)
 
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
 
+        # 受信したシーケンス番号をセットに追加
+        for seq in range(received_sequence_number, received_sequence_number + payload_length):
+            received_sequence_numbers.add(seq)
+
+        # 期待する次のシーケンス番号を見つける
+        next_expected_seq = current_ack_number
+        while next_expected_seq in received_sequence_numbers:
+            next_expected_seq += 1
+
+        # ACK番号を更新（受信したシーケンス番号が連続している場合のみ）
+        if next_expected_seq != current_ack_number:
+            self.tcp_connections[connection_key]["acknowledgment_number"] = next_expected_seq
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Updated ACK number to {next_expected_seq} for connection {connection_key}.")
+
         # 新しいACK番号の計算
         # 受信したパケットが連続しているかどうかを確認し、連続していれば新しいACK番号を計算
         # 連続していない（受け取っていないパケットが存在する）場合は、現在のACK番号をそのまま使用
-        expected_sequence_number = current_ack_number
-        if received_sequence_number == expected_sequence_number:
-            # 連続したパケットを受信した場合、新しいACK番号を計算
-            new_ack_number = received_sequence_number + payload_length
-        else:
-            # 受け取っていないパケットが存在する場合、現在のACK番号をそのまま使用
-            new_ack_number = current_ack_number
+        #expected_sequence_number = current_ack_number
+        #if received_sequence_number == expected_sequence_number:
+        #    # 連続したパケットを受信した場合、新しいACK番号を計算
+        #    new_ack_number = received_sequence_number + payload_length
+        #else:
+        #    # 受け取っていないパケットが存在する場合、現在のACK番号をそのまま使用
+        #    new_ack_number = current_ack_number
 
         # ACK番号を更新
         print(self.node_id, " received_seq: ", received_sequence_number, " current:", current_ack_number, " new:", new_ack_number)
-        if new_ack_number != current_ack_number:
-            self.tcp_connections[connection_key]["acknowledgment_number"] = new_ack_number
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"Updated ACK number to {new_ack_number} for connection {connection_key}.")
-        else:
-            pass
+        #if new_ack_number != current_ack_number:
+        #    self.tcp_connections[connection_key]["acknowledgment_number"] = new_ack_number
+        #    if self.network_event_scheduler.tcp_verbose:
+        #        print(f"Updated ACK number to {new_ack_number} for connection {connection_key}.")
+        #else:
+        #    pass
 
     def send_TCP_SYN_ACK(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
