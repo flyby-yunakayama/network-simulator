@@ -324,7 +324,8 @@ class Node:
         if connection_key in self.tcp_connections:
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
                 if self.network_event_scheduler.tcp_verbose:
-                    print(f"Duplicate ACK threshold reached for connection {connection_key}")
+                    last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
+                    print(f"Duplicate ACK threshold reached for connection {connection_key} with ACK number {last_ack_number}.")
                 return True
             else:
                 return False
