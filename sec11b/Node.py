@@ -312,7 +312,6 @@ class Node:
         if ack_number in self.windows[connection_key]:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"ACK number {ack_number} received for connection {connection_key}.")
-                print(self.windows[connection_key][ack_number])
             # タイムアウトイベントのキャンセル
             self.cancel_timeout(connection_key, ack_number)
             del self.windows[connection_key][ack_number]
@@ -361,25 +360,6 @@ class Node:
                 print(f"Updated ACK number to {next_expected_seq} for connection {connection_key}.")
 
         print(self.node_id, " received_seq: ", received_sequence_number, " current:", current_ack_number, " new:", next_expected_seq)
-        # 新しいACK番号の計算
-        # 受信したパケットが連続しているかどうかを確認し、連続していれば新しいACK番号を計算
-        # 連続していない（受け取っていないパケットが存在する）場合は、現在のACK番号をそのまま使用
-        #expected_sequence_number = current_ack_number
-        #if received_sequence_number == expected_sequence_number:
-        #    # 連続したパケットを受信した場合、新しいACK番号を計算
-        #    new_ack_number = received_sequence_number + payload_length
-        #else:
-        #    # 受け取っていないパケットが存在する場合、現在のACK番号をそのまま使用
-        #    new_ack_number = current_ack_number
-
-        # ACK番号を更新
-        #print(self.node_id, " received_seq: ", received_sequence_number, " current:", current_ack_number, " new:", new_ack_number)
-        #if new_ack_number != current_ack_number:
-        #    self.tcp_connections[connection_key]["acknowledgment_number"] = new_ack_number
-        #    if self.network_event_scheduler.tcp_verbose:
-        #        print(f"Updated ACK number to {new_ack_number} for connection {connection_key}.")
-        #else:
-        #    pass
 
     def send_TCP_SYN_ACK(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
