@@ -253,7 +253,7 @@ class Node:
 
                 # ACKパケットの処理
                 if "ACK" in flags:
-                    self.handle_acknowledgement(packet)  # 重複ACKのカウント
+                    self.handle_acknowledgement(packet)  # ACKの処理
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
                         self.check_and_retransmit_packets(packet)  # パケットの再送
                     else:
@@ -343,8 +343,6 @@ class Node:
 
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
-
-        print(f"Received sequence number: {received_sequence_number}, payload length: {payload_length}, current ACK number: {current_ack_number}")
 
         # 受信したシーケンス番号をセットに追加
         received_sequence_numbers = self.tcp_connections[connection_key].setdefault('received_sequence_numbers', set())
