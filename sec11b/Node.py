@@ -305,6 +305,10 @@ class Node:
             self.handle_acknowledgement(packet, connection_key, current_ack_number)
 
     def handle_acknowledgement(self, packet, connection_key, ack_number):
+        if connection_key not in self.windows:
+            self.windows[connection_key] = {}  # 必要に応じて初期化、またはreturn文で処理をスキップ
+            return  # この場合はここで処理を終了
+
         # ACK番号に一致するパケットをウィンドウから削除
         if ack_number in self.windows[connection_key]:
             # タイムアウトイベントのキャンセル
