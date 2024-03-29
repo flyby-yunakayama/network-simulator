@@ -301,9 +301,10 @@ class Node:
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
             self.tcp_connections[connection_key]["last_ack_number"] = current_ack_number
             # 対応するパケットをウィンドウから削除
-            self.handle_acknowledgement(packet, connection_key, current_ack_number)
+            self.handle_acknowledgement(packet, current_ack_number)
 
-    def handle_acknowledgement(self, packet, connection_key, ack_number):
+    def handle_acknowledgement(self, packet, ack_number):
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key not in self.windows:
             self.windows[connection_key] = {}  # 必要に応じて初期化、またはreturn文で処理をスキップ
             return  # この場合はここで処理を終了
@@ -318,7 +319,8 @@ class Node:
             # ウィンドウに空きができたので、新たなパケットを送信可能
             self.send_tcp_data_packet(packet)
 
-    def check_duplication_threshold(self, connection_key):
+    def check_duplication_threshold(self, packet):
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
         n = self.tcp_connections[connection_key]["duplicate_ack_count"]
         print(f"{self.node_id} duplication: {n}")
         if connection_key in self.tcp_connections:
