@@ -22,7 +22,8 @@ class Node:
         self.used_ports = set()  # 使用中のポート番号を保持するセット
         self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
         self.tcp_connections = {}  # 接続状態を追跡する辞書
-        self.window_size = 4  # ウィンドウサイズ
+        self.cwnd = 1  # 輻輳ウィンドウの初期値
+        self.ssthresh = 64  # スロースタート閾値の初期値
         self.max_attempts = 3  # パケット再送の最大試行回数
         self.windows = {}  # ウィンドウ内のパケットのシーケンス番号を追跡
         self.timeout_interval = 2  # タイムアウトまでの時間(秒)
@@ -281,7 +282,34 @@ class Node:
             'data': data,
             'last_ack_number': None,
             'duplicate_ack_count': 0,
+            'cwnd': 1,  # 輻輳ウィンドウの初期化
+            'ssthresh': 64,  # スロースタート閾値の初期化
+            'congestion_state': 'slow_start'  # 輻輳制御の状態（'slow_start', 'congestion_avoidance', 'fast_recovery'）
         }
+
+    def transition_to_state(self, connection_key, new_state):
+        """指定された状態へ遷移し、関連する操作を行います。"""
+        if connection_key not in self.tcp_connections:
+            return
+
+        # 現在のcwndとssthreshを取得
+        cwnd = self.tcp_connections[connection_key]['cwnd']
+        ssthresh = self.tcp_connections[connection_key]['ssthresh']
+
+        if new_state == 'slow_start':
+            # スロースタート状態への遷移
+            self.tcp_connections[connection_key]['cwnd'] = 1
+            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 2)
+            self.tcp_connections[connection_key]['congestion_state'] = new_state
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {ssthresh}, cwnd reset to 1.")
+
+        elif new_state == 'congestion_avoidance':
+            # 輻輳回避状態への遷移
+            # Tahoeでは、スロースタートから輻輳回避への直接的な遷移は、cwndがssthreshに達した場合のみ発生します
+            self.tcp_connections[connection_key]['congestion_state'] = new_state
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
 
     def handle_acknowledgement(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -300,6 +328,9 @@ class Node:
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
 
+        # 輻輳ウィンドウを調整
+        self.adjust_congestion_window(connection_key)
+
         # ACK番号に一致するパケットをウィンドウから削除
         for seq, packet_info in list(self.windows[connection_key].items()):
             if packet_info["expected_ack_number"] <= ack_number:
@@ -313,6 +344,25 @@ class Node:
             if self.tcp_connections[connection_key]['data']:
                 self.send_tcp_data_packet(packet)
 
+    def adjust_congestion_window(self, connection_key):
+        if connection_key not in self.tcp_connections:
+            return
+
+        state = self.tcp_connections[connection_key]['congestion_state']
+        cwnd = self.tcp_connections[connection_key]['cwnd']
+        ssthresh = self.tcp_connections[connection_key]['ssthresh']
+
+        if state == 'slow_start':
+            # スロースタート: cwndを倍増
+            self.tcp_connections[connection_key]['cwnd'] = cwnd * 2
+            if cwnd >= ssthresh:
+                # ssthreshに達したら輻輳回避へ移行
+                self.transition_to_state(connection_key, 'congestion_avoidance')
+        
+        elif state == 'congestion_avoidance':
+            # 輻輳回避: cwndを線形に増加
+            self.tcp_connections[connection_key]['cwnd'] = cwnd + 1
+
     def check_duplication_threshold(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
@@ -320,6 +370,10 @@ class Node:
                 if self.network_event_scheduler.tcp_verbose:
                     last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
                     print(f"Duplicate ACK threshold reached for connection {connection_key} with ACK number {last_ack_number}.")
+
+                # スロースタート状態への遷移
+                self.transition_to_state(connection_key, 'slow_start')
+
                 return True
             else:
                 return False
@@ -329,9 +383,12 @@ class Node:
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         sequence_number = self.find_retransmit_sequence_number(connection_key)
         if sequence_number is not None:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Retransmitting packet with sequence number {sequence_number} for connection {connection_key}.")
             self.retransmit_packet(connection_key, sequence_number)
         else:
-            print(f"No packets to retransmit for connection {connection_key}")
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"No packets to retransmit for connection {connection_key}")
 
     def update_ACK_number(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -667,7 +724,7 @@ class Node:
                 if connection_key not in self.windows:
                     self.windows[connection_key] = {}  # connection_keyごとの辞書を初期化
 
-                if len(self.windows[connection_key]) < self.window_size:  # ウィンドウサイズ未満の場合
+                if len(self.windows[connection_key]) < self.tcp_connections[connection_key]['cwnd']:  # 輻輳ウィンドウサイズのチェックを行い、ウィンドウサイズ以下の場合にのみ送信を許可
                     # 送信するデータを取得
                     remaining_data = self.tcp_connections[connection_key]['data']
                     payload_size = traffic_info['payload_size']
