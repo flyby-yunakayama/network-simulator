@@ -23,7 +23,8 @@ class Node:
         self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
         self.tcp_connections = {}  # 接続状態を追跡する辞書
         self.cwnd = 1  # 輻輳ウィンドウの初期値
-        self.ssthresh = 64  # スロースタート閾値の初期値
+        self.ssthresh = 16  # スロースタート閾値の初期値
+        self.MAX_CWND = 64  # 例として64パケットを最大ウィンドウサイズとする
         self.max_attempts = 3  # パケット再送の最大試行回数
         self.windows = {}  # ウィンドウ内のパケットのシーケンス番号を追跡
         self.timeout_interval = 2  # タイムアウトまでの時間(秒)
@@ -353,8 +354,9 @@ class Node:
         ssthresh = self.tcp_connections[connection_key]['ssthresh']
 
         if state == 'slow_start':
-            # スロースタート: cwndを倍増
-            self.tcp_connections[connection_key]['cwnd'] = cwnd * 2
+            # スロースタート: cwndを倍増させるが、最大値を超えないようにする
+            new_cwnd = min(cwnd * 2, self.MAX_CWND)
+            self.tcp_connections[connection_key]['cwnd'] = new_cwnd
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated cwnd to {cwnd * 2} for connection {connection_key} in slow start.")
 
@@ -364,7 +366,8 @@ class Node:
         
         elif state == 'congestion_avoidance':
             # 輻輳回避: cwndを線形に増加
-            self.tcp_connections[connection_key]['cwnd'] = cwnd + 1
+            new_cwnd = min(cwnd + 1, self.MAX_CWND)
+            self.tcp_connections[connection_key]['cwnd'] = new_cwnd
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated cwnd to {cwnd + 1} for connection {connection_key} in congestion avoidance.")
 
