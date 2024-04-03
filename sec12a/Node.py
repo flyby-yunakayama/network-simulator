@@ -775,8 +775,9 @@ class Node:
                     self.tcp_connections[connection_key]['data'] = remaining_data[payload_size:]
                     self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)  # 更新後のシーケンス番号を保存
 
-                    # 再帰的に呼び出し
-                    self.send_tcp_data_packet(packet, attempt)
+                    # 残りのデータがあれば、さらに送信
+                    if self.tcp_connections[connection_key]['data']:
+                        self.send_tcp_data_packet(packet, attempt)
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
