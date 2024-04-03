@@ -284,7 +284,7 @@ class Node:
             'last_ack_number': None,
             'duplicate_ack_count': 0,
             'cwnd': 1,  # 輻輳ウィンドウの初期化
-            'ssthresh': 64,  # スロースタート閾値の初期化
+            'ssthresh':self.ssthresh,  # スロースタート閾値の初期化
             'congestion_state': 'slow_start'  # 輻輳制御の状態（'slow_start', 'congestion_avoidance', 'fast_recovery'）
         }
 
