@@ -355,6 +355,9 @@ class Node:
         if state == 'slow_start':
             # スロースタート: cwndを倍増
             self.tcp_connections[connection_key]['cwnd'] = cwnd * 2
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Updated cwnd to {cwnd * 2} for connection {connection_key} in slow start.")
+
             if cwnd >= ssthresh:
                 # ssthreshに達したら輻輳回避へ移行
                 self.transition_to_state(connection_key, 'congestion_avoidance')
@@ -362,6 +365,8 @@ class Node:
         elif state == 'congestion_avoidance':
             # 輻輳回避: cwndを線形に増加
             self.tcp_connections[connection_key]['cwnd'] = cwnd + 1
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Updated cwnd to {cwnd + 1} for connection {connection_key} in congestion avoidance.")
 
     def check_duplication_threshold(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
