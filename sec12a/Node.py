@@ -338,8 +338,8 @@ class Node:
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
 
+        # Fast retransmitの処理
         if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
-            # Fast retransmit
             self.tcp_connections[connection_key]['ssthresh'] = max(self.tcp_connections[connection_key]['cwnd'] // 2, 2)
             self.tcp_connections[connection_key]['cwnd'] = 1
             self.transition_to_state(connection_key, 'slow_start')
@@ -392,14 +392,14 @@ class Node:
                 # ssthreshに達したら輻輳回避へ移行
                 self.transition_to_state(connection_key, 'congestion_avoidance')
 
-        elif state == 'congestion_avoidance':
-            # 輻輳回避: cwndを線形に増加
-            new_cwnd = min(cwnd + 1, self.MAX_CWND)
-            self.tcp_connections[connection_key]['cwnd'] = new_cwnd
-            self.log_congestion_window(connection_key, new_cwnd, 'congestion_avoidance')
+            elif state == 'congestion_avoidance':
+                # 輻輳回避: cwndを線形に増加
+                new_cwnd = min(cwnd + 1 // cwnd, self.MAX_CWND)
+                self.tcp_connections[connection_key]['cwnd'] = new_cwnd
+                self.log_congestion_window(connection_key, new_cwnd, 'congestion_avoidance')
 
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in congestion avoidance.")
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in congestion avoidance.")
 
     def check_duplication_threshold(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
