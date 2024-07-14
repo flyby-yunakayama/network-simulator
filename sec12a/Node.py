@@ -256,9 +256,7 @@ class Node:
 
                 # ACKパケットの処理
                 if "ACK" in flags:
-                    connection_key = (packet.header["source_ip"], packet.header["source_port"])
-                    if self.tcp_connections[connection_key]['data']:
-                        self.handle_acknowledgement(packet)  # ACKの処理
+                    self.handle_acknowledgement(packet)  # ACKの処理
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
                         self.check_and_retransmit_packets(packet)  # パケットの再送
                     else:
@@ -316,12 +314,12 @@ class Node:
                 print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
 
     def handle_acknowledgement(self, packet):
-        connection_key = (packet.header["destination_ip"], packet.header["destination_port"])
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
         ack_number = packet.header["acknowledgment_number"]
 
         if connection_key not in self.tcp_connections:
             return  # コネクションが存在しない場合は何もしない
-
+        
         if connection_key not in self.windows:
             self.windows[connection_key] = {}  # 必要に応じて初期化、またはreturn文で処理をスキップ
 
@@ -339,20 +337,21 @@ class Node:
             self.transition_to_state(connection_key, 'slow_start')
             self.retransmit_packet(connection_key, ack_number)
         else:
-            # ACK番号に一致するパケットをウィンドウから削除
-            for seq, packet_info in list(self.windows[connection_key].items()):
-                if packet_info["expected_ack_number"] <= ack_number:
-                    if self.network_event_scheduler.tcp_verbose:
-                        print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
-                    # タイムアウトイベントのキャンセル
-                    self.cancel_timeout(connection_key, seq)
-                    del self.windows[connection_key][seq]
+            # 輻輳ウィンドウを調整
+            self.adjust_congestion_window(connection_key)
+
+        # ACK番号に一致するパケットをウィンドウから削除
+        for seq, packet_info in list(self.windows[connection_key].items()):
+            if packet_info["expected_ack_number"] <= ack_number:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
+                # タイムアウトイベントのキャンセル
+                self.cancel_timeout(connection_key, seq)
+                del self.windows[connection_key][seq]
 
             # ウィンドウに空きができたので、新たなパケットを送信可能
             if self.tcp_connections[connection_key]['data']:
                 self.send_tcp_data_packet(packet)
-                # 輻輳ウィンドウを調整
-                self.adjust_congestion_window(connection_key)
 
     def log_congestion_window(self, connection_key, cwnd, state):
         log_entry = {
