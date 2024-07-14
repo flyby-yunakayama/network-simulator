@@ -257,10 +257,6 @@ class Node:
                 # ACKパケットの処理
                 if "ACK" in flags:
                     self.handle_acknowledgement(packet)  # ACKの処理
-                    if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
-                        self.check_and_retransmit_packets(packet)  # パケットの再送
-                    else:
-                        self.send_tcp_data_packet(packet)  # パケットの送信
 
                 # PSHパケットの処理
                 if "PSH" in flags:
@@ -329,25 +325,30 @@ class Node:
             return  # コネクションが存在しない場合は何もしない
         
         if connection_key not in self.windows:
-            self.windows[connection_key] = {}  # 必要に応じて初期化、またはreturn文で処理をスキップ
+            self.windows[connection_key] = {}  # 必要に応じて初期化
+
+        # ACK番号に一致するパケットをウィンドウから削除
+        self.remove_acked_packets_from_window(connection_key, ack_number)
 
         # 重複ACKの処理
         if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
-                # Fast retransmit
-                self.tcp_connections[connection_key]['ssthresh'] = max(self.tcp_connections[connection_key]['cwnd'] // 2, 2)
-                self.tcp_connections[connection_key]['cwnd'] = 1
-                self.transition_to_state(connection_key, 'slow_start')
-                self.retransmit_packet(connection_key, ack_number)
+                self.fast_retransmit(packet)  # Fast retransmit
+            else:
+                # cwndの調整（重複ACKではなく、送信データがNoneでない場合のみ）
+                if self.tcp_connections[connection_key]['data'] is not None:
+                    self.adjust_congestion_window(connection_key)
+                    self.send_tcp_data_packet(packet)
         else:
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
             # cwndの調整（重複ACKではなく、送信データがNoneでない場合のみ）
             if self.tcp_connections[connection_key]['data'] is not None:
                 self.adjust_congestion_window(connection_key)
+                self.send_tcp_data_packet(packet)
 
-        # ACK番号に一致するパケットをウィンドウから削除
+    def remove_acked_packets_from_window(self, connection_key, ack_number):
         for seq, packet_info in list(self.windows[connection_key].items()):
             if packet_info["expected_ack_number"] <= ack_number:
                 if self.network_event_scheduler.tcp_verbose:
@@ -356,9 +357,12 @@ class Node:
                 self.cancel_timeout(connection_key, seq)
                 del self.windows[connection_key][seq]
 
-            # ウィンドウに空きができたので、新たなパケットを送信可能
-            if self.tcp_connections[connection_key]['data']:
-                self.send_tcp_data_packet(packet)
+    def fast_retransmit(self, packet):
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        self.tcp_connections[connection_key]['ssthresh'] = max(self.tcp_connections[connection_key]['cwnd'] // 2, 2)
+        self.tcp_connections[connection_key]['cwnd'] = 1
+        self.transition_to_state(connection_key, 'slow_start')
+        self.check_and_retransmit_packets(packet)
 
     def log_congestion_window(self, connection_key, cwnd, state):
         log_entry = {
