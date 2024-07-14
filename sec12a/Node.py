@@ -256,7 +256,7 @@ class Node:
 
                 # ACKパケットの処理
                 if "ACK" in flags:
-                    connection_key = (packet.header["destination_ip"], packet.header["destination_port"])
+                    connection_key = (packet.header["source_ip"], packet.header["source_port"])
                     if self.tcp_connections[connection_key]['data']:
                         self.handle_acknowledgement(packet)  # ACKの処理
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
