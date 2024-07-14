@@ -337,8 +337,8 @@ class Node:
             self.transition_to_state(connection_key, 'slow_start')
             self.retransmit_packet(connection_key, ack_number)
         else:
-            # 輻輳ウィンドウを調整（送信データがある場合のみ）
-            if self.tcp_connections[connection_key]['data']:
+            # 輻輳ウィンドウを調整（送信データがNoneでない場合のみ）
+            if self.tcp_connections[connection_key]['data'] is not None:
                 self.adjust_congestion_window(connection_key)
 
         # ACK番号に一致するパケットをウィンドウから削除
@@ -459,7 +459,7 @@ class Node:
 
         # 新しい接続情報を初期化
         if connection_key not in self.tcp_connections:
-            self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=sequence_number, acknowledgment_number=acknowledgment_number, data=b'')
+            self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=sequence_number, acknowledgment_number=acknowledgment_number, data=None)
 
         # パラメータ設定
         control_packet_kwargs = {
