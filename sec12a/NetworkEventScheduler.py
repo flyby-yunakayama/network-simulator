@@ -11,6 +11,7 @@ class NetworkEventScheduler:
         self.event_id = 0
         self.cancelled_events = set()  # キャンセルされたイベントIDを保持するセット
         self.packet_logs = {}
+        self.cwnd_log = []  # cwndの変化を記録するためのリスト
         self.log_enabled = log_enabled
         self.verbose = verbose
         self.stp_verbose = stp_verbose
@@ -132,6 +133,50 @@ class NetworkEventScheduler:
             print(f"Packet ID: {packet_id} Src: {log['source_ip']} {log['creation_time']} -> Dst: {log['destination_ip']} {log['arrival_time']}")
             for event in log['events']:
                 print(f"Time: {event['time']}, Event: {event['event']}")
+
+    def log_cwnd_event(self, log_entry):
+        self.cwnd_log.append(log_entry)
+        print(f"Logged cwnd event: {log_entry}")
+
+    def get_cwnd_log(self):
+        return self.cwnd_log
+
+    def plot_cwnd_log(self):
+        if not self.cwnd_log:
+            print("No cwnd log data to plot.")
+            return
+
+        colors = {'slow_start': 'blue', 'congestion_avoidance': 'green', 'fast_recovery': 'red'}
+
+        # コネクションごとにログを整理
+        connections = {}
+        for entry in self.cwnd_log:
+            time = entry['time']
+            connection = entry['connection']
+            cwnd = entry['cwnd']
+            state = entry['state']
+            if connection not in connections:
+                connections[connection] = {'time': [], 'cwnd': [], 'state': []}
+            connections[connection]['time'].append(time)
+            connections[connection]['cwnd'].append(cwnd)
+            connections[connection]['state'].append(state)
+
+        # グラフの描画
+        plt.figure(figsize=(14, 7))
+        for connection, data in connections.items():
+            times = data['time']
+            cwnds = data['cwnd']
+            states = data['state']
+            for i in range(len(times) - 1):
+                plt.plot(times[i:i+2], cwnds[i:i+2], color=colors[states[i]], label=f'{connection} ({states[i]})')
+
+        # ラベルとタイトルの設定
+        plt.xlabel('Time')
+        plt.ylabel('Congestion Window (cwnd)')
+        plt.title('Congestion Window Size over Time')
+        plt.legend(loc='upper left')
+
+        plt.show()
 
     def generate_summary(self, packet_logs):
         # パケットタイプとソース宛先ペアでの集計データを保持するための辞書

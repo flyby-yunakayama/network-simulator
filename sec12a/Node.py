@@ -353,6 +353,15 @@ class Node:
             if self.tcp_connections[connection_key]['data']:
                 self.send_tcp_data_packet(packet)
 
+    def log_congestion_window(self, connection_key, cwnd, state):
+        log_entry = {
+            'time': self.network_event_scheduler.current_time,
+            'connection': connection_key,
+            'cwnd': cwnd,
+            'state': state
+        }
+        self.network_event_scheduler.log_cwnd_event(log_entry)
+
     def adjust_congestion_window(self, connection_key):
         if connection_key not in self.tcp_connections:
             return
@@ -365,6 +374,8 @@ class Node:
             # スロースタート: cwndを1 MSSずつ増加させる
             new_cwnd = min(cwnd + 1, self.MAX_CWND)
             self.tcp_connections[connection_key]['cwnd'] = new_cwnd
+            self.log_congestion_window(connection_key, new_cwnd, 'slow_start')
+
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in slow start.")
 
@@ -376,6 +387,8 @@ class Node:
             # 輻輳回避: cwndを線形に増加
             new_cwnd = min(cwnd + 1, self.MAX_CWND)
             self.tcp_connections[connection_key]['cwnd'] = new_cwnd
+            self.log_congestion_window(connection_key, new_cwnd, 'congestion_avoidance')
+
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in congestion avoidance.")
 
