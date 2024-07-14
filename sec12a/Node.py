@@ -26,7 +26,7 @@ class Node:
         self.ssthresh = 16  # スロースタート閾値の初期値
         self.MAX_CWND = 64  # 64パケットを最大ウィンドウサイズとする
         self.tcp_state = {}  # 状態管理
-        self.max_attempts = 3  # パケット再送の最大試行回数
+        self.max_attempts = 10  # パケット再送の最大試行回数
         self.windows = {}  # ウィンドウ内のパケットのシーケンス番号を追跡
         self.timeout_interval = 2  # タイムアウトまでの時間(秒)
         self.scheduled_timeouts = {}  # タイムアウトイベントを管理
