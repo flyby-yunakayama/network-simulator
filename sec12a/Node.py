@@ -308,10 +308,18 @@ class Node:
 
         elif new_state == 'congestion_avoidance':
             # 輻輳回避状態への遷移
-            # Tahoeでは、スロースタートから輻輳回避への直接的な遷移は、cwndがssthreshに達した場合のみ発生します
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
+
+        elif new_state == 'fast_recovery':
+            # Fast Recovery状態への遷移
+            self.tcp_connections[connection_key]['cwnd'] = ssthresh + 3  # ssthresh + 3つの重複ACKを考慮
+            self.tcp_connections[connection_key]['congestion_state'] = new_state
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Transitioning to {new_state} for connection {connection_key}. cwnd set to {self.tcp_connections[connection_key]['cwnd']}.")
+
+        self.log_congestion_window(connection_key, self.tcp_connections[connection_key]['cwnd'], new_state)
 
     def handle_acknowledgement(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -363,35 +371,30 @@ class Node:
         }
         self.network_event_scheduler.log_cwnd_event(log_entry)
 
-    def adjust_congestion_window(self, connection_key):
+    def transition_to_state(self, connection_key, new_state):
+        """指定された状態へ遷移し、関連する操作を行います。"""
         if connection_key not in self.tcp_connections:
             return
 
-        state = self.tcp_connections[connection_key]['congestion_state']
+        # 現在のcwndとssthreshを取得
         cwnd = self.tcp_connections[connection_key]['cwnd']
         ssthresh = self.tcp_connections[connection_key]['ssthresh']
 
-        if state == 'slow_start':
-            # スロースタート: cwndを1 MSSずつ増加させる
-            new_cwnd = min(cwnd + 1, self.MAX_CWND)
-            self.tcp_connections[connection_key]['cwnd'] = new_cwnd
-            self.log_congestion_window(connection_key, new_cwnd, 'slow_start')
-
+        if new_state == 'slow_start':
+            # スロースタート状態への遷移
+            self.tcp_connections[connection_key]['cwnd'] = 1
+            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 2)
+            self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in slow start.")
+                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {self.tcp_connections[connection_key]['ssthresh']}, cwnd reset to 1.")
 
-            if new_cwnd >= ssthresh:
-                # ssthreshに達したら輻輳回避へ移行
-                self.transition_to_state(connection_key, 'congestion_avoidance')
-
-        elif state == 'congestion_avoidance':
-            # 輻輳回避: cwndを線形に増加
-            new_cwnd = min(cwnd + 1, self.MAX_CWND)
-            self.tcp_connections[connection_key]['cwnd'] = new_cwnd
-            self.log_congestion_window(connection_key, new_cwnd, 'congestion_avoidance')
-
+        elif new_state == 'congestion_avoidance':
+            # 輻輳回避状態への遷移
+            self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in congestion avoidance.")
+                print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
+
+        self.log_congestion_window(connection_key, self.tcp_connections[connection_key]['cwnd'], new_state)
 
     def check_duplication_threshold(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
