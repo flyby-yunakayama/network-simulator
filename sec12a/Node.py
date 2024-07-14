@@ -331,21 +331,19 @@ class Node:
         if connection_key not in self.windows:
             self.windows[connection_key] = {}  # 必要に応じて初期化、またはreturn文で処理をスキップ
 
+        # 重複ACKの処理
         if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
-            # 重複ACKのカウントを増やす
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
+            if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
+                # Fast retransmit
+                self.tcp_connections[connection_key]['ssthresh'] = max(self.tcp_connections[connection_key]['cwnd'] // 2, 2)
+                self.tcp_connections[connection_key]['cwnd'] = 1
+                self.transition_to_state(connection_key, 'slow_start')
+                self.retransmit_packet(connection_key, ack_number)
         else:
-            self.tcp_connections[connection_key]["duplicate_ack_count"] = 1
+            self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
-
-        # Fast retransmitの処理
-        if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
-            self.tcp_connections[connection_key]['ssthresh'] = max(self.tcp_connections[connection_key]['cwnd'] // 2, 2)
-            self.tcp_connections[connection_key]['cwnd'] = 1
-            self.transition_to_state(connection_key, 'slow_start')
-            self.retransmit_packet(connection_key, ack_number)
-        else:
-            # 輻輳ウィンドウを調整（送信データがNoneでない場合のみ）
+            # cwndの調整（重複ACKではなく、送信データがNoneでない場合のみ）
             if self.tcp_connections[connection_key]['data'] is not None:
                 self.adjust_congestion_window(connection_key)
 
