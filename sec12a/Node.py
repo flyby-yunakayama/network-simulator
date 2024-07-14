@@ -256,12 +256,13 @@ class Node:
 
                 # ACKパケットの処理
                 if "ACK" in flags:
-                    self.handle_acknowledgement(packet)  # ACKの処理
+                    connection_key = (packet.header["destination_ip"], packet.header["destination_port"])
+                    if self.tcp_connections[connection_key]['data']:
+                        self.handle_acknowledgement(packet)  # ACKの処理
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
                         self.check_and_retransmit_packets(packet)  # パケットの再送
                     else:
-                        if self.tcp_connections[(packet.header["source_ip"], packet.header["source_port"])]['data']:
-                            self.send_tcp_data_packet(packet)  # パケットの送信
+                        self.send_tcp_data_packet(packet)  # パケットの送信
 
                 # PSHパケットの処理
                 if "PSH" in flags:
@@ -315,12 +316,12 @@ class Node:
                 print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
 
     def handle_acknowledgement(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        connection_key = (packet.header["destination_ip"], packet.header["destination_port"])
         ack_number = packet.header["acknowledgment_number"]
 
         if connection_key not in self.tcp_connections:
             return  # コネクションが存在しない場合は何もしない
-        
+
         if connection_key not in self.windows:
             self.windows[connection_key] = {}  # 必要に応じて初期化、またはreturn文で処理をスキップ
 
