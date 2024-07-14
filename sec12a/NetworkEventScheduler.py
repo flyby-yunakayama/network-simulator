@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 import networkx as nx
 import heapq
 import numpy as np
@@ -146,10 +147,12 @@ class NetworkEventScheduler:
             print("No cwnd log data to plot.")
             return
 
-        colors = {'slow_start': 'blue', 'congestion_avoidance': 'green', 'fast_recovery': 'red'}
+        colors = plt.cm.get_cmap('tab10')  # 色のパレットを用意
+        state_styles = {'slow_start': 'solid', 'congestion_avoidance': 'dashed', 'fast_recovery': 'dotted'}
+        connections = {}
+        connection_colors = {}
 
         # コネクションごとにログを整理
-        connections = {}
         for entry in self.cwnd_log:
             time = entry['time']
             connection = entry['connection']
@@ -157,6 +160,7 @@ class NetworkEventScheduler:
             state = entry['state']
             if connection not in connections:
                 connections[connection] = {'time': [], 'cwnd': [], 'state': []}
+                connection_colors[connection] = next(colors)
             connections[connection]['time'].append(time)
             connections[connection]['cwnd'].append(cwnd)
             connections[connection]['state'].append(state)
@@ -167,14 +171,30 @@ class NetworkEventScheduler:
             times = data['time']
             cwnds = data['cwnd']
             states = data['state']
+            color = connection_colors[connection]
             for i in range(len(times) - 1):
-                plt.plot(times[i:i+2], cwnds[i:i+2], color=colors[states[i]], label=f'{connection} ({states[i]})')
+                state = states[i]
+                style = state_styles[state]
+                plt.plot(times[i:i+2], cwnds[i:i+2], color=color, linestyle=style, label=connection if i == 0 else "")
+
+        # 凡例の作成
+        handles = []
+        for connection, color in connection_colors.items():
+            handles.append(mlines.Line2D([], [], color=color, label=connection))
+        plt.legend(handles=handles, loc='upper left')
 
         # ラベルとタイトルの設定
         plt.xlabel('Time')
         plt.ylabel('Congestion Window (cwnd)')
         plt.title('Congestion Window Size over Time')
-        plt.legend(loc='upper left')
+        
+        # 線のスタイルの凡例を追加
+        style_handles = [
+            mlines.Line2D([], [], color='black', linestyle=state_styles['slow_start'], label='slow_start'),
+            mlines.Line2D([], [], color='black', linestyle=state_styles['congestion_avoidance'], label='congestion_avoidance'),
+            mlines.Line2D([], [], color='black', linestyle=state_styles['fast_recovery'], label='fast_recovery')
+        ]
+        plt.legend(handles=handles + style_handles, loc='upper left')
 
         plt.show()
 
