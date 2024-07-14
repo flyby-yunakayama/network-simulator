@@ -147,7 +147,7 @@ class NetworkEventScheduler:
             print("No cwnd log data to plot.")
             return
 
-        colors = plt.cm.get_cmap('tab10')  # 色のパレットを用意
+        colors = plt.cm.tab10.colors  # 色のパレットを用意
         state_styles = {'slow_start': 'solid', 'congestion_avoidance': 'dashed', 'fast_recovery': 'dotted'}
         connections = {}
         connection_colors = {}
@@ -160,7 +160,7 @@ class NetworkEventScheduler:
             state = entry['state']
             if connection not in connections:
                 connections[connection] = {'time': [], 'cwnd': [], 'state': []}
-                connection_colors[connection] = next(colors)
+                connection_colors[connection] = colors[len(connection_colors) % len(colors)]
             connections[connection]['time'].append(time)
             connections[connection]['cwnd'].append(cwnd)
             connections[connection]['state'].append(state)
