@@ -337,20 +337,22 @@ class Node:
             self.transition_to_state(connection_key, 'slow_start')
             self.retransmit_packet(connection_key, ack_number)
         else:
-            # ACK番号に一致するパケットをウィンドウから削除
-            for seq, packet_info in list(self.windows[connection_key].items()):
-                if packet_info["expected_ack_number"] <= ack_number:
-                    if self.network_event_scheduler.tcp_verbose:
-                        print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
-                    # タイムアウトイベントのキャンセル
-                    self.cancel_timeout(connection_key, seq)
-                    del self.windows[connection_key][seq]
+            # 輻輳ウィンドウを調整（送信データがある場合のみ）
+            if self.tcp_connections[connection_key]['data']:
+                self.adjust_congestion_window(connection_key)
 
-                # ウィンドウに空きができたので、新たなパケットを送信可能
-                if self.tcp_connections[connection_key]['data']:
-                    # 輻輳ウィンドウを調整
-                    self.adjust_congestion_window(connection_key)
-                    self.send_tcp_data_packet(packet)
+        # ACK番号に一致するパケットをウィンドウから削除
+        for seq, packet_info in list(self.windows[connection_key].items()):
+            if packet_info["expected_ack_number"] <= ack_number:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
+                # タイムアウトイベントのキャンセル
+                self.cancel_timeout(connection_key, seq)
+                del self.windows[connection_key][seq]
+
+            # ウィンドウに空きができたので、新たなパケットを送信可能
+            if self.tcp_connections[connection_key]['data']:
+                self.send_tcp_data_packet(packet)
 
     def log_congestion_window(self, connection_key, cwnd, state):
         log_entry = {
