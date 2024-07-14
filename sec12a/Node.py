@@ -260,7 +260,8 @@ class Node:
                     if self.check_duplication_threshold(packet):  # 重複ACKの閾値を超えた場合
                         self.check_and_retransmit_packets(packet)  # パケットの再送
                     else:
-                        self.send_tcp_data_packet(packet)  # パケットの送信
+                        if self.tcp_connections[(packet.header["source_ip"], packet.header["source_port"])]['data']:
+                            self.send_tcp_data_packet(packet)  # パケットの送信
 
                 # PSHパケットの処理
                 if "PSH" in flags:
@@ -337,21 +338,20 @@ class Node:
             self.transition_to_state(connection_key, 'slow_start')
             self.retransmit_packet(connection_key, ack_number)
         else:
-            # 輻輳ウィンドウを調整
-            self.adjust_congestion_window(connection_key)
-
-        # ACK番号に一致するパケットをウィンドウから削除
-        for seq, packet_info in list(self.windows[connection_key].items()):
-            if packet_info["expected_ack_number"] <= ack_number:
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
-                # タイムアウトイベントのキャンセル
-                self.cancel_timeout(connection_key, seq)
-                del self.windows[connection_key][seq]
+            # ACK番号に一致するパケットをウィンドウから削除
+            for seq, packet_info in list(self.windows[connection_key].items()):
+                if packet_info["expected_ack_number"] <= ack_number:
+                    if self.network_event_scheduler.tcp_verbose:
+                        print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
+                    # タイムアウトイベントのキャンセル
+                    self.cancel_timeout(connection_key, seq)
+                    del self.windows[connection_key][seq]
 
             # ウィンドウに空きができたので、新たなパケットを送信可能
             if self.tcp_connections[connection_key]['data']:
                 self.send_tcp_data_packet(packet)
+                # 輻輳ウィンドウを調整
+                self.adjust_congestion_window(connection_key)
 
     def log_congestion_window(self, connection_key, cwnd, state):
         log_entry = {
