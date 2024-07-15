@@ -180,15 +180,20 @@ class NetworkEventScheduler:
             cwnds = data['cwnd']
             states = data['state']
             color = connection_colors[connection]
+
             for i in range(len(times) - 1):
                 state = states[i]
                 style = state_styles[state]
-                plt.plot(times[i:i+2], cwnds[i:i+2], color=color, linestyle=style, label=connection if i == 0 else "")
+                if i == 0 or states[i] != states[i - 1]:
+                    plt.plot(times[i:i+2], cwnds[i:i+2], color=color, linestyle=style, label=connection)
+                else:
+                    plt.plot(times[i:i+2], cwnds[i:i+2], color=color, linestyle=style)
 
         # 凡例の作成
         handles = []
         for connection, color in connection_colors.items():
             handles.append(mlines.Line2D([], [], color=color, label=connection))
+        
         # 線のスタイルの凡例を追加
         style_handles = [
             mlines.Line2D([], [], color='black', linestyle=state_styles['slow_start'], label='slow_start'),
