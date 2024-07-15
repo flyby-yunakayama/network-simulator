@@ -189,13 +189,6 @@ class NetworkEventScheduler:
         handles = []
         for connection, color in connection_colors.items():
             handles.append(mlines.Line2D([], [], color=color, label=connection))
-        plt.legend(handles=handles, loc='upper left')
-
-        # ラベルとタイトルの設定
-        plt.xlabel('Time')
-        plt.ylabel('Congestion Window (cwnd)')
-        plt.title('Congestion Window Size over Time')
-        
         # 線のスタイルの凡例を追加
         style_handles = [
             mlines.Line2D([], [], color='black', linestyle=state_styles['slow_start'], label='slow_start'),
@@ -204,6 +197,10 @@ class NetworkEventScheduler:
         ]
         plt.legend(handles=handles + style_handles, loc='upper left')
 
+        # ラベルとタイトルの設定
+        plt.xlabel('Time')
+        plt.ylabel('Congestion Window (cwnd)')
+        plt.title('Congestion Window Size over Time')
         plt.show()
 
     def generate_summary(self, packet_logs):
