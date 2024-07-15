@@ -280,8 +280,8 @@ class Node:
             'data': data,
             'last_ack_number': None,
             'duplicate_ack_count': 0,
-            'cwnd': 1,  # 輻輳ウィンドウの初期化
-            'ssthresh':self.ssthresh,  # スロースタート閾値の初期化
+            'cwnd': self.cwnd,  # 輻輳ウィンドウの初期化
+            'ssthresh': self.ssthresh,  # スロースタート閾値の初期化
             'congestion_state': 'slow_start'  # 輻輳制御の状態（'slow_start', 'congestion_avoidance', 'fast_recovery'）
         }
 
@@ -289,6 +289,10 @@ class Node:
         """指定された状態へ遷移し、関連する操作を行います。"""
         if connection_key not in self.tcp_connections:
             return
+
+        current_state = self.tcp_connections[connection_key]['congestion_state']
+        if current_state == new_state:
+            return  # 同じ状態に遷移しようとした場合は何もしない
 
         # 現在のcwndとssthreshを取得
         cwnd = self.tcp_connections[connection_key]['cwnd']
