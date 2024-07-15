@@ -12,6 +12,9 @@ class Node:
         self.node_id = node_id
         self.ip_address = ip_address  # IPアドレス
         self.network_event_scheduler = network_event_scheduler
+        self.local_seed = self.network_event_scheduler.get_seed()
+        if self.local_seed is not None:
+            random.seed(self.local_seed)
         if mac_address is None:
             self.mac_address = self.generate_mac_address()  # ランダムなMACアドレスを生成
         else:

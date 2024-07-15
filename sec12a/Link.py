@@ -13,6 +13,9 @@ class Link:
         self.loss_rate = loss_rate
         self.is_active = True
         self.network_event_scheduler = network_event_scheduler
+        self.local_seed = self.network_event_scheduler.get_seed()
+        if self.local_seed is not None:
+            random.seed(self.local_seed)
 
         self.packet_queue_xy = []
         self.packet_queue_yx = []

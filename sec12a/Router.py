@@ -7,6 +7,9 @@ from sec12a.Packet import ARPPacket, BPDU, HelloPacket, LSAPacket
 class Router:
     def __init__(self, node_id, ip_addresses, network_event_scheduler, hello_interval=10, lsa_interval=10, default_route = None, nat_enabled=False, external_ip=None, nat_table=None):
         self.network_event_scheduler = network_event_scheduler
+        self.local_seed = self.network_event_scheduler.get_seed()
+        if self.local_seed is not None:
+            random.seed(self.local_seed)
         self.node_id = node_id
         self.links = []
         self.available_ips = {ip: False for ip in ip_addresses} # CIDR表記のIPアドレスを辞書に変換し、使用状況をFalse（未使用）に初期化
