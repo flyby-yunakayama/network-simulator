@@ -785,6 +785,9 @@ class Node:
                 if len(self.windows[connection_key]) < self.tcp_connections[connection_key]['cwnd']:  # 輻輳ウィンドウサイズのチェックを行い、ウィンドウサイズ以下の場合にのみ送信を許可
                     # 送信するデータを取得
                     remaining_data = self.tcp_connections[connection_key]['data']
+                    if not remaining_data:
+                        return  # 残りのデータがない場合、送信を中止
+
                     payload_size = traffic_info['payload_size']
                     data_to_send = remaining_data[:payload_size]
 
