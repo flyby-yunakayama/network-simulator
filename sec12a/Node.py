@@ -366,7 +366,16 @@ class Node:
         self.tcp_connections[connection_key]['ssthresh'] = max(self.tcp_connections[connection_key]['cwnd'] // 2, 2)
         self.tcp_connections[connection_key]['cwnd'] = 1
         self.transition_to_state(connection_key, 'slow_start')
-        self.check_and_retransmit_packets(packet)
+        self.schedule_retransmission(connection_key)
+
+    def schedule_retransmission(self, connection_key):
+        sequence_number = self.find_retransmit_sequence_number(connection_key)
+        if sequence_number is not None:
+            event_time = self.network_event_scheduler.current_time + self.timeout_interval / 2
+            self.network_event_scheduler.schedule_event(event_time, self.retransmit_packet, connection_key, sequence_number)
+        else:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"No packets to retransmit for connection {connection_key}")
 
     def log_congestion_window(self, connection_key, cwnd, state):
         log_entry = {
@@ -422,19 +431,6 @@ class Node:
             else:
                 return False
         return False
-
-    def check_and_retransmit_packets(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        sequence_number = self.find_retransmit_sequence_number(connection_key)
-        if sequence_number is not None:
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"Retransmitting packet with sequence number {sequence_number} for connection {connection_key}.")
-            self.retransmit_packet(connection_key, sequence_number)
-        else:
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"No packets to retransmit for connection {connection_key}")
-
-
 
     def update_ACK_number(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -912,11 +908,15 @@ class Node:
             self._send_tcp_packet(destination_ip, destination_mac, data, **kwargs)
             # 再送したので、再送試行回数をインクリメント
             self.windows[connection_key][sequence_number]["attempt"] += 1
+
             # 再送試行回数が閾値を超えた場合
             if self.windows[connection_key][sequence_number]["attempt"] >= self.max_attempts:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Maximum retransmission attempts reached for packet with sequence number {sequence_number}. Dropping the packet.")
                 del self.windows[connection_key][sequence_number]
+            else:
+                # 再送をスケジュール
+                self.schedule_retransmission(connection_key)
         else:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"No packet with sequence number {sequence_number} found in history for retransmission.")
