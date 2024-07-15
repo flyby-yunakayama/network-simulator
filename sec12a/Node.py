@@ -434,6 +434,8 @@ class Node:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"No packets to retransmit for connection {connection_key}")
 
+
+
     def update_ACK_number(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key not in self.tcp_connections:
@@ -450,19 +452,31 @@ class Node:
         for seq in range(received_sequence_number, received_sequence_number + payload_length):
             received_sequence_numbers.add(seq)
 
+        # 連続していない番号をリストに記憶
+        out_of_order_packets = self.tcp_connections[connection_key].setdefault('out_of_order_packets', [])
+
         # 期待する次のシーケンス番号を見つける
         next_expected_seq = current_ack_number
         while next_expected_seq in received_sequence_numbers:
             next_expected_seq += 1
 
-        # ACK番号を更新（受信したシーケンス番号が連続している場合のみ）
+        # 受信したシーケンス番号が連続している場合のみACK番号を更新
         if next_expected_seq != current_ack_number:
             self.tcp_connections[connection_key]["acknowledgment_number"] = next_expected_seq
+
+            # リストから連続するシーケンス番号を削除
+            while out_of_order_packets and out_of_order_packets[0] == next_expected_seq:
+                next_expected_seq += 1
+                out_of_order_packets.pop(0)
+
+            self.tcp_connections[connection_key]['out_of_order_packets'] = out_of_order_packets
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated ACK number to {next_expected_seq} for connection {connection_key}.")
         else:
             # 受け取っていないパケットが存在する場合、現在のACK番号をそのまま使用
-            pass
+            if received_sequence_number + payload_length not in out_of_order_packets:
+                out_of_order_packets.append(received_sequence_number + payload_length)
+                out_of_order_packets.sort()
 
     def send_TCP_SYN_ACK(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
