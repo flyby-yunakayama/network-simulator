@@ -3,9 +3,9 @@ import re
 import random
 from random import randint
 from ipaddress import ip_interface, ip_network
-from sec12a.Switch import Switch
-from sec12a.Router import Router
-from sec12a.Packet import Packet, UDPPacket, TCPPacket, ARPPacket, DNSPacket, DHCPPacket
+from sec12b.Switch import Switch
+from sec12b.Router import Router
+from sec12b.Packet import Packet, UDPPacket, TCPPacket, ARPPacket, DNSPacket, DHCPPacket
 
 class Node:
     def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server=None, mtu=1500, default_route=None):
@@ -315,6 +315,14 @@ class Node:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
 
+        elif new_state == 'fast_recovery':
+            # Fast Recovery状態への遷移
+            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 2)
+            self.tcp_connections[connection_key]['cwnd'] = ssthresh + 3  # ssthresh + 3つの重複ACKを考慮
+            self.tcp_connections[connection_key]['congestion_state'] = new_state
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Transitioning to {new_state} for connection {connection_key}. cwnd set to {self.tcp_connections[connection_key]['cwnd']}.")
+
         self.log_congestion_window(connection_key, self.tcp_connections[connection_key]['cwnd'], new_state)
 
     def handle_acknowledgement(self, packet):
@@ -334,7 +342,7 @@ class Node:
         if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
-                self.fast_retransmit(packet)  # Fast retransmit
+                self.fast_retransmit(connection_key)  # Fast retransmit
             else:
                 # cwndの調整（重複ACKではなく、送信データがNoneでない場合のみ）
                 if self.tcp_connections[connection_key]['data'] is not None:
@@ -357,11 +365,8 @@ class Node:
                 self.cancel_timeout(connection_key, seq)
                 del self.windows[connection_key][seq]
 
-    def fast_retransmit(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        self.tcp_connections[connection_key]['ssthresh'] = max(self.tcp_connections[connection_key]['cwnd'] // 2, 2)
-        self.tcp_connections[connection_key]['cwnd'] = 1
-        self.transition_to_state(connection_key, 'slow_start')
+    def fast_retransmit(self, connection_key):
+        self.transition_to_state(connection_key, 'fast_recovery')
         self.schedule_retransmission(connection_key)
 
     def schedule_retransmission(self, connection_key):
@@ -411,6 +416,15 @@ class Node:
 
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in congestion avoidance.")
+
+        elif state == 'fast_recovery':
+            # Fast Recovery: cwndを1増加させる
+            new_cwnd = min(cwnd + 1, self.MAX_CWND)
+            self.tcp_connections[connection_key]['cwnd'] = new_cwnd
+            self.log_congestion_window(connection_key, new_cwnd, 'fast_recovery')
+
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in fast recovery.")
 
     def check_duplication_threshold(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
@@ -871,13 +885,13 @@ class Node:
                     print(f"Maximum attempts reached for sequence number: {sequence_number}. Dropping packet.")
                 del self.windows[connection_key][sequence_number]  # タイムアウトしたパケットをウィンドウから削除
 
-            # タイムアウトが発生した場合、スロースタートに戻る
+            # Renoでは、タイムアウトが発生した場合、スロースタートに戻る
             self.transition_to_state(connection_key, 'slow_start')
             
             # タイムアウト処理の完了をログに記録
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Timeout handled for connection {connection_key}. State transitioned to slow_start.")
-
+そ
     def cancel_timeout(self, connection_key, sequence_number):
         if connection_key in self.tcp_connections and 'timeout_event_ids' in self.tcp_connections[connection_key]:
             for event_id in self.tcp_connections[connection_key]['timeout_event_ids']:
