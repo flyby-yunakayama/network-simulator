@@ -891,7 +891,7 @@ class Node:
             # タイムアウト処理の完了をログに記録
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Timeout handled for connection {connection_key}. State transitioned to slow_start.")
-そ
+
     def cancel_timeout(self, connection_key, sequence_number):
         if connection_key in self.tcp_connections and 'timeout_event_ids' in self.tcp_connections[connection_key]:
             for event_id in self.tcp_connections[connection_key]['timeout_event_ids']:
