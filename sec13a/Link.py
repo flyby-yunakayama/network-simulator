@@ -191,10 +191,10 @@ class Link:
                     break
 
         if earliest_time != float('inf'):
-            if current_event is None or earliest_time < current_event.time:
+            if current_event is None or (hasattr(current_event, 'time') and earliest_time < current_event.time):
                 # Cancel the current event if it exists
-                if current_event is not None:
-                    self.network_event_scheduler.cancel_event(current_event)
+                if current_event is not None and hasattr(current_event, 'cancel'):
+                    current_event.cancel()
 
                 # Schedule a new event
                 new_event = self.network_event_scheduler.schedule_event(earliest_time, self.transfer_packet, from_node)
