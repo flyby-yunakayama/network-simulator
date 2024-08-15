@@ -655,7 +655,7 @@ class Node:
                 data, protocol, kwargs = packet_info
                 # send_packetメソッドを使用して、待機中のパケットを送信
                 # kwargsは辞書なので、関数のキーワード引数として展開するために**を使用
-                self.send_packet(destination_ip, data, protocol=protocol, **kwargs)
+                self.send_packet(destination_ip, data, protocol=protocol, dscp=0, **kwargs)
             # 待機リストから該当する宛先IPを削除
             del self.waiting_for_arp_reply[destination_ip]
 
