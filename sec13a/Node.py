@@ -1028,15 +1028,18 @@ class Node:
 
     def start_udp_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP", dscp=0):
         def attempt_to_start_traffic():
-            destination_ip = self.resolve_destination_ip(destination_url)
-            if destination_ip is None:
-                # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にトラフィックを開始するための処理をスケジュール
-                self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
+            # IPアドレス形式かどうかをチェック
+            if self.is_valid_cidr_notation(destination_url):
+                # IPアドレスの場合は直接トラフィック生成を開始
+                self.set_udp_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
             else:
-                # DNSレコードが既に存在する場合、直接トラフィック生成を開始
-                self.set_udp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
+                # URLの場合はDNSクエリを行い、IPアドレスを取得
+                destination_ip = self.resolve_destination_ip(destination_url)
+                if destination_ip is None:
+                    self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
+                else:
+                    self.set_udp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
         
-        # 最初のパケット生成（またはDNSレコードの検索処理）をstart_timeにスケジュール
         self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
 
     def set_udp_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP", dscp=0):
@@ -1059,13 +1062,19 @@ class Node:
 
     def start_tcp_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="TCP", dscp=0):
         def attempt_to_start_traffic():
-            destination_ip = self.resolve_destination_ip(destination_url)
-            if destination_ip is None:
-                # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にトラフィックを開始するための処理をスケジュール
-                self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
+            # IPアドレス形式かどうかをチェック
+            if self.is_valid_cidr_notation(destination_url):
+                # IPアドレスの場合は直接トラフィック生成を開始
+                self.set_tcp_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
             else:
-                # DNSレコードが既に存在する場合、直接トラフィック生成を開始
-                self.set_tcp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
+                # URLの場合はDNSクエリを行い、IPアドレスを取得
+                destination_ip = self.resolve_destination_ip(destination_url)
+                if destination_ip is None:
+                    # DNSレコードがない場合、DNSクエリを行い、レスポンスの受信後にトラフィックを開始するための処理をスケジュール
+                    self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
+                else:
+                    # DNSレコードが既に存在する場合、直接トラフィック生成を開始
+                    self.set_tcp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
 
         self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
 

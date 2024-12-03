@@ -158,7 +158,7 @@ class Link:
             if queue:
                 dequeue_time, packet, _ = heapq.heappop(queue)
                 packet_transfer_time = (packet.size * 8) / self.bandwidth
-                print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x}-{self.node_y} to {from_node.node_id}. Packet size: {packet.size} bits, Priority: {packet.get_priority()}")
+                print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x}-{self.node_y} to {from_node.node_id}. Packet size: {packet.size} bytes, Priority: {packet.get_priority()}")
 
                 if self.should_drop_packet(packet):
                     if self.network_event_scheduler.verbose:
