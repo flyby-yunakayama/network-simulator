@@ -179,6 +179,7 @@ class Node:
         print(f"{self.network_event_scheduler.current_time:.6f}, process ARP packet")
         if packet.header["destination_mac"] == self.mac_address:
             if packet.payload.get("operation") == "reply" and packet.payload["destination_ip"] == self.ip_address:
+                print(f"{self.network_event_scheduler.current_time:.6f}, ARP reply received")
                 # ARPリプライを受信した場合の処理
                 self.network_event_scheduler.log_packet_info(packet, "ARP reply received", self.node_id)
                 source_ip = packet.payload["source_ip"]
