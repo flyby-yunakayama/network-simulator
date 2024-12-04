@@ -690,9 +690,6 @@ class Node:
         """
         汎用的なパケット送信メソッド。プロトコルに基づいて適切なパケットを送信します。
         """
-        print(f"{self.network_event_scheduler.current_time}, send packet")
-
-
         destination_mac = self.get_mac_address_from_ip(destination_ip)
 
         if destination_mac is None:
@@ -1059,7 +1056,6 @@ class Node:
                 # 次のパケットをスケジュールするためのインターバルを計算
                 packet_size = header_size + payload_size
                 interval = (packet_size * 8) / bitrate * burstiness
-                print(f"{self.network_event_scheduler.current_time}, interval: {interval}")
                 self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
 
         self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time, generate_packet)

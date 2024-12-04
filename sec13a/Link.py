@@ -122,8 +122,9 @@ class Link:
         dequeue_time = self.network_event_scheduler.current_time
         heapq.heappush(queue, (dequeue_time, packet, from_node))
 
-        print(f"{self.network_event_scheduler.current_time}, enqueue packet {packet.size} bytes, priority: {priority}")
-        
+        if self.network_event_scheduler.link_verbose:
+            print(f"{self.network_event_scheduler.current_time}, enqueue packet {packet.size} bytes, priority: {priority}")
+
         # スケジューリングの開始
         if len(queue) == 1:
             self.network_event_scheduler.schedule_event(
@@ -133,7 +134,6 @@ class Link:
             )
 
     def transfer_packet(self, from_node):
-        print(f"{self.network_event_scheduler.current_time}, transfer packet")
         if from_node == self.node_x:
             priority_queues = self.priority_queues_xy
         else:
@@ -145,10 +145,11 @@ class Link:
             if queue:
                 dequeue_time, packet, _ = heapq.heappop(queue)
                 packet_transfer_time = (packet.size * 8) / self.bandwidth
-                print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x.node_id}-{self.node_y.node_id} to {from_node.node_id}. Packet size: {packet.size} bytes, Priority: {packet.get_priority()}")
+                if self.network_event_scheduler.link_verbose:
+                    print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x.node_id}-{self.node_y.node_id} to {from_node.node_id}. Packet size: {packet.size} bytes, Priority: {packet.get_priority()}")
 
                 if self.should_drop_packet(packet):
-                    if self.network_event_scheduler.verbose:
+                    if self.network_event_scheduler.link_verbose:
                         print(f"{self.network_event_scheduler.current_time:.6f}: Packet dropped at Link {self.node_x.node_id}-{self.node_y.node_id}.")
                     packet.set_arrived(-1)
                 else:
