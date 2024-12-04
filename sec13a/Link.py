@@ -198,6 +198,8 @@ class Link:
                     current_event.cancel()
 
                 # Schedule a new event
+                print(f"{self.network_event_scheduler.current_time}, transfer packet")
+                print(f"{earliest_time}, {from_node.node_id}")
                 new_event = self.network_event_scheduler.schedule_event(earliest_time, self.transfer_packet, from_node)
 
                 # Update the reference to the new event
