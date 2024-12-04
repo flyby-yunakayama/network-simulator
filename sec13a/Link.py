@@ -115,8 +115,10 @@ class Link:
         priority = packet.get_priority()
         if from_node == self.node_x:
             queue = self.priority_queues_xy[priority]
+            is_transferring = self.is_transferring_xy
         else:
             queue = self.priority_queues_yx[priority]
+            is_transferring = self.is_transferring_yx
 
         # 現在の時刻を使用してキューにパケットを追加
         dequeue_time = self.network_event_scheduler.current_time
@@ -125,8 +127,8 @@ class Link:
         if self.network_event_scheduler.link_verbose:
             print(f"{self.network_event_scheduler.current_time}, enqueue packet {packet.size} bytes, priority: {priority}")
 
-        # スケジューリングの開始
-        if len(queue) == 1:
+        # キューが1になった場合、最初の transfer_packet をスケジュール
+        if len(queue) == 1 and not is_transferring:
             self.network_event_scheduler.schedule_event(
                 self.network_event_scheduler.current_time,
                 self.transfer_packet,
@@ -136,15 +138,17 @@ class Link:
     def transfer_packet(self, from_node):
         if from_node == self.node_x:
             priority_queues = self.priority_queues_xy
+            self.is_transferring_xy = True
         else:
             priority_queues = self.priority_queues_yx
+            self.is_transferring_yx = True
 
         # 最高優先度の非空キューを見つける
         for priority in sorted(priority_queues.keys(), reverse=True):
             queue = priority_queues[priority]
             if queue:
                 dequeue_time, packet, _ = heapq.heappop(queue)
-                packet_transfer_time = (packet.size * 8) / self.bandwidth
+                packet_transfer_time = (packet.size * 8) / self.bandwidth  # 秒単位
                 if self.network_event_scheduler.link_verbose:
                     print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x.node_id}-{self.node_y.node_id} to {from_node.node_id}. Packet size: {packet.size} bytes, Priority: {packet.get_priority()}")
 
@@ -162,18 +166,27 @@ class Link:
                     )
 
                 # 現在のパケットの転送時間後に次のパケット送信をスケジュール
-                if self.network_event_scheduler.link_verbose:
+                if any(priority_queues.values()):
+                    self.network_event_scheduler.schedule_event(
+                        self.network_event_scheduler.current_time + packet_transfer_time,
+                        self.transfer_packet,
+                        from_node
+                    )
                     print(f"{self.network_event_scheduler.current_time:.6f}: Schedule next packet transfer after {packet_transfer_time} seconds")
-                self.network_event_scheduler.schedule_event(
-                    self.network_event_scheduler.current_time + packet_transfer_time,
-                    self.transfer_packet,
-                    from_node
-                )
+                else:
+                    # キューが空の場合、転送中フラグをリセット
+                    if from_node == self.node_x:
+                        self.is_transferring_xy = False
+                    else:
+                        self.is_transferring_yx = False
 
                 break  # 一度に一つのパケットのみ処理
         else:
-            # キューが空の場合、何もしない
-            pass
+            # キューが空の場合、転送中フラグをリセット
+            if from_node == self.node_x:
+                self.is_transferring_xy = False
+            else:
+                self.is_transferring_yx = False
 
     def should_drop_packet(self, packet):
         """パケットがドロップされるべきかどうかを判断するメソッド"""
