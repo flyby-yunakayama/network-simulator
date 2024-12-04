@@ -18,13 +18,9 @@ class Link:
         if self.local_seed is not None:
             random.seed(self.local_seed)
 
-        # Replace single queues with priority queues
+        # 優先度付きキューの初期化
         self.priority_queues_xy = defaultdict(list)
         self.priority_queues_yx = defaultdict(list)
-        self.current_queue_time_xy = defaultdict(float)
-        self.current_queue_time_yx = defaultdict(float)
-        self.next_transfer_event_xy = None
-        self.next_transfer_event_yx = None
 
         # IPアドレスの選択とリンクの設定
         ip_x, ip_y = self.setup_link_ips(node_x, node_y)
@@ -76,9 +72,6 @@ class Link:
     def is_compatible(self, ip_cidr_x, ip_cidr_y):
         """
         二つのIPアドレス（CIDR表記）が同じネットワークに属しているかどうかを判断する。
-        :param ip_cidr_x: ノードXのIPアドレス（CIDR表記）
-        :param ip_cidr_y: ノードYのIPアドレス（CIDR表記）
-        :return: 同じネットワークに属している場合はTrue、そうでない場合はFalse
         """
         ip_address_x, subnet_mask_x = ip_cidr_x.split('/')
         ip_address_y, subnet_mask_y = ip_cidr_y.split('/')
@@ -97,10 +90,6 @@ class Link:
     def get_network_address(self, ip_address, subnet_mask):
         """
         IPアドレスとサブネットマスクからネットワークアドレスを計算する。
-
-        :param ip_address: 計算するIPアドレス
-        :param subnet_mask: 使用するサブネットマスク
-        :return: ネットワークアドレス
         """
         # IPアドレスとサブネットマスクをビット演算できるように整数に変換
         ip_addr_int = self.ip_to_int(ip_address)
@@ -112,9 +101,6 @@ class Link:
     def ip_to_int(self, ip_address):
         """
         IPアドレスを整数に変換する。
-
-        :param ip_address: 変換するIPアドレス
-        :return: 対応する整数
         """
         octets = ip_address.split('.')
         return sum(int(octet) << (8 * i) for i, octet in enumerate(reversed(octets)))
@@ -122,8 +108,6 @@ class Link:
     def subnet_mask_to_int(self, subnet_mask):
         """
         サブネットマスク（CIDR表記）を整数に変換する。
-        :param subnet_mask: サブネットマスク（例: "24"）
-        :return: 対応する整数
         """
         return (0xffffffff >> (32 - int(subnet_mask))) << (32 - int(subnet_mask))
 
@@ -131,82 +115,62 @@ class Link:
         priority = packet.get_priority()
         if from_node == self.node_x:
             queue = self.priority_queues_xy[priority]
-            current_queue_time = self.current_queue_time_xy[priority]
         else:
             queue = self.priority_queues_yx[priority]
-            current_queue_time = self.current_queue_time_yx[priority]
 
-        packet_transfer_time = (packet.size * 8) / self.bandwidth
-        dequeue_time = self.network_event_scheduler.current_time + current_queue_time
+        # 現在の時刻を使用してキューにパケットを追加
+        dequeue_time = self.network_event_scheduler.current_time
         heapq.heappush(queue, (dequeue_time, packet, from_node))
-        self.add_to_queue_time(from_node, packet_transfer_time, priority)
 
         print(f"{self.network_event_scheduler.current_time}, enqueue packet {packet.size} bytes, priority: {priority}")
-        # Schedule or reschedule the next packet transfer
-        self.schedule_next_packet_transfer(from_node)
+        
+        # スケジューリングの開始
+        if len(queue) == 1:
+            self.network_event_scheduler.schedule_event(
+                self.network_event_scheduler.current_time,
+                self.transfer_packet,
+                from_node
+            )
 
     def transfer_packet(self, from_node):
         print(f"{self.network_event_scheduler.current_time}, transfer packet")
         if from_node == self.node_x:
             priority_queues = self.priority_queues_xy
-            self.next_transfer_event_xy = None
         else:
             priority_queues = self.priority_queues_yx
-            self.next_transfer_event_yx = None
 
-        # Find the highest priority non-empty queue
+        # 最高優先度の非空キューを見つける
         for priority in sorted(priority_queues.keys(), reverse=True):
             queue = priority_queues[priority]
             if queue:
                 dequeue_time, packet, _ = heapq.heappop(queue)
                 packet_transfer_time = (packet.size * 8) / self.bandwidth
-                print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x}-{self.node_y} to {from_node.node_id}. Packet size: {packet.size} bytes, Priority: {packet.get_priority()}")
+                print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x.node_id}-{self.node_y.node_id} to {from_node.node_id}. Packet size: {packet.size} bytes, Priority: {packet.get_priority()}")
 
                 if self.should_drop_packet(packet):
                     if self.network_event_scheduler.verbose:
-                        print(f"{self.network_event_scheduler.current_time:.6f}: Packet dropped at Link {self.node_x}-{self.node_y}.")
+                        print(f"{self.network_event_scheduler.current_time:.6f}: Packet dropped at Link {self.node_x.node_id}-{self.node_y.node_id}.")
                     packet.set_arrived(-1)
                 else:
                     next_node = self.node_x if from_node != self.node_x else self.node_y
-                    self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + self.delay, next_node.receive_packet, packet, self)
+                    self.network_event_scheduler.schedule_event(
+                        self.network_event_scheduler.current_time + self.delay,
+                        next_node.receive_packet,
+                        packet,
+                        self
+                    )
 
-                self.network_event_scheduler.schedule_event(dequeue_time + packet_transfer_time, self.subtract_from_queue_time, from_node, packet_transfer_time, priority)
+                # 現在のパケットの転送時間後に次のパケット送信をスケジュール
+                self.network_event_scheduler.schedule_event(
+                    self.network_event_scheduler.current_time + packet_transfer_time,
+                    self.transfer_packet,
+                    from_node
+                )
 
-                # Schedule the next packet transfer
-                self.schedule_next_packet_transfer(from_node)
-                break
-
-    def schedule_next_packet_transfer(self, from_node):
-        if from_node == self.node_x:
-            priority_queues = self.priority_queues_xy
-            current_event = self.next_transfer_event_xy
+                break  # 一度に一つのパケットのみ処理
         else:
-            priority_queues = self.priority_queues_yx
-            current_event = self.next_transfer_event_yx
-
-        earliest_time = float('inf')
-        for priority in sorted(priority_queues.keys(), reverse=True):
-            queue = priority_queues[priority]
-            if queue:
-                next_packet_time = queue[0][0]
-                if next_packet_time < earliest_time:
-                    earliest_time = next_packet_time
-                    break
-
-        if earliest_time != float('inf'):
-            if current_event is None or (hasattr(current_event, 'time') and earliest_time < current_event.time):
-                # Cancel the current event if it exists
-                if current_event is not None and hasattr(current_event, 'cancel'):
-                    current_event.cancel()
-
-                # Schedule a new event
-                new_event = self.network_event_scheduler.schedule_event(earliest_time, self.transfer_packet, from_node)
-
-                # Update the reference to the new event
-                if from_node == self.node_x:
-                    self.next_transfer_event_xy = new_event
-                else:
-                    self.next_transfer_event_yx = new_event
+            # キューが空の場合、何もしない
+            pass
 
     def should_drop_packet(self, packet):
         """パケットがドロップされるべきかどうかを判断するメソッド"""
@@ -218,18 +182,6 @@ class Link:
             return random.random() < self.loss_rate
         # それ以外の場合はドロップしない
         return False
-
-    def add_to_queue_time(self, from_node, packet_transfer_time, priority):
-        if from_node == self.node_x:
-            self.current_queue_time_xy[priority] += packet_transfer_time
-        else:
-            self.current_queue_time_yx[priority] += packet_transfer_time
-
-    def subtract_from_queue_time(self, from_node, packet_transfer_time, priority):
-        if from_node == self.node_x:
-            self.current_queue_time_xy[priority] -= packet_transfer_time
-        else:
-            self.current_queue_time_yx[priority] -= packet_transfer_time
 
     def __str__(self):
         return f"リンク({self.node_x.node_id} ↔ {self.node_y.node_id}, 帯域幅: {self.bandwidth}, 遅延: {self.delay}, パケットロス率: {self.loss_rate})"
