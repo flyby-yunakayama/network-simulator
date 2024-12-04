@@ -652,10 +652,10 @@ class Node:
         # ARPリプライを受信したら、待機中のパケットに対して処理を行う
         if destination_ip in self.waiting_for_arp_reply:
             for packet_info in self.waiting_for_arp_reply[destination_ip]:
-                data, protocol, kwargs = packet_info
+                data, protocol, dscp, kwargs = packet_info
                 # send_packetメソッドを使用して、待機中のパケットを送信
                 # kwargsは辞書なので、関数のキーワード引数として展開するために**を使用
-                self.send_packet(destination_ip, data, protocol=protocol, dscp=0, **kwargs)
+                self.send_packet(destination_ip, data, protocol=protocol, dscp=dscp, **kwargs)
             # 待機リストから該当する宛先IPを削除
             del self.waiting_for_arp_reply[destination_ip]
 
@@ -697,7 +697,7 @@ class Node:
             self.send_arp_request(destination_ip)
             if destination_ip not in self.waiting_for_arp_reply:
                 self.waiting_for_arp_reply[destination_ip] = []
-            self.waiting_for_arp_reply[destination_ip].append((data, protocol, kwargs))
+            self.waiting_for_arp_reply[destination_ip].append((data, protocol, dscp, kwargs))
         else:
             if protocol == "UDP":
                 self._send_udp_packet(destination_ip, destination_mac, data, dscp, **kwargs)
