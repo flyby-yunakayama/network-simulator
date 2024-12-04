@@ -674,7 +674,6 @@ class Node:
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
-        print(f"{self.network_event_scheduler.current_time:.6f}, send ARP reply")
         # ARPリプライパケットを作成
         arp_reply_packet = ARPPacket(
             source_mac=self.mac_address,  # 送信元MACアドレスは自身のMACアドレス
