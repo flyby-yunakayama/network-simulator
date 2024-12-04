@@ -162,6 +162,8 @@ class Link:
                     )
 
                 # 現在のパケットの転送時間後に次のパケット送信をスケジュール
+                if self.network_event_scheduler.link_verbose:
+                    print(f"{self.network_event_scheduler.current_time:.6f}: Schedule next packet transfer after {packet_transfer_time} seconds")
                 self.network_event_scheduler.schedule_event(
                     self.network_event_scheduler.current_time + packet_transfer_time,
                     self.transfer_packet,
