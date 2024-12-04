@@ -690,6 +690,9 @@ class Node:
         """
         汎用的なパケット送信メソッド。プロトコルに基づいて適切なパケットを送信します。
         """
+        print(f"{self.network_event_scheduler.current_time}, send packet")
+
+
         destination_mac = self.get_mac_address_from_ip(destination_ip)
 
         if destination_mac is None:
