@@ -22,6 +22,10 @@ class Link:
         self.priority_queues_xy = defaultdict(list)
         self.priority_queues_yx = defaultdict(list)
 
+        # 転送中フラグの初期化
+        self.is_transferring_xy = False
+        self.is_transferring_yx = False
+
         # IPアドレスの選択とリンクの設定
         ip_x, ip_y = self.setup_link_ips(node_x, node_y)
 
