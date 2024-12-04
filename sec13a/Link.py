@@ -141,6 +141,7 @@ class Link:
         heapq.heappush(queue, (dequeue_time, packet, from_node))
         self.add_to_queue_time(from_node, packet_transfer_time, priority)
 
+        print(f"{self.network_event_scheduler.current_time}, enqueue packet {packet.size} bytes, priority: {priority}")
         # Schedule or reschedule the next packet transfer
         self.schedule_next_packet_transfer(from_node)
 

@@ -105,6 +105,7 @@ class ARPPacket(Packet):
             source_ip=source_ip,
             destination_ip=destination_ip,
             ttl=1, fragment_flags={}, fragment_offset=0, # ダミーのTTLとフラグメント情報
+            dscp=48,
             header_size=28,  # ARPヘッダの標準的なサイズ
             payload_size=28,  # ARPパケットのペイロードサイズ
             network_event_scheduler=network_event_scheduler
@@ -130,6 +131,7 @@ class DNSPacket(Packet):
             source_ip=source_ip,
             destination_ip=destination_ip,
             ttl=64,  # DNSパケットのTTLは通常のIPパケットと同様に設定
+            dscp=48,
             fragment_flags={}, fragment_offset=0,
             header_size=0,  # DNSヘッダサイズは固定ではないため、具体的なサイズは省略
             payload_size=0,  # 実際のペイロードサイズはクエリによって異なる
@@ -153,6 +155,7 @@ class DHCPPacket(Packet):
             source_ip=source_ip,
             destination_ip=destination_ip,
             ttl=255,  # DHCPパケットは通常ローカルネットワーク内でのみ流れるためTTLは最大値
+            dscp=48,
             fragment_flags={}, fragment_offset=0,
             header_size=240,  # DHCPパケットのヘッダサイズは固定で240バイト
             payload_size=0,  # 実際のペイロードサイズはオプションによって異なる
@@ -174,8 +177,13 @@ class BPDU(Packet):
             destination_mac=destination_mac,
             source_ip='0.0.0.0/24',  # IPv4用ダミーIPアドレス
             destination_ip='0.0.0.0/24',  # IPv4用ダミーIPアドレス
-            ttl=1, fragment_flags={}, fragment_offset=0, # ダミーのTTLとフラグメント情報
-            header_size=20, payload_size=50, network_event_scheduler=network_event_scheduler
+            ttl=1,
+            fragment_flags={},
+            fragment_offset=0, # ダミーのTTLとフラグメント情報
+            dscp=48,
+            header_size=20,
+            payload_size=50,
+            network_event_scheduler=network_event_scheduler
         )
         self.payload = {
             "root_id": root_id,
@@ -195,6 +203,7 @@ class HelloPacket(Packet):
             destination_ip="224.0.0.5",  # OSPF Helloパケットの標準的な宛先IPアドレス
             ttl=1,  # OSPF HelloパケットのTTLは通常1
             fragment_flags={}, fragment_offset=0,
+            dscp=48,
             header_size=24,  # OSPF Helloパケットのヘッダサイズ
             payload_size=20,  # 適切なペイロードサイズを設定
             network_event_scheduler=network_event_scheduler
@@ -217,6 +226,7 @@ class LSAPacket(Packet):
             source_ip=source_ip,
             destination_ip="224.0.0.5",  # OSPFのマルチキャストアドレス
             ttl=1,  # OSPFパケットのTTLは通常1
+            dscp=48,
             fragment_flags={}, fragment_offset=0,
             header_size=24,  # 適切なヘッダサイズを設定
             payload_size=100,  # トポロジ情報に基づいて調整
