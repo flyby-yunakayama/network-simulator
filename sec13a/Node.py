@@ -176,10 +176,8 @@ class Node:
                 self._send_arp_reply(packet)
                 return
 
-        print(f"{self.network_event_scheduler.current_time:.6f}, process ARP packet")
         if packet.header["destination_mac"] == self.mac_address:
             if packet.payload.get("operation") == "reply" and packet.payload["destination_ip"] == self.ip_address:
-                print(f"{self.network_event_scheduler.current_time:.6f}, ARP reply received")
                 # ARPリプライを受信した場合の処理
                 self.network_event_scheduler.log_packet_info(packet, "ARP reply received", self.node_id)
                 source_ip = packet.payload["source_ip"]
@@ -572,7 +570,6 @@ class Node:
             print(f"宛先IP: {destination_ip}, 宛先ポート: {destination_port}, 状態: {state['state']}")
 
     def receive_packet(self, packet, received_link):
-        print(f"{self.network_event_scheduler.current_time:.6f}, receive packet")
         if packet.arrival_time == -1:
             self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
         elif isinstance(packet, ARPPacket):  # ARPパケットの処理
@@ -677,6 +674,7 @@ class Node:
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
+        print(f"{self.network_event_scheduler.current_time:.6f}, send ARP reply")
         # ARPリプライパケットを作成
         arp_reply_packet = ARPPacket(
             source_mac=self.mac_address,  # 送信元MACアドレスは自身のMACアドレス
