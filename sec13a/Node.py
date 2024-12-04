@@ -1056,6 +1056,7 @@ class Node:
                 # 次のパケットをスケジュールするためのインターバルを計算
                 packet_size = header_size + payload_size
                 interval = (packet_size * 8) / bitrate * burstiness
+                print(f"{self.network_event_scheduler.current_time}, interval: {interval}")
                 self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
 
         self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time, generate_packet)
