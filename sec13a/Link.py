@@ -170,14 +170,17 @@ class Link:
                     )
 
                 # 現在のパケットの転送時間後に次のパケット送信をスケジュール
+                print(f"{self.network_event_scheduler.current_time:.6f}, packet_transfer_time: {packet_transfer_time}")
                 if any(priority_queues.values()):
                     self.network_event_scheduler.schedule_event(
                         self.network_event_scheduler.current_time + packet_transfer_time,
                         self.transfer_packet,
                         from_node
                     )
-                    print(f"{self.network_event_scheduler.current_time:.6f}: Schedule next packet transfer after {packet_transfer_time} seconds")
+                    if self.network_event_scheduler.link_verbose:
+                        print(f"{self.network_event_scheduler.current_time:.6f}: Schedule next packet transfer after {packet_transfer_time} seconds")
                 else:
+                    print(f"{self.network_event_scheduler.current_time:.6f}, queue is empty")
                     # キューが空の場合、転送中フラグをリセット
                     if from_node == self.node_x:
                         self.is_transferring_xy = False
