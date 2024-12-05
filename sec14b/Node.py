@@ -1296,9 +1296,7 @@ class Node:
             payload_size=1000,
             protocol="TCP",
             dscp=0,
-            data=http_data,
-            source_port=source_port,
-            destination_port=destination_port
+            data=http_data
         )
 
     def send_dns_query_and_set_http(self, destination_url, resource_path, headers=None):
