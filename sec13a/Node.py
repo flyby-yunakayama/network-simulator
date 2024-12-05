@@ -507,6 +507,7 @@ class Node:
             destination_ip=packet.header["source_ip"],
             destination_mac=packet.header["source_mac"],
             data=b"",
+            dscp=packet.header["dscp"],
             **control_packet_kwargs
         )
 
@@ -539,6 +540,7 @@ class Node:
                 destination_ip=packet.header["source_ip"],
                 destination_mac=packet.header["source_mac"],
                 data=b"",
+                dscp=packet.header["dscp"],
                 **control_packet_kwargs
             )
         else:
