@@ -40,19 +40,19 @@ class Packet:
     def get_priority(self):
         # Map DSCP values to priority levels (0-7, with 7 being the highest priority)
         dscp = self.ip_header["dscp"]
-        if dscp >= 48:  # Network Control
+        if dscp >= 56:  # Network Control
             return 7
-        elif dscp >= 40:  # Expedited Forwarding
+        elif dscp >= 48:  # Expedited Forwarding
             return 6
-        elif dscp >= 32:  # Assured Forwarding 4
+        elif dscp >= 40:  # Assured Forwarding 4
             return 5
-        elif dscp >= 24:  # Assured Forwarding 3
+        elif dscp >= 32:  # Assured Forwarding 3
             return 4
-        elif dscp >= 16:  # Assured Forwarding 2
+        elif dscp >= 24:  # Assured Forwarding 2
             return 3
-        elif dscp >= 8:  # Assured Forwarding 1
+        elif dscp >= 16:  # Assured Forwarding 1
             return 2
-        elif dscp > 0:  # Class Selector
+        elif dscp > 8:  # Class Selector
             return 1
         else:  # Best Effort
             return 0
@@ -105,7 +105,7 @@ class ARPPacket(Packet):
             source_ip=source_ip,
             destination_ip=destination_ip,
             ttl=1, fragment_flags={}, fragment_offset=0, # ダミーのTTLとフラグメント情報
-            dscp=48,
+            dscp=56,
             header_size=28,  # ARPヘッダの標準的なサイズ
             payload_size=28,  # ARPパケットのペイロードサイズ
             network_event_scheduler=network_event_scheduler
@@ -131,7 +131,7 @@ class DNSPacket(Packet):
             source_ip=source_ip,
             destination_ip=destination_ip,
             ttl=64,  # DNSパケットのTTLは通常のIPパケットと同様に設定
-            dscp=48,
+            dscp=56,
             fragment_flags={}, fragment_offset=0,
             header_size=0,  # DNSヘッダサイズは固定ではないため、具体的なサイズは省略
             payload_size=0,  # 実際のペイロードサイズはクエリによって異なる
@@ -155,7 +155,7 @@ class DHCPPacket(Packet):
             source_ip=source_ip,
             destination_ip=destination_ip,
             ttl=255,  # DHCPパケットは通常ローカルネットワーク内でのみ流れるためTTLは最大値
-            dscp=48,
+            dscp=56,
             fragment_flags={}, fragment_offset=0,
             header_size=240,  # DHCPパケットのヘッダサイズは固定で240バイト
             payload_size=0,  # 実際のペイロードサイズはオプションによって異なる
@@ -180,7 +180,7 @@ class BPDU(Packet):
             ttl=1,
             fragment_flags={},
             fragment_offset=0, # ダミーのTTLとフラグメント情報
-            dscp=48,
+            dscp=56,
             header_size=20,
             payload_size=50,
             network_event_scheduler=network_event_scheduler
@@ -203,7 +203,7 @@ class HelloPacket(Packet):
             destination_ip="224.0.0.5",  # OSPF Helloパケットの標準的な宛先IPアドレス
             ttl=1,  # OSPF HelloパケットのTTLは通常1
             fragment_flags={}, fragment_offset=0,
-            dscp=48,
+            dscp=56,
             header_size=24,  # OSPF Helloパケットのヘッダサイズ
             payload_size=20,  # 適切なペイロードサイズを設定
             network_event_scheduler=network_event_scheduler
@@ -226,7 +226,7 @@ class LSAPacket(Packet):
             source_ip=source_ip,
             destination_ip="224.0.0.5",  # OSPFのマルチキャストアドレス
             ttl=1,  # OSPFパケットのTTLは通常1
-            dscp=48,
+            dscp=56,
             fragment_flags={}, fragment_offset=0,
             header_size=24,  # 適切なヘッダサイズを設定
             payload_size=100,  # トポロジ情報に基づいて調整
