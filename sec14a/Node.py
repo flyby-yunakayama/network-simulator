@@ -1081,10 +1081,10 @@ class Node:
 
         self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time, generate_packet)
 
-    def start_tcp_traffic(self, destination_url, bitrate, start_time, duration=None, header_size=40, payload_size=1000,
+    def start_ftp(self, destination_url, bitrate, start_time, duration=None, header_size=40, payload_size=1000,
                           burstiness=1.0, protocol="TCP", dscp=0, data=None):
         """
-        TCPトラフィックを開始します。データが提供されない場合、ダミーデータを使用します。
+        FTPを開始します。データが提供されない場合、ダミーデータを使用します。
 
         :param destination_url: 宛先のURLまたはIPアドレス
         :param bitrate: ビットレート（bps）
