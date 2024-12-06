@@ -690,18 +690,22 @@ class Node:
             connection_key = (dst_ip, destination_port)
             app = self.application_layer
 
-            # TCPの場合、traffic_infoやウィンドウ管理が必要
+            # SYNフラグが付いている場合はtraffic_infoが無くてもハンドシェイク開始
+            flags = kwargs.get('flags', "")
+            if "SYN" in flags:
+                # ハンドシェイク開始ロジック
+                self._send_syn_packet(dst_ip, data, **kwargs)
+                return
+
+            # SYN以外の場合、通常のdata送信にはtraffic_infoが必要
             traffic_info = app.get_traffic_info(connection_key)
             if not traffic_info:
                 if self.network_event_scheduler.tcp_verbose:
-                    print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
-                # 必要に応じてSYN送信(ハンドシェイク開始)や、
-                # 一時バッファにデータを溜めるなどの処理を行うことも可能。
+                    print(f"No traffic info found for {connection_key}, cannot send data. Possibly not established yet.")
                 return
 
             end_time = traffic_info['end_time']
             if self.network_event_scheduler.current_time < end_time:
-                # ウィンドウやcwnd、輻輳制御を考慮したデータ送信
                 self._send_tcp_data(connection_key, dst_ip, data, **kwargs)
             else:
                 if self.network_event_scheduler.tcp_verbose:
