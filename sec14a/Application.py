@@ -3,7 +3,6 @@ from sec14a.Packet import DNSPacket, DHCPPacket, TCPPacket, UDPPacket
 class ApplicationManager:
     def __init__(self, node):
         self.node = node
-        self.node.set_application_layer(self)
 
         # DNS, DHCPクライアントを内部で生成
         self.dns_client = DnsClient(node)
