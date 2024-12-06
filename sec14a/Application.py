@@ -1,56 +1,156 @@
+from sec14a.Packet import DNSPacket, DHCPPacket
+
 class Application:
     def __init__(self, node):
         self.node = node
-        # DNS解決待ちの辞書: { domain: callback }
-        # callbackは解決後に呼ぶ関数(またはNone)
-        self.waiting_for_dns = {}
+        self.node.set_application_layer(self)
+        # DNS, DHCPクライアントインスタンスを作成
+        self.dns_client = DnsClient(node)
+        self.dhcp_client = DhcpClient(node)
+
+    def on_dns_packet_received(self, packet):
+        self.dns_client.on_dns_packet_received(packet)
+
+    def on_dhcp_packet_received(self, packet):
+        self.dhcp_client.on_dhcp_packet_received(packet)
 
     def resolve_destination_url(self, destination_url, callback=None):
-        """
-        DNS解決を試みる。既にurl_to_ip_mappingにあれば即座にIPを返す。
-        CIDR付きIPアドレスならDNS不要なので直接それを返す。
-        そうでなければDNSクエリを送り、応答待ち状態にする。
-        """
-        # CIDR付きIPかどうかの判定
         if self.node.is_valid_cidr_notation(destination_url):
-            # CIDR付きIPが直接指定された場合はDNS不要
-            # url_to_ip_mappingやDNSクエリは行わず、そのまま返す。
             if callback:
                 callback(destination_url)
             return destination_url
 
-        # CIDR付きでなく、url_to_ip_mappingにも未登録ならDNSクエリ
-        if destination_url in self.node.url_to_ip_mapping:
-            # すでに解決済み
-            resolved_ip = self.node.url_to_ip_mapping[destination_url]
+        if destination_url in self.dns_client.url_to_ip_mapping:
+            resolved_ip = self.dns_client.url_to_ip_mapping[destination_url]
             if callback:
                 callback(resolved_ip)
             return resolved_ip
         else:
-            # 未解決なのでDNSクエリを送信し、待機状態に
-            self.waiting_for_dns[destination_url] = callback
-            self.node.send_dns_query(destination_url)
+            self.dns_client.resolve_domain(destination_url, callback)
             return None
 
     def check_dns_resolution(self):
-        """
-        DNS応答がすでにNodeのurl_to_ip_mappingに反映されていないか定期的にチェックする。
-        解決済みのドメインが見つかれば対応するコールバックを呼び出す。
+        self.dns_client.check_pending_queries()
 
-        本メソッドは、アプリケーション層のイベントループ等から定期的に呼び出せる。
-        """
-        resolved_domains = []
-        for domain, cb in self.waiting_for_dns.items():
-            if domain in self.node.url_to_ip_mapping:
-                # 解決済み
-                resolved_ip = self.node.url_to_ip_mapping[domain]
-                if cb:
-                    cb(resolved_ip)
-                resolved_domains.append(domain)
 
-        # 解決済みドメインを待機リストから削除
-        for domain in resolved_domains:
-            del self.waiting_for_dns[domain]
+class DnsClient:
+    def __init__(self, node):
+        self.node = node
+        self.url_to_ip_mapping = {}
+        self.pending_queries = {}
+
+    def resolve_domain(self, domain, callback=None):
+        # すでに解決済みかチェック
+        if domain in self.url_to_ip_mapping:
+            if callback:
+                callback(self.url_to_ip_mapping[domain])
+            return
+        if not self.node.dns_server_ip:
+            print("No DNS server IP set. Cannot resolve domain.")
+            return
+
+        # DNSクエリパケット作成
+        dns_query_packet = DNSPacket(
+            source_mac=self.node.mac_address,
+            destination_mac="FF:FF:FF:FF:FF:FF",
+            source_ip=self.node.ip_address,
+            destination_ip=self.node.dns_server_ip,
+            query_domain=domain,
+            query_type="A",
+            network_event_scheduler=self.node.network_event_scheduler
+        )
+        # UDPでDNSサーバへクエリ送信
+        self.node.send_packet(
+            self.node.dns_server_ip,
+            dns_query_packet.to_bytes(),
+            protocol="UDP",
+            dscp=0,
+            source_port=53,
+            destination_port=53
+        )
+        self.pending_queries[domain] = callback
+
+    def on_dns_packet_received(self, packet):
+        if packet.query_domain and "resolved_ip" in packet.dns_data:
+            domain = packet.query_domain
+            resolved_ip = packet.dns_data["resolved_ip"]
+            self.url_to_ip_mapping[domain] = resolved_ip
+            print(f"DNS resolved: {domain} -> {resolved_ip}")
+            if domain in self.pending_queries and self.pending_queries[domain]:
+                self.pending_queries[domain](resolved_ip)
+            if domain in self.pending_queries:
+                del self.pending_queries[domain]
+
+    def check_pending_queries(self):
+        # 必要ならタイムアウト処理など実装
+        pass
+
+
+class DhcpClient:
+    def __init__(self, node):
+        self.node = node
+        self.state = "INIT"
+        self.requested_ip = None
+        self.start_dhcp()
+
+    def start_dhcp(self):
+        # DHCP Discover
+        dhcp_discover_packet = DHCPPacket(
+            source_mac=self.node.mac_address,
+            destination_mac="FF:FF:FF:FF:FF:FF",
+            source_ip="0.0.0.0/32",
+            destination_ip="255.255.255.255/32",
+            message_type="DISCOVER",
+            network_event_scheduler=self.node.network_event_scheduler
+        )
+        self.node.send_packet(
+            "255.255.255.255",
+            dhcp_discover_packet.to_bytes(),
+            protocol="UDP",
+            dscp=0,
+            source_port=68,
+            destination_port=67
+        )
+        self.state = "DISCOVER_SENT"
+
+    def on_dhcp_packet_received(self, packet):
+        if packet.message_type == "OFFER" and self.state == "DISCOVER_SENT":
+            offered_ip = packet.dhcp_data.get("offered_ip")
+            if offered_ip:
+                self.send_dhcp_request(offered_ip)
+                self.state = "REQUEST_SENT"
+
+        elif packet.message_type == "ACK" and self.state == "REQUEST_SENT":
+            assigned_ip = packet.dhcp_data.get("assigned_ip")
+            dns_server_ip = packet.dhcp_data.get("dns_server_ip")
+            if assigned_ip:
+                self.node.set_ip_address(assigned_ip)
+                print(f"Assigned IP: {assigned_ip}")
+            if dns_server_ip:
+                self.node.set_dns_server_ip(dns_server_ip)
+                print(f"Assigned DNS server: {dns_server_ip}")
+            self.state = "BOUND"
+
+    def send_dhcp_request(self, requested_ip):
+        dhcp_request_packet = DHCPPacket(
+            source_mac=self.node.mac_address,
+            destination_mac="FF:FF:FF:FF:FF:FF",
+            source_ip="0.0.0.0/32",
+            destination_ip="255.255.255.255/32",
+            message_type="REQUEST",
+            network_event_scheduler=self.node.network_event_scheduler
+        )
+        dhcp_request_packet.dhcp_data = {"requested_ip": requested_ip}
+
+        self.node.send_packet(
+            "255.255.255.255",
+            dhcp_request_packet.to_bytes(),
+            protocol="UDP",
+            dscp=0,
+            source_port=68,
+            destination_port=67
+        )
+
 
 class UDPApp(Application):
     def __init__(self, node):
@@ -150,143 +250,87 @@ class FTPClient(Application):
     def __init__(self, node, server_url=None, verbose=False):
         super().__init__(node)
         self.server_url = server_url
-        self.state = "INITIAL"
-        self.server_ip = None
-        self.control_port = None
-        self.file_to_retrieve = None
         self.verbose = verbose
+        self.state = "NOT_CONNECTED"
+        self.file_to_retrieve = None
 
     def connect(self, server_ip, server_port=21):
+        # NodeレベルでTCP接続を要求し、接続確立後にon_packet_receivedが呼ばれる
         if self.verbose:
-            print(f"[FTPClient] Connecting to {server_ip}:{server_port}")
-        self.server_ip = server_ip
-        self.initiate_ftp_control_connection(server_ip, server_port)
-
-    def initiate_ftp_control_connection(self, server_ip, server_port=21):
-        if self.verbose:
-            print(f"[FTPClient] Initiating control connection to {server_ip}:{server_port}")
-        source_port = self.node.select_random_port()
-        destination_port = server_port
-        self.control_port = destination_port
-        self.node.register_application(destination_port, "TCP", self)
+            print("[FTPClient] Requesting TCP connect to ", server_ip, server_port)
+        # TCPハンドシェイクはNode内で行われるため、ここでは単に Node に "connect" 的な処理を依頼する
+        # Nodeが接続完了後に最初のパケット（220）が届くはず
         self.state = "CONNECTING"
-        self.node.send_packet(server_ip, b"", protocol="TCP", dscp=0,
-                              source_port=source_port, destination_port=destination_port, flags="SYN")
+        self.node.initiate_tcp_connection(server_ip, server_port)  # 仮のメソッド（実装要）
 
     def on_packet_received(self, packet):
+        # この時点でTCP接続は確立済み（Node側で完了）
         data = packet.payload.decode('utf-8', errors='ignore')
-        flags = packet.header.get("flags", "")
         if self.verbose:
-            print(f"[FTPClient] Packet received: flags={flags}, data={data.strip()}")
-
-        # TCPハンドシェイク処理
-        if "SYN" in flags and "ACK" in flags and self.state == "CONNECTING":
-            self.state = "ESTABLISHED"
-            if self.verbose:
-                print("[FTPClient] Connection established, sending ACK")
-            self.node.send_packet(packet.header["source_ip"], b"", protocol="TCP", dscp=0,
-                                  source_port=packet.header["destination_port"], destination_port=packet.header["source_port"],
-                                  flags="ACK")
-            return
-
-        if "FIN" in flags:
-            if self.verbose:
-                print("[FTPClient] FIN received, closing connection")
-            self.node.send_packet(packet.header["source_ip"], b"", protocol="TCP", dscp=0,
-                                  source_port=packet.header["destination_port"], destination_port=packet.header["source_port"],
-                                  flags="ACK")
-            self.state = "CLOSED"
-            return
-
-        # FTPプロトコルメッセージ処理
+            print("[FTPClient] Received: ", data.strip())
+        # 接続確立後、最初のレスポンスは220想定
         if data.startswith("220"):
-            if self.verbose:
-                print("[FTPClient] Server ready (220), sending USER")
+            self.state = "LOGGED_OUT"
+            # USERコマンド送信
             self.send_ftp_command("USER anonymous\r\n")
         elif data.startswith("331"):
-            if self.verbose:
-                print("[FTPClient] 331 received, sending PASS")
+            # PASSコマンド送信
             self.send_ftp_command("PASS anonymous@\r\n")
         elif data.startswith("230"):
-            if self.verbose:
-                print("[FTPClient] 230 received, logged in. Sending RETR if file specified")
+            # ログイン成功
+            self.state = "LOGGED_IN"
             if self.file_to_retrieve:
                 self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
         elif data.startswith("150"):
-            if self.verbose:
-                print("[FTPClient] 150 received, file transfer starting")
-            # ファイルデータがサーバから送られるはず
+            # ファイル転送開始
+            pass
         elif data.startswith("226"):
-            if self.verbose:
-                print("[FTPClient] 226 received, transfer complete. Sending FIN to close.")
-            self.node.send_packet(packet.header["source_ip"], b"", protocol="TCP", dscp=0,
-                                  source_port=packet.header["destination_port"], destination_port=packet.header["source_port"],
-                                  flags="FIN")
+            # 転送完了
+            # FINやACKはNode内部で処理し、ここでは不要
+            # 必要ならNodeに"close connection"的なメソッドを呼んで接続終了させる
+            pass
 
     def send_ftp_command(self, command):
-        source_port = self.node.select_random_port()
         if self.verbose:
-            print(f"[FTPClient] Sending command: {command.strip()}")
-        self.node.send_packet(self.server_ip, command.encode('utf-8'),
-                              protocol="TCP", dscp=0, source_port=source_port,
-                              destination_port=self.control_port, flags="PSH")
+            print("[FTPClient] Sending command:", command.strip())
+        self.node.send_app_data(self.server_url, command.encode('utf-8'), protocol="TCP")  # 仮のメソッド
 
     def retrieve_file(self, filename):
         self.file_to_retrieve = filename
         if self.verbose:
-            print(f"[FTPClient] retrieve_file called with filename={filename}")
-
+            print("[FTPClient] Will retrieve file after login:", filename)
 
 class FTPServer(Application):
     def __init__(self, node, shared_files, verbose=False):
         super().__init__(node)
         self.shared_files = shared_files
-        self.node.register_application(21, "TCP", self)
-        self.state = "ESTABLISHED"  # ハンドシェイクはNode内部で完了していると仮定
         self.verbose = verbose
+        self.state = "READY"  # TCP接続はNodeで確立されると想定
 
     def on_packet_received(self, packet):
+        # この時点でTCP接続は確立済み
         data = packet.payload.decode('utf-8', errors='ignore')
-        flags = packet.header.get("flags", "")
-        src_ip = packet.header["source_ip"]
-        src_port = packet.header["source_port"]
-        dst_port = packet.header["destination_port"]
-
         if self.verbose:
-            print(f"[FTPServer] Packet received: flags={flags}, data={data.strip()}")
+            print("[FTPServer] Received: ", data.strip())
 
-        # 接続確立後、最初の受信で220を送る（もしまだ送ってなければ）
-        if self.state == "ESTABLISHED":
-            # まだ220を送っていなければ送信
-            # 状態管理用フラグを追加してもよい
-            if self.verbose:
-                print("[FTPServer] Sending 220 Service ready")
-            self.send_ftp_response(src_ip, dst_port, src_port, "220 Service ready\r\n")
+        # 最初のパケットを受け取ったら220を返す
+        if self.state == "READY":
+            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "220 Service ready\r\n")
+            self.state = "WAIT_USER"
+            return
 
-        # FTPプロトコルメッセージ処理
         if data.startswith("USER"):
-            if self.verbose:
-                print("[FTPServer] USER received, sending 331")
-            self.send_ftp_response(src_ip, dst_port, src_port, "331 User name okay, need password.\r\n")
+            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "331 User name okay, need password.\r\n")
         elif data.startswith("PASS"):
-            if self.verbose:
-                print("[FTPServer] PASS received, sending 230")
-            self.send_ftp_response(src_ip, dst_port, src_port, "230 User logged in, proceed.\r\n")
+            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "230 User logged in, proceed.\r\n")
         elif data.startswith("RETR"):
-            if self.verbose:
-                print("[FTPServer] RETR received, sending file data (150 then file then 226)")
-            self.send_ftp_response(src_ip, dst_port, src_port, "150 File status okay; about to open data connection.\r\n")
-            self.node.register_application(20, "TCP", self)
             filename = data.strip().split(" ")[1]
             file_data = self.shared_files.get(filename, b"Test file data.")
-            source_port = self.node.select_random_port()
-            self.node.send_packet(src_ip, file_data, protocol="TCP", dscp=0,
-                                  source_port=20, destination_port=src_port, flags="PSH")
-            self.send_ftp_response(src_ip, dst_port, src_port, "226 Closing data connection.\r\n")
+            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "150 File status okay; about to open data connection.\r\n")
+            self.node.send_app_data(packet.header["source_ip"], file_data, protocol="TCP")  # 仮メソッド
+            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "226 Closing data connection.\r\n")
 
     def send_ftp_response(self, dst_ip, dst_port, src_port, response):
-        source_port = self.node.select_random_port()
         if self.verbose:
-            print(f"[FTPServer] Sending response: {response.strip()}")
-        self.node.send_packet(dst_ip, response.encode('utf-8'), protocol="TCP", dscp=0,
-                              source_port=source_port, destination_port=src_port, flags="PSH")
+            print("[FTPServer] Sending response:", response.strip())
+        self.node.send_app_data(dst_ip, response.encode('utf-8'), protocol="TCP")  # 仮メソッド
