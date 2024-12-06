@@ -738,7 +738,9 @@ class Node:
             # ウィンドウ管理やシーケンス番号更新、再送タイマー設定など
             seq_num = self.tcp_connections[connection_key]['sequence_number']
             expected_ack = seq_num + len(chunk)
-            print(self.windows)
+
+            if connection_key not in self.windows:
+                self.windows[connection_key] = {}
             self.windows[connection_key][seq_num] = {
                 "packet_info": {
                     'destination_ip': dst_ip,
