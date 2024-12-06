@@ -165,7 +165,6 @@ class Node:
                     if "ACK" in flags:  # SYN-ACK受信
                         self.establish_TCP_connection(packet)
                         self.send_TCP_ACK(packet)
-                        self.send_tcp_data_packet(packet)
                     else:
                         self.send_TCP_SYN_ACK(packet)
                     return
@@ -455,6 +454,14 @@ class Node:
             else:
                 self.update_tcp_connection_state(connection_key, "ESTABLISHED")
                 self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
+        else:
+            # コネクション情報初期化など
+            self.initialize_connection_info(connection_key, state='ESTABLISHED')
+            self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
+
+        # アプリケーション層へコネクション確立を通知
+        if self.application_layer and hasattr(self.application_layer, 'on_connection_established'):
+            self.application_layer.on_connection_established(connection_key)
 
     def send_TCP_ACK(self, packet):
         # コネクションキーを生成

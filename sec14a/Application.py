@@ -65,6 +65,17 @@ class ApplicationManager:
             # マッピングがない場合はドロップ、あるいはログ
             pass
 
+    def on_connection_established(self, connection_key):
+        # connection_keyに基づいてどのアプリか判定
+        # たとえば(宛先IP,ポート)をキーとしてconnection_app_mapからアプリタイプを取得
+        # そして該当のアプリケーションへon_connection_establishedイベントを渡す
+        app_type = self.connection_app_map.get((connection_key[0], connection_key[1]))
+        if app_type == "FTP" and self.ftp_client:
+            self.ftp_client.on_connection_established(connection_key)
+        elif app_type == "FTPSERVER" and self.ftp_server:
+            self.ftp_server.on_connection_established(connection_key)
+        # UDPAppなども同様にハンドル可能
+
     def get_traffic_info(self, connection_key):
         # connection_keyは(src_ip, src_port)
         app_type = self.connection_app_map.get(connection_key)
@@ -301,13 +312,19 @@ class FTPClient:
             print("[FTPClient] Requesting TCP connect to ", server_ip, server_port)
         self.state = "CONNECTING"
         self.node.initiate_tcp_connection(server_ip, server_port)
-        # FTP接続キーをmap
         self.app_manager.map_connection_to_app((server_ip, server_port), "FTP")
 
     def on_packet_received(self, packet):
         data = packet.payload.decode('utf-8', errors='ignore')
         if self.verbose:
             print("[FTPClient] Received: ", data.strip())
+
+        # FTPの基本的な流れ:
+        # 1. 接続成立後、サーバから220応答が来る
+        # 2. クライアントはUSERコマンド送信
+        # 3. サーバが331応答ならPASSコマンド送信
+        # 4. サーバが230応答ならログイン成功
+        # 5. ファイル取得(RETR)コマンドなどを送る
         if data.startswith("220"):
             self.state = "LOGGED_OUT"
             self.send_ftp_command("USER anonymous\r\n")
@@ -318,11 +335,16 @@ class FTPClient:
             if self.file_to_retrieve:
                 self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
         elif data.startswith("150"):
-            # ファイル転送開始時にトラフィック情報をセットするなど
+            # ファイル転送開始時にtraffic_infoをセットするなどの処理をここで行う
             pass
         elif data.startswith("226"):
             # 転送完了
             pass
+
+    def on_connection_established(self, connection_key):
+        # 接続確立ログのみ表示するなど、実際のコマンド送信はここでは行わない
+        if self.verbose:
+            print("[FTPClient] Connection established. Waiting for server greeting (220)...")
 
     def send_ftp_command(self, command):
         if self.verbose:
@@ -362,32 +384,40 @@ class FTPServer:
         self.verbose = verbose
         self.state = "READY"
 
-        # FTPサーバの待ち受けポート(例:21)をFTPサーバアプリとしてマッピング
-        # 必要に応じてapp_manager.map_connection_to_app(("192.168.1.1",21), "FTPSERVER")など呼ぶ
+    def on_connection_established(self, connection_key):
+        # 接続確立後直ちに220メッセージを送信
+        if self.verbose:
+            print("[FTPServer] Connection established. Sending 220 greeting.")
+        # connection_key: (source_ip, source_port)などを想定
+        # サーバとしては，connection_key内のsource_ip, source_portがクライアント側
+        # ここでは単純化のため、app_managerやnode内のconnection_app_mapなどで
+        # connection_keyから宛先を特定する処理が必要になるかもしれない
+        # 例えばconnection_keyを(client_ip, client_port)とし、
+        # server_portは21固定でハードコードしておく
+        client_ip, client_port = connection_key
+        server_port = 21  # FTPデフォルト
+        self.send_ftp_response(client_ip, server_port, client_port, "220 Service ready\r\n")
+        self.state = "WAIT_USER"
 
     def on_packet_received(self, packet):
         data = packet.payload.decode('utf-8', errors='ignore')
         if self.verbose:
             print("[FTPServer] Received: ", data.strip())
 
-        if self.state == "READY":
-            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "220 Service ready\r\n")
-            self.state = "WAIT_USER"
-            return
-
-        if data.startswith("USER"):
-            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "331 User name okay, need password.\r\n")
-        elif data.startswith("PASS"):
-            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "230 User logged in, proceed.\r\n")
-        elif data.startswith("RETR"):
-            filename = data.strip().split(" ")[1]
-            file_data = self.shared_files.get(filename, b"Test file data.")
-            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "150 File status okay; about to open data connection.\r\n")
-            self.node.send_app_data(packet.header["source_ip"], file_data, protocol="TCP")
-            self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "226 Closing data connection.\r\n")
+        if self.state == "WAIT_USER":
+            if data.startswith("USER"):
+                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "331 User name okay, need password.\r\n")
+            elif data.startswith("PASS"):
+                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "230 User logged in, proceed.\r\n")
+                self.state = "LOGGED_IN"
+            elif data.startswith("RETR"):
+                filename = data.strip().split(" ")[1]
+                file_data = self.shared_files.get(filename, b"Test file data.")
+                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "150 File status okay; about to open data connection.\r\n")
+                self.node.send_app_data(packet.header["source_ip"], file_data, protocol="TCP")
+                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "226 Closing data connection.\r\n")
 
     def send_ftp_response(self, dst_ip, dst_port, src_port, response):
         if self.verbose:
             print("[FTPServer] Sending response:", response.strip())
         self.node.send_app_data(dst_ip, response.encode('utf-8'), protocol="TCP")
-
