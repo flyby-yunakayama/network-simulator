@@ -53,22 +53,16 @@ class FTPClient(Application):
         self.state = "INITIAL"
         self.server_ip = None
         self.control_port = None
-        self.file_to_retrieve = "testfile.txt"
+        self.file_to_retrieve = None  # 最初はNone
 
     def connect(self, server_ip, server_port=21):
-        """
-        明示的にサーバIPとポートを指定してFTPコントロール接続を開始するメソッド。
-        server_ipが直接指定できる場合はDNS解決を省略。
-        """
         self.server_ip = server_ip
         self.initiate_ftp_control_connection(server_ip, server_port)
 
     def initiate_ftp_control_connection(self, server_ip, server_port=21):
-        # FTPは21番ポートがデフォルト
         source_port = self.node.select_random_port()
         destination_port = server_port
         self.control_port = destination_port
-        # 21/TCPでこのアプリを登録
         self.node.register_application(destination_port, "TCP", self)
         self.state = "CONNECTING"
         self.node.send_packet(server_ip, b"", protocol="TCP", dscp=0,
@@ -98,7 +92,9 @@ class FTPClient(Application):
         elif data.startswith("331"):
             self.send_ftp_command("PASS anonymous@\r\n")
         elif data.startswith("230"):
-            self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
+            # ログイン成功 → RETRコマンドを送る
+            if self.file_to_retrieve:
+                self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
         elif data.startswith("150"):
             # データ転送開始準備OK
             pass
@@ -114,6 +110,16 @@ class FTPClient(Application):
                               protocol="TCP", dscp=0, source_port=source_port,
                               destination_port=self.control_port, flags="PSH")
         print(f"FTP Client: Sent command: {command.strip()}")
+
+    def retrieve_file(self, filename):
+        """
+        ファイル取得手続きを開始するメソッド。
+        コネクション確立後、230応答後にRETRコマンドが送信されるようにする。
+        """
+        self.file_to_retrieve = filename
+        # コネクションが既にESTABLISHEDで230応答を受信済みならすぐRETR送信可能
+        # だが多くの場合は230を受けてからRETRを送るため、ここでは単にfile_to_retrieveをセットするのみ。
+        # 230応答（ログイン成功）受信後にRETRコマンド送信するフローはon_packet_receivedで実施。
 
 class FTPServer(Application):
     def __init__(self, node, shared_files):
