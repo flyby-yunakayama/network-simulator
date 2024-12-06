@@ -500,6 +500,7 @@ class Node:
             self.waiting_for_arp_reply[destination_ip].append((data, "TCP", dscp, kwargs))
             return
 
+        print("test", destination_ip)
         self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
 
     def terminate_TCP_connection(self, packet):
