@@ -58,7 +58,7 @@ class ApplicationManager:
             self.ftp_client.on_packet_received(packet)
         elif app_type == "FTPSERVER" and self.ftp_server:
             self.ftp_server.on_packet_received(packet)
-        elif app_type == "None" and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
+        elif app_type == None and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
             self.ftp_server.on_packet_received(packet)
         elif app_type == "UDP" and self.udp_app:
             self.udp_app.on_packet_received(packet)
@@ -75,7 +75,7 @@ class ApplicationManager:
             self.ftp_client.on_connection_established(connection_key)
         elif app_type == "FTPSERVER" and self.ftp_server:
             self.ftp_server.on_connection_established(connection_key)
-        elif app_type == "None" and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
+        elif app_type == None and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
             print(f"on_connection_established: {connection_key}, FTPSERVER")
             self.ftp_server.on_connection_established(connection_key)
         # UDPAppなども同様にハンドル可能
