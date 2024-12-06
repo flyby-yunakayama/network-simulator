@@ -22,6 +22,7 @@ class Node:
                 raise ValueError("無効なMACアドレス形式です。")
             self.mac_address = mac_address  # MACアドレス
         self.links = []
+        self.applications = {} # アプリケーション管理用
         self.used_ports = set()  # 使用中のポート番号を保持するセット
         self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
         self.tcp_connections = {}  # 接続状態を追跡する辞書
@@ -38,7 +39,6 @@ class Node:
         self.waiting_for_arp_reply = {}  # 宛先IPをキーとした待機中のパケットリスト
         self.dns_server_ip = dns_server  # DNSサーバのIPアドレス
         self.url_to_ip_mapping = {}  # URLとIPアドレスのマッピングを保持するDNSテーブル
-        self.waiting_for_dns_reply = {}  # DNSレスポンスを待っているパケットを保存する辞書
         self.mtu = mtu  # Maximum Transmission Unit (MTU)
         self.fragmented_packets = {}  # フラグメントされたパケットの一時格納用
         self.default_route = default_route
@@ -79,6 +79,15 @@ class Node:
     def generate_mac_address(self):
         # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format(uuid.uuid4().int >> elements & 0xff) for elements in range(0, 12, 2)])
+
+    def register_application(self, port, protocol, application_instance):
+        """
+        アプリケーション(サーバ等)を登録する。
+        port: ポート番号 (int)
+        protocol: "TCP" or "UDP"
+        application_instance: Applicationクラスを継承したインスタンス
+        """
+        self.applications[(port, protocol)] = application_instance
 
     def select_available_port(self):
         for port in range(1024, 49152):
@@ -229,18 +238,21 @@ class Node:
     def process_UDP_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
-                # Log
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
 
-                self.process_data_packet(packet)
+                # UDPパケット宛先ポートでアプリ検索
+                app_key = (packet.header["destination_port"], "UDP")
+                if app_key in self.applications:
+                    self.applications[app_key].on_packet_received(packet)
+                else:
+                    self.process_data_packet(packet)  # 従来の処理
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
     def process_TCP_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
-                # log
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
 
@@ -270,6 +282,14 @@ class Node:
                 # FINパケットの処理
                 if "FIN" in flags:
                     self.terminate_TCP_connection(packet)  # TCP接続を終了
+
+                # 最後にアプリケーション呼び出し
+                app_key = (packet.header["destination_port"], "TCP")
+                if app_key in self.applications:
+                    self.applications[app_key].on_packet_received(packet)
+                else:
+                    # アプリなしならドロップかデフォルトの処理
+                    self.network_event_scheduler.log_packet_info(packet, "no application found", self.node_id)
 
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
@@ -663,10 +683,9 @@ class Node:
         self.network_event_scheduler.log_packet_info(last_fragment, "reassembled", self.node_id)
 
     def direct_process_packet(self, packet):
-        # フラグメントされていないパケットの直接処理
+        # フラグメントされていないパケットに対する共通的な処理が必要なら残す。
+        # 現在は特定のアプリケーションロジックは書かない。
         pass
-        # ここでパケットのペイロードを処理するロジックを実装
-        # 例: ペイロードのログ出力、特定のデータの解析、応答の送信など
 
     def on_arp_reply_received(self, destination_ip, destination_mac):
         # ARPリプライを受信したら、待機中のパケットに対して処理を行う
@@ -1047,165 +1066,20 @@ class Node:
             for link in self.links:
                 link.enqueue_packet(packet, self)
 
-    def start_udp_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP", dscp=0):
-        def attempt_to_start_traffic():
-            # IPアドレス形式かどうかをチェック
-            if self.is_valid_cidr_notation(destination_url):
-                # IPアドレスの場合は直接トラフィック生成を開始
-                self.set_udp_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
-            else:
-                # URLの場合はDNSクエリを行い、IPアドレスを取得
-                destination_ip = self.resolve_destination_ip(destination_url)
-                if destination_ip is None:
-                    self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
-                else:
-                    self.set_udp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp)
-        
-        self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
-
-    def set_udp_traffic(self, destination_ip, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP", dscp=0):
-        end_time = start_time + duration
-        source_port = self.select_random_port()  # 利用可能なランダムなソースポートを選択
-        destination_port = self.select_random_port()  # デスティネーションポートもランダムに選択
-
-        def generate_packet():
-            if self.network_event_scheduler.current_time < end_time:
-                # send_packetメソッドを使用してパケットを送信
-                data = b'X' * payload_size  # ダミーデータを生成
-                self.send_packet(destination_ip, data, protocol, dscp, source_port=source_port, destination_port=destination_port)
-
-                # 次のパケットをスケジュールするためのインターバルを計算
-                packet_size = header_size + payload_size
-                interval = (packet_size * 8) / bitrate * burstiness
-                self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time + interval, generate_packet)
-
-        self.network_event_scheduler.schedule_event(self.network_event_scheduler.current_time, generate_packet)
-
-    def start_ftp(self, destination_url, bitrate, start_time, duration=None, header_size=40, payload_size=1000,
-                          burstiness=1.0, protocol="TCP", dscp=0, data=None):
-        """
-        FTPを開始します。データが提供されない場合、ダミーデータを使用します。
-
-        :param destination_url: 宛先のURLまたはIPアドレス
-        :param bitrate: ビットレート（bps）
-        :param start_time: トラフィック開始時間
-        :param duration: トラフィックの持続時間（データがない場合に必要）
-        :param header_size: ヘッダーサイズ
-        :param payload_size: ペイロードサイズ
-        :param burstiness: バースト性
-        :param protocol: 使用するプロトコル（デフォルトは"TCP"）
-        :param dscp: DSCP値
-        :param data: 送信するデータ（バイト列またはファイル名）
-        """
-        def attempt_to_start_traffic():
-            if self.is_valid_cidr_notation(destination_url):
-                self.set_tcp_traffic(destination_url, bitrate, start_time, duration, header_size, payload_size,
-                                     burstiness, protocol, dscp, data)
-            else:
-                destination_ip = self.resolve_destination_ip(destination_url)
-                if destination_ip is None:
-                    self.send_dns_query_and_set_traffic(destination_url, bitrate, start_time, duration, header_size,
-                                                        payload_size, burstiness, protocol, dscp, data)
-                else:
-                    self.set_tcp_traffic(destination_ip, bitrate, start_time, duration, header_size, payload_size,
-                                         burstiness, protocol, dscp, data)
-
-        self.network_event_scheduler.schedule_event(start_time, attempt_to_start_traffic)
-
-    def set_tcp_traffic(self, destination_ip, bitrate, start_time, duration=None, header_size=40, payload_size=1000,
-                        burstiness=1.0, protocol="TCP", dscp=0, data=None):
-        """
-        TCPトラフィックを設定し、データ（ファイルなど）を送信します。データが提供されない場合、ダミーデータを使用します。
-
-        :param destination_ip: 宛先のIPアドレス
-        :param bitrate: ビットレート（bps）
-        :param start_time: トラフィック開始時間
-        :param duration: トラフィックの持続時間（データがない場合に必要）
-        :param header_size: ヘッダーサイズ
-        :param payload_size: ペイロードサイズ
-        :param burstiness: バースト性
-        :param protocol: 使用するプロトコル（デフォルトは"TCP"）
-        :param dscp: DSCP値
-        :param data: 送信するデータ（バイト列またはファイル名）
-        """
-        source_port = self.select_random_port()
-        destination_port = self.select_random_port()
-
-        connection_key = (destination_ip, destination_port)
-
-        if connection_key not in self.tcp_connections:
-            if data is None:
-                if duration is None:
-                    raise ValueError("データがない場合、durationを指定する必要があります。")
-                data = b'X' * (int(bitrate * duration) // 8)
-            else:
-                if isinstance(data, str):
-                    # ファイル名が渡された場合、ファイルを読み込む
-                    with open(data, 'rb') as f:
-                        data = f.read()
-                elif not isinstance(data, bytes):
-                    raise TypeError("dataはバイト列またはファイル名である必要があります。")
-            self.initialize_connection_info(connection_key=connection_key, sequence_number=randint(1, 10000), data=data)
-
-        # トラフィック情報をself.tcp_connectionsに保存
-        self.tcp_connections[connection_key]['traffic_info'] = {
-            'end_time': start_time + duration if duration else None,
-            'payload_size': payload_size,
-            'header_size': header_size,
-            'bitrate': bitrate,
-            'burstiness': burstiness,
-            'next_sequence_number': self.tcp_connections[connection_key]['sequence_number'],
-            'start_time': start_time
-        }
-
-        # 転送情報を初期化
-        self.tcp_connections[connection_key]['transfer_info'] = {
-            'file_size': len(self.tcp_connections[connection_key]['data']),
-            'bytes_transferred': 0,
-            'start_time': self.network_event_scheduler.current_time,
-            'progress': []
-        }
-
-        # TCP接続を開始
-        self.send_packet(destination_ip, b"", protocol, dscp, source_port=source_port,
-                         destination_port=destination_port, flags="SYN")
-
     def resolve_destination_ip(self, destination_url):
         # 与えられた宛先URLに対応するIPアドレスをurl_to_ip_mappingから検索します。
         # 見つかった場合はそのIPアドレスを返し、見つからない場合はNoneを返します。
         return self.url_to_ip_mapping.get(destination_url, None)
 
-    def send_dns_query_and_set_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size,
-                                       burstiness=1.0, protocol="TCP", dscp=0, data=None):
-        """
-        DNSクエリを送信し、トラフィックをスケジュールします。
-
-        :param destination_url: 宛先のURL
-        :param bitrate: ビットレート
-        :param start_time: トラフィック開始時間
-        :param duration: トラフィックの持続時間
-        :param header_size: ヘッダーサイズ
-        :param payload_size: ペイロードサイズ
-        :param burstiness: バースト性
-        :param protocol: 使用するプロトコル
-        :param dscp: DSCP値
-        :param data: 送信するデータ
-        """
-        if destination_url not in self.waiting_for_dns_reply:
-            self.waiting_for_dns_reply[destination_url] = []
-        self.waiting_for_dns_reply[destination_url].append(
-            (bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp, data))
-        self.send_dns_query(destination_url)
-
     def send_dns_query(self, destination_url):
         # DNSクエリパケットを生成します。
         dns_query_packet = DNSPacket(
-            source_mac=self.mac_address,  # このノードのMACアドレス
-            destination_mac="FF:FF:FF:FF:FF:FF",  # DNSクエリは通常ブロードキャストされますが、実際にはDNSサーバのMACアドレスが必要です。
-            source_ip=self.ip_address,  # このノードのIPアドレス
-            destination_ip=self.dns_server_ip,  # DNSサーバのIPアドレス
-            query_domain=destination_url,  # 解決したいドメイン名
-            query_type="A",  # Aレコードのクエリ（IPv4アドレスを問い合わせる）
+            source_mac=self.mac_address,  
+            destination_mac="FF:FF:FF:FF:FF:FF",  
+            source_ip=self.ip_address,  
+            destination_ip=self.dns_server_ip, 
+            query_domain=destination_url,  
+            query_type="A",  
             network_event_scheduler=self.network_event_scheduler
         )
         self.network_event_scheduler.log_packet_info(dns_query_packet, "DNS query", self.node_id)
@@ -1213,22 +1087,11 @@ class Node:
 
     def on_dns_response_received(self, query_domain, resolved_ip):
         """
-        DNSレスポンスを受信した際の処理を行い、トラフィックを開始します。
-
-        :param query_domain: 問い合わせたドメイン
-        :param resolved_ip: 解決されたIPアドレス
+        DNSレスポンス受信時に呼ばれ、URL->IPマッピングを更新する。
+        これ以降はアプリケーション側がurl_to_ip_mappingを参照し、解決済みのIPを利用できる。
         """
-        self.add_dns_record(query_domain, resolved_ip)
-        if query_domain in self.waiting_for_dns_reply:
-            for parameters in self.waiting_for_dns_reply[query_domain]:
-                bitrate, start_time, duration, header_size, payload_size, burstiness, protocol, dscp, data = parameters
-                if protocol == "UDP":
-                    self.set_udp_traffic(resolved_ip, bitrate, start_time, duration, header_size, payload_size,
-                                         burstiness, protocol, dscp)
-                elif protocol == "TCP":
-                    self.set_tcp_traffic(resolved_ip, bitrate, start_time, duration, header_size, payload_size,
-                                         burstiness, protocol, dscp, data)
-            del self.waiting_for_dns_reply[query_domain]
+        self.url_to_ip_mapping[query_domain] = resolved_ip
+        self.network_event_scheduler.log_packet_info(None, f"DNS resolution completed: {query_domain} -> {resolved_ip}", self.node_id)
 
     def print_url_to_ip_mapping(self):
         # DNSテーブルの内容を表示するメソッド
