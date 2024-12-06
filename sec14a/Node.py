@@ -600,6 +600,20 @@ class Node:
         if self.network_event_scheduler.tcp_verbose:
             print(f"TCP connection state updated to {new_state} for {connection_key}")
 
+    def initiate_tcp_connection(self, destination_ip, destination_port, dscp=0):
+        # TCPコネクション開始用のラッパメソッド
+        # MACアドレスはARPを使って取得するため、send_packetでSYNパケットを送る。
+        source_port = self.select_random_port()
+        self.send_packet(
+            destination_ip=destination_ip,
+            data=b'',
+            protocol="TCP",
+            dscp=dscp,
+            source_port=source_port,
+            destination_port=destination_port,
+            flags="SYN"
+        )
+
     def initiate_tcp_handshake(self, destination_ip, destination_mac, dscp, **kwargs):
         if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
             if self.network_event_scheduler.tcp_verbose:

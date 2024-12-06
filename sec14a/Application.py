@@ -261,7 +261,7 @@ class FTPClient(Application):
         # TCPハンドシェイクはNode内で行われるため、ここでは単に Node に "connect" 的な処理を依頼する
         # Nodeが接続完了後に最初のパケット（220）が届くはず
         self.state = "CONNECTING"
-        self.node.initiate_tcp_connection(server_ip, server_port)  # 仮のメソッド（実装要）
+        self.node.initiate_tcp_connection(server_ip, server_port)
 
     def on_packet_received(self, packet):
         # この時点でTCP接続は確立済み（Node側で完了）
