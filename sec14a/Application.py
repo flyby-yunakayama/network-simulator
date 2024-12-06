@@ -386,11 +386,11 @@ class FTPServer:
         # client_ip, client_portが接続先(クライアント)
         client_ip, client_port = connection_key
         server_port = 21  # 自サーバのFTP制御ポート
+        self.set_traffic_info(connection_key)
         if self.verbose:
             print("[FTPServer] Connection established. Sending 220 greeting.")
         # 引数順: (dst_ip, client_port, server_port, response)
         self.send_ftp_response(client_ip, client_port, server_port, "220 Service ready\r\n")
-        self.set_traffic_info(connection_key)
         self.state = "WAIT_USER"
 
     def on_packet_received(self, packet):
