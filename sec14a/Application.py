@@ -305,6 +305,8 @@ class FTPClient:
     def connect(self, server_ip, server_port=21):
         if self.verbose:
             print("[FTPClient] Requesting TCP connect to ", server_ip, server_port)
+        self.server_ip = server_ip  # サーバIPを保存
+        self.server_port = server_port  # サーバポートを保存
         self.state = "CONNECTING"
         self.node.initiate_tcp_handshake(server_ip, server_port)
         self.app_manager.map_connection_to_app((server_ip, server_port), "FTP")
@@ -344,7 +346,13 @@ class FTPClient:
     def send_ftp_command(self, command):
         if self.verbose:
             print("[FTPClient] Sending command:", command.strip())
-        self.node.send_app_data(self.server_url, command.encode('utf-8'), protocol="TCP")
+        # server_portを使ってsend_app_dataに渡す
+        self.node.send_app_data(
+            self.server_ip,
+            command.encode('utf-8'),
+            protocol="TCP",
+            destination_port=self.server_port
+        )
 
     def retrieve_file(self, filename):
         self.file_to_retrieve = filename
