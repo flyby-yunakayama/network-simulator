@@ -463,6 +463,19 @@ class Node:
             self.initialize_connection_info(connection_key, state='ESTABLISHED')
             self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
 
+        if 'transfer_info' not in self.tcp_connections[connection_key] or self.tcp_connections[connection_key]['transfer_info'] is None:
+            # 長めの有効時間を設定（1時間後まで許可）
+            end_time = self.network_event_scheduler.current_time + 3600
+            # デフォルトのpayload_size、たとえば1460バイト程度
+            payload_size = 1460
+            self.tcp_connections[connection_key]['transfer_info'] = {
+                'end_time': end_time,
+                'payload_size': payload_size,
+                # ファイル転送であればapp側で設定するが、ここではデフォルトで0bytes転送済みとする
+                'bytes_transferred': 0,
+                'progress': []
+            }
+
         # アプリケーション層へコネクション確立を通知
         if self.application_layer and hasattr(self.application_layer, 'on_connection_established'):
             self.application_layer.on_connection_established(connection_key)
