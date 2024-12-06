@@ -152,6 +152,9 @@ class Node:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
     def process_TCP_packet(self, packet):
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"Processing TCP packet from {packet.header['source_ip']}:{packet.header['source_port']} to {packet.header['destination_ip']}:{packet.header['destination_port']}")
+
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
