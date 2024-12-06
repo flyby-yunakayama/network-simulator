@@ -66,13 +66,10 @@ class ApplicationManager:
             pass
 
     def get_traffic_info(self, connection_key):
-        # FTPClient等から呼ばれる
-        # connection_keyに合わせてFTPClientなどのget_traffic_info呼び出し
-        # ここではconnection_key形式を(宛先IP,宛先ポート)に簡易化
-        key = (connection_key[2], connection_key[3])  # (dst_ip,dst_port)
-        app_type = self.connection_app_map.get(key)
+        # connection_keyは(src_ip, src_port)
+        app_type = self.connection_app_map.get(connection_key)
         if app_type == "FTP" and self.ftp_client:
-            return self.ftp_client.get_traffic_info((connection_key[2], connection_key[3]))
+            return self.ftp_client.get_traffic_info(connection_key)
         return None
 
     def get_data_chunk(self, connection_key, payload_size):
