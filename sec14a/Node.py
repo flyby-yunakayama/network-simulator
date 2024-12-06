@@ -162,6 +162,8 @@ class Node:
 
                 # Check TCP flags
                 flags = packet.header.get('flags', '')
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"TCP flags: {flags}")
 
                 # SYNパケットの処理
                 if "SYN" in flags:
