@@ -651,87 +651,128 @@ class Node:
             self._send_tcp_packet(destination_ip, destination_mac, b"", dscp, **control_packet_kwargs)
             self.tcp_connections[connection_key]["sequence_number"] += 1
 
-    def _send_udp_packet(self, destination_ip, destination_mac, data, dscp, **kwargs):
-        udp_header_size = 8
-        ip_header_size = 20
-        header_size = udp_header_size + ip_header_size
-        self._send_ip_packet_data(destination_ip, destination_mac, data, dscp, header_size, protocol="UDP", **kwargs)
+    def send_app_data(self, dst_ip, data, protocol="TCP", **kwargs):
+        """
+        アプリケーション側から呼ばれる汎用的なデータ送信メソッド。
+        プロトコルに応じて内部で適切な処理を行う。
+        """
+        if protocol == "TCP":
+            # TCPの場合、connection_keyは相手側のIPとポートで統一
+            destination_port = kwargs.get('destination_port')
+            if not destination_port:
+                # もしdestination_portが指定されていないなら、確立済みコネクションや
+                # map_connection_to_appで特定できるロジックを追加する
+                raise ValueError("TCP connection requires a destination_port")
 
-    def send_tcp_data_packet(self, packet, attempt=0):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        app = self.application_layer  # ApplicationManagerインスタンス
+            connection_key = (dst_ip, destination_port)
+            app = self.application_layer
 
+            # TCPの場合、traffic_infoやウィンドウ管理が必要
+            traffic_info = app.get_traffic_info(connection_key)
+            if not traffic_info:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
+                # 必要に応じてSYN送信(ハンドシェイク開始)や、
+                # 一時バッファにデータを溜めるなどの処理を行うことも可能。
+                return
+
+            end_time = traffic_info['end_time']
+            if self.network_event_scheduler.current_time < end_time:
+                # ウィンドウやcwnd、輻輳制御を考慮したデータ送信
+                self._send_tcp_data(connection_key, dst_ip, data, **kwargs)
+            else:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"End time reached for {connection_key}. No more data sent.")
+            
+        elif protocol == "UDP":
+            # UDPは単純な送信
+            source_port = kwargs.get('source_port', self.select_random_port())
+            destination_port = kwargs.get('destination_port', self.select_random_port())
+            destination_mac = self.get_mac_address_from_ip(dst_ip)
+            if destination_mac is None:
+                # ARP解決など
+                self.send_arp_request(dst_ip)
+                # ARP解決後に再送するロジックを入れるか、waiting_for_arp_replyに追加するか
+                if dst_ip not in self.waiting_for_arp_reply:
+                    self.waiting_for_arp_reply[dst_ip] = []
+                self.waiting_for_arp_reply[dst_ip].append((data, protocol, 0, {'source_port': source_port, 'destination_port': destination_port}))
+                return
+
+            # UDPパケット送信
+            self._send_transport_packet("UDP", dst_ip, destination_mac, data, 0, source_port=source_port, destination_port=destination_port)
+        else:
+            raise ValueError(f"Unsupported protocol: {protocol}")
+
+    def _send_tcp_data(self, connection_key, dst_ip, data, **kwargs):
+        """
+        TCP特有のデータ送信処理をまとめたヘルパー関数。
+        Nodeのconnection_keyに対応するコネクション情報、appからのdata取得やsplitを行う。
+        """
+        app = self.application_layer
         traffic_info = app.get_traffic_info(connection_key)
         if not traffic_info:
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"No traffic info found for {connection_key}")
             return
 
-        end_time = traffic_info['end_time']
-        if self.network_event_scheduler.current_time < end_time:
-            if connection_key not in self.windows:
-                self.windows[connection_key] = {}
+        payload_size = traffic_info['payload_size']
+        # dataをpayload_sizeずつに分割して送る処理を実装するか、
+        # ここでapp.update_data_after_sendを行うかなど設計次第
+        # 簡易実装:
+        data_chunks = [data[i:i+payload_size] for i in range(0, len(data), payload_size)]
 
-            cwnd = self.tcp_connections[connection_key]['cwnd']
-            if len(self.windows[connection_key]) < cwnd:
-                remaining_data = app.outgoing_data.get(connection_key, b'')
-                if not remaining_data:
-                    # もう送るデータがない
-                    return
+        for chunk in data_chunks:
+            # TCPヘッダ情報設定
+            tcp_args = {
+                "source_port": kwargs.get('source_port', self.select_random_port()),
+                "destination_port": kwargs.get('destination_port'),
+                "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
+                "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
+                "flags": "PSH"
+            }
 
-                payload_size = traffic_info['payload_size']
-                data_to_send = app.get_data_chunk(connection_key, payload_size)
+            destination_mac = self.get_mac_address_from_ip(dst_ip)
+            if not destination_mac:
+                # ARPリクエストなど
+                self.send_arp_request(dst_ip)
+                # 待ち行列へ
+                if dst_ip not in self.waiting_for_arp_reply:
+                    self.waiting_for_arp_reply[dst_ip] = []
+                self.waiting_for_arp_reply[dst_ip].append((chunk, "TCP", 0, tcp_args))
+                return
 
-                if not data_to_send:
-                    # ペイロードサイズ分取り出せなかった場合も終了
-                    return
+            self._send_transport_packet("TCP", dst_ip, destination_mac, chunk, 0, **tcp_args)
 
-                data_packet_kwargs = {
-                    "source_port": packet.header["destination_port"],
-                    "destination_port": packet.header["source_port"],
-                    "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
-                    "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
-                    "flags": "PSH"
-                }
+            # ウィンドウ管理やシーケンス番号更新、再送タイマー設定など
+            seq_num = self.tcp_connections[connection_key]['sequence_number']
+            expected_ack = seq_num + len(chunk)
+            self.windows[connection_key][seq_num] = {
+                "packet_info": {
+                    'destination_ip': dst_ip,
+                    'destination_mac': destination_mac,
+                    'data': chunk,
+                    'dscp': 0,
+                    'kwargs': tcp_args
+                },
+                "expected_ack_number": expected_ack,
+                "attempt": 0
+            }
+            self.schedule_timeout(connection_key, seq_num)
+            self.tcp_connections[connection_key]['sequence_number'] = expected_ack
 
-                # 実際のTCPパケット送信
-                self._send_tcp_packet(
-                    destination_ip=packet.header["source_ip"],
-                    destination_mac=packet.header["source_mac"],
-                    data=data_to_send,
-                    dscp=packet.header["dscp"],
-                    **data_packet_kwargs
-                )
+            app.update_data_after_send(connection_key, len(chunk))
 
-                sequence_number = self.tcp_connections[connection_key]['sequence_number']
-                expected_ack_number = sequence_number + len(data_to_send)
-                self.windows[connection_key][sequence_number] = {
-                    "packet_info": {
-                        'destination_ip': packet.header["source_ip"],
-                        'destination_mac': packet.header["source_mac"],
-                        'data': data_to_send,
-                        'dscp': packet.header["dscp"],
-                        'kwargs': data_packet_kwargs
-                    },
-                    "expected_ack_number": expected_ack_number,
-                    "attempt": attempt
-                }
+    def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):
+        if protocol == "UDP":
+            transport_header_size = 8
+        elif protocol == "TCP":
+            transport_header_size = 20
+        else:
+            raise ValueError(f"Unknown transport protocol: {protocol}")
 
-                self.schedule_timeout(connection_key, sequence_number)
-                self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)
-
-                app.update_data_after_send(connection_key, len(data_to_send))
-
-                if app.outgoing_data.get(connection_key, b''):
-                    self.send_tcp_data_packet(packet, attempt)
-
-    def _send_tcp_packet(self, destination_ip, destination_mac, data, dscp, **kwargs):
-        tcp_header_size = 20
         ip_header_size = 20
-        header_size = tcp_header_size + ip_header_size
-        self._send_ip_packet_data(destination_ip, destination_mac, data, dscp, header_size, protocol="TCP", **kwargs)
+        header_size = ip_header_size + transport_header_size
+        self._send_ip_packet_data(destination_ip, destination_mac, data, dscp, header_size, protocol=protocol, **kwargs)
 
-        if self.network_event_scheduler.tcp_verbose:
+        if protocol == "TCP" and self.network_event_scheduler.tcp_verbose:
             print(f"Sending TCP packet to {destination_ip}:{kwargs.get('destination_port')} Flags: {kwargs.get('flags')} Seq:{kwargs.get('sequence_number')} Ack:{kwargs.get('acknowledgment_number')}")
 
     def _send_ip_packet_data(self, destination_ip, destination_mac, data, dscp, header_size, protocol, **kwargs):

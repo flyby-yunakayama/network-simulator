@@ -70,14 +70,11 @@ class ApplicationManager:
         # connection_keyに基づいてどのアプリか判定
         # 該当のアプリケーションへon_connection_establishedイベントを渡す
         app_type = self.connection_app_map.get((connection_key[0], connection_key[1]))
-        print(f"on_connection_established: {connection_key}, {app_type}")
-        print(f"ftp_server: {self.ftp_server}")
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.on_connection_established(connection_key)
         elif app_type == "FTPSERVER" and self.ftp_server:
             self.ftp_server.on_connection_established(connection_key)
         elif app_type == None and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
-            print(f"on_connection_established: {connection_key}, FTPSERVER")
             self.ftp_server.on_connection_established(connection_key)
         # UDPAppなども同様にハンドル可能
 
@@ -289,8 +286,8 @@ class UDPApp:
             return
 
         data = b'X' * self.payload_size
-        self.node.send_packet(self.destination_ip, data, self.protocol, self.dscp,
-                              source_port=self.source_port, destination_port=self.destination_port)
+        self.node.send_app_data(self.destination_ip, data, protocol=self.protocol, dscp=self.dscp,
+                                source_port=self.source_port, destination_port=self.destination_port)
         packet_size = self.header_size + self.payload_size
         interval = (packet_size * 8) / self.bitrate * self.burstiness
         next_time = current_time + interval
