@@ -71,6 +71,7 @@ class ApplicationManager:
 
     def get_traffic_info(self, connection_key):
         app_type = self.connection_app_map.get(connection_key)
+        print("get_traffic_info", connection_key, app_type)
         if app_type == "FTP" and self.ftp_client:
             return self.ftp_client.get_traffic_info(connection_key)
         elif app_type == "FTPSERVER" and self.ftp_server:
