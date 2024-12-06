@@ -242,7 +242,7 @@ class FTPServer(Application):
         super().__init__(node)
         self.shared_files = shared_files
         self.node.register_application(21, "TCP", self)
-        self.state = "LISTEN"
+        self.state = "ESTABLISHED"  # ハンドシェイクはNode内部で完了していると仮定
         self.verbose = verbose
 
     def on_packet_received(self, packet):
@@ -255,31 +255,13 @@ class FTPServer(Application):
         if self.verbose:
             print(f"[FTPServer] Packet received: flags={flags}, data={data.strip()}")
 
-        # TCPハンドシェイク処理
-        if "SYN" in flags and self.state == "LISTEN":
-            self.state = "SYN_RECEIVED"
+        # 接続確立後、最初の受信で220を送る（もしまだ送ってなければ）
+        if self.state == "ESTABLISHED":
+            # まだ220を送っていなければ送信
+            # 状態管理用フラグを追加してもよい
             if self.verbose:
-                print("[FTPServer] SYN received, sending SYN,ACK")
-            self.node.send_packet(src_ip, b"", protocol="TCP", dscp=0,
-                                  source_port=dst_port, destination_port=src_port,
-                                  flags="SYN,ACK")
-            return
-
-        if "ACK" in flags and self.state == "SYN_RECEIVED":
-            self.state = "ESTABLISHED"
-            if self.verbose:
-                print("[FTPServer] Connection established, sending 220")
+                print("[FTPServer] Sending 220 Service ready")
             self.send_ftp_response(src_ip, dst_port, src_port, "220 Service ready\r\n")
-            return
-
-        if "FIN" in flags and self.state == "ESTABLISHED":
-            if self.verbose:
-                print("[FTPServer] FIN received, closing connection")
-            self.node.send_packet(src_ip, b"", protocol="TCP", dscp=0,
-                                  source_port=dst_port, destination_port=src_port,
-                                  flags="ACK")
-            self.state = "CLOSED"
-            return
 
         # FTPプロトコルメッセージ処理
         if data.startswith("USER"):
