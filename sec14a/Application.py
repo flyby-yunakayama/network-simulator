@@ -61,7 +61,7 @@ class ApplicationManager:
         # connection_keyに基づいてどのアプリか判定
         # 該当のアプリケーションへon_connection_establishedイベントを渡す
         app_type = self.connection_app_map.get((connection_key[0], connection_key[1]))
-        print(connection_key, app_type)
+        print("on_connection_established", connection_key, app_type)
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.on_connection_established(connection_key)
         elif app_type == "FTPSERVER" and self.ftp_server:
