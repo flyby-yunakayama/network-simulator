@@ -85,14 +85,14 @@ class ApplicationManager:
         key = (connection_key[0], connection_key[1])
         app_type = self.connection_app_map.get(key)
         if app_type == "FTP" and self.ftp_client:
-            return self.ftp_client.get_data_chunk((connection_key[2], connection_key[3]), payload_size)
+            return self.ftp_client.get_data_chunk(connection_key, payload_size)
         return None
 
     def update_data_after_send(self, connection_key, sent_bytes):
         key = (connection_key[0], connection_key[1])
         app_type = self.connection_app_map.get(key)
         if app_type == "FTP" and self.ftp_client:
-            self.ftp_client.update_data_after_send((connection_key[2], connection_key[3]), sent_bytes)
+            self.ftp_client.update_data_after_send(connection_key, sent_bytes)
 
     def resolve_destination_url(self, destination_url, callback=None):
         if self.node.is_valid_cidr_notation(destination_url):
