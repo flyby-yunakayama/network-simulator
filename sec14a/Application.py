@@ -147,19 +147,24 @@ class UDPApp(Application):
         pass
 
 class FTPClient(Application):
-    def __init__(self, node, server_url=None):
+    def __init__(self, node, server_url=None, verbose=False):
         super().__init__(node)
         self.server_url = server_url
         self.state = "INITIAL"
         self.server_ip = None
         self.control_port = None
-        self.file_to_retrieve = None  # 最初はNone
+        self.file_to_retrieve = None
+        self.verbose = verbose
 
     def connect(self, server_ip, server_port=21):
+        if self.verbose:
+            print(f"[FTPClient] Connecting to {server_ip}:{server_port}")
         self.server_ip = server_ip
         self.initiate_ftp_control_connection(server_ip, server_port)
 
     def initiate_ftp_control_connection(self, server_ip, server_port=21):
+        if self.verbose:
+            print(f"[FTPClient] Initiating control connection to {server_ip}:{server_port}")
         source_port = self.node.select_random_port()
         destination_port = server_port
         self.control_port = destination_port
@@ -171,62 +176,72 @@ class FTPClient(Application):
     def on_packet_received(self, packet):
         data = packet.payload.decode('utf-8', errors='ignore')
         flags = packet.header.get("flags", "")
+        if self.verbose:
+            print(f"[FTPClient] Packet received: flags={flags}, data={data.strip()}")
 
         if "SYN" in flags and "ACK" in flags and self.state == "CONNECTING":
             self.state = "ESTABLISHED"
+            if self.verbose:
+                print("[FTPClient] Connection established, sending ACK")
             self.node.send_packet(packet.header["source_ip"], b"", protocol="TCP", dscp=0,
                                   source_port=packet.header["destination_port"], destination_port=packet.header["source_port"],
                                   flags="ACK")
             return
 
         if "FIN" in flags:
+            if self.verbose:
+                print("[FTPClient] FIN received, closing connection")
             self.node.send_packet(packet.header["source_ip"], b"", protocol="TCP", dscp=0,
                                   source_port=packet.header["destination_port"], destination_port=packet.header["source_port"],
                                   flags="ACK")
             self.state = "CLOSED"
-            print("FTP Client: Connection closed.")
             return
 
         if data.startswith("220"):
+            if self.verbose:
+                print("[FTPClient] Server ready, sending USER")
             self.send_ftp_command("USER anonymous\r\n")
         elif data.startswith("331"):
+            if self.verbose:
+                print("[FTPClient] User name okay, need password, sending PASS")
             self.send_ftp_command("PASS anonymous@\r\n")
         elif data.startswith("230"):
-            # ログイン成功 → RETRコマンドを送る
+            if self.verbose:
+                print("[FTPClient] Logged in, sending RETR if file specified")
             if self.file_to_retrieve:
                 self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
         elif data.startswith("150"):
-            # データ転送開始準備OK
-            pass
+            if self.verbose:
+                print("[FTPClient] File status okay; starting transfer")
+            # データ転送が開始されるはず
         elif data.startswith("226"):
-            # 転送完了、FIN送信
+            if self.verbose:
+                print("[FTPClient] Transfer complete, sending FIN")
             self.node.send_packet(packet.header["source_ip"], b"", protocol="TCP", dscp=0,
                                   source_port=packet.header["destination_port"], destination_port=packet.header["source_port"],
                                   flags="FIN")
 
     def send_ftp_command(self, command):
         source_port = self.node.select_random_port()
+        if self.verbose:
+            print(f"[FTPClient] Sending command: {command.strip()}")
         self.node.send_packet(self.server_ip, command.encode('utf-8'),
                               protocol="TCP", dscp=0, source_port=source_port,
                               destination_port=self.control_port, flags="PSH")
-        print(f"FTP Client: Sent command: {command.strip()}")
 
     def retrieve_file(self, filename):
-        """
-        ファイル取得手続きを開始するメソッド。
-        コネクション確立後、230応答後にRETRコマンドが送信されるようにする。
-        """
         self.file_to_retrieve = filename
-        # コネクションが既にESTABLISHEDで230応答を受信済みならすぐRETR送信可能
-        # だが多くの場合は230を受けてからRETRを送るため、ここでは単にfile_to_retrieveをセットするのみ。
-        # 230応答（ログイン成功）受信後にRETRコマンド送信するフローはon_packet_receivedで実施。
+        if self.verbose:
+            print(f"[FTPClient] retrieve_file called with filename={filename}")
+
 
 class FTPServer(Application):
-    def __init__(self, node, shared_files):
+    def __init__(self, node, shared_files, verbose=False):
         super().__init__(node)
         self.shared_files = shared_files
         self.node.register_application(21, "TCP", self)
         self.state = "LISTEN"
+        self.verbose = verbose
 
     def on_packet_received(self, packet):
         data = packet.payload.decode('utf-8', errors='ignore')
@@ -235,8 +250,13 @@ class FTPServer(Application):
         src_port = packet.header["source_port"]
         dst_port = packet.header["destination_port"]
 
+        if self.verbose:
+            print(f"[FTPServer] Packet received: flags={flags}, data={data.strip()}")
+
         if "SYN" in flags and self.state == "LISTEN":
             self.state = "SYN_RECEIVED"
+            if self.verbose:
+                print("[FTPServer] SYN received, sending SYN,ACK")
             self.node.send_packet(src_ip, b"", protocol="TCP", dscp=0,
                                   source_port=dst_port, destination_port=src_port,
                                   flags="SYN,ACK")
@@ -244,22 +264,31 @@ class FTPServer(Application):
 
         if "ACK" in flags and self.state == "SYN_RECEIVED":
             self.state = "ESTABLISHED"
+            if self.verbose:
+                print("[FTPServer] Connection established, sending 220")
             self.send_ftp_response(src_ip, dst_port, src_port, "220 Service ready\r\n")
             return
 
         if "FIN" in flags and self.state == "ESTABLISHED":
+            if self.verbose:
+                print("[FTPServer] FIN received, closing connection")
             self.node.send_packet(src_ip, b"", protocol="TCP", dscp=0,
                                   source_port=dst_port, destination_port=src_port,
                                   flags="ACK")
             self.state = "CLOSED"
-            print("FTP Server: Connection closed.")
             return
 
         if data.startswith("USER"):
+            if self.verbose:
+                print("[FTPServer] USER received, asking for PASS")
             self.send_ftp_response(src_ip, dst_port, src_port, "331 User name okay, need password.\r\n")
         elif data.startswith("PASS"):
+            if self.verbose:
+                print("[FTPServer] PASS received, login successful")
             self.send_ftp_response(src_ip, dst_port, src_port, "230 User logged in, proceed.\r\n")
         elif data.startswith("RETR"):
+            if self.verbose:
+                print("[FTPServer] RETR received, sending 150 and then file data")
             self.send_ftp_response(src_ip, dst_port, src_port, "150 File status okay; about to open data connection.\r\n")
             self.node.register_application(20, "TCP", self)
             filename = data.strip().split(" ")[1]
@@ -271,7 +300,8 @@ class FTPServer(Application):
 
     def send_ftp_response(self, dst_ip, dst_port, src_port, response):
         source_port = self.node.select_random_port()
+        if self.verbose:
+            print(f"[FTPServer] Sending response: {response.strip()}")
         self.node.send_packet(dst_ip, response.encode('utf-8'), protocol="TCP", dscp=0,
                               source_port=source_port, destination_port=src_port, flags="PSH")
-        print(f"FTP Server: Sent response: {response.strip()}")
 
