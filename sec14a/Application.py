@@ -385,17 +385,11 @@ class FTPServer:
         self.state = "READY"
 
     def on_connection_established(self, connection_key):
-        # 接続確立後直ちに220メッセージを送信
+        # 220メッセージを送信
+        client_ip, client_port = connection_key
+        server_port = 21  # FTPデフォルトポート
         if self.verbose:
             print("[FTPServer] Connection established. Sending 220 greeting.")
-        # connection_key: (source_ip, source_port)などを想定
-        # サーバとしては，connection_key内のsource_ip, source_portがクライアント側
-        # ここでは単純化のため、app_managerやnode内のconnection_app_mapなどで
-        # connection_keyから宛先を特定する処理が必要になるかもしれない
-        # 例えばconnection_keyを(client_ip, client_port)とし、
-        # server_portは21固定でハードコードしておく
-        client_ip, client_port = connection_key
-        server_port = 21  # FTPデフォルト
         self.send_ftp_response(client_ip, server_port, client_port, "220 Service ready\r\n")
         self.state = "WAIT_USER"
 
