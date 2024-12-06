@@ -254,30 +254,27 @@ class FTPClient(Application):
         self.state = "NOT_CONNECTED"
         self.file_to_retrieve = None
 
+        # データ管理用辞書: { (ip, port): bytes }
+        self.outgoing_data = {}
+        # トラフィック情報管理用辞書: { (ip, port): {"end_time":..., "payload_size":...} }
+        self.traffic_info = {}
+
     def connect(self, server_ip, server_port=21):
-        # NodeレベルでTCP接続を要求し、接続確立後にon_packet_receivedが呼ばれる
         if self.verbose:
             print("[FTPClient] Requesting TCP connect to ", server_ip, server_port)
-        # TCPハンドシェイクはNode内で行われるため、ここでは単に Node に "connect" 的な処理を依頼する
-        # Nodeが接続完了後に最初のパケット（220）が届くはず
         self.state = "CONNECTING"
         self.node.initiate_tcp_connection(server_ip, server_port)
 
     def on_packet_received(self, packet):
-        # この時点でTCP接続は確立済み（Node側で完了）
         data = packet.payload.decode('utf-8', errors='ignore')
         if self.verbose:
             print("[FTPClient] Received: ", data.strip())
-        # 接続確立後、最初のレスポンスは220想定
         if data.startswith("220"):
             self.state = "LOGGED_OUT"
-            # USERコマンド送信
             self.send_ftp_command("USER anonymous\r\n")
         elif data.startswith("331"):
-            # PASSコマンド送信
             self.send_ftp_command("PASS anonymous@\r\n")
         elif data.startswith("230"):
-            # ログイン成功
             self.state = "LOGGED_IN"
             if self.file_to_retrieve:
                 self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
@@ -286,19 +283,40 @@ class FTPClient(Application):
             pass
         elif data.startswith("226"):
             # 転送完了
-            # FINやACKはNode内部で処理し、ここでは不要
-            # 必要ならNodeに"close connection"的なメソッドを呼んで接続終了させる
             pass
 
     def send_ftp_command(self, command):
         if self.verbose:
             print("[FTPClient] Sending command:", command.strip())
-        self.node.send_app_data(self.server_url, command.encode('utf-8'), protocol="TCP")  # 仮のメソッド
+        self.node.send_app_data(self.server_url, command.encode('utf-8'), protocol="TCP")  # 仮メソッド
 
     def retrieve_file(self, filename):
         self.file_to_retrieve = filename
         if self.verbose:
             print("[FTPClient] Will retrieve file after login:", filename)
+
+    # 以下、Nodeのsend_tcp_data_packetが利用するデータ・トラフィック管理メソッド
+    def set_traffic_info(self, connection_key, end_time, payload_size, data):
+        """FTPClient側で送信すべきデータや送信期限などをセットする"""
+        self.traffic_info[connection_key] = {
+            'end_time': end_time,
+            'payload_size': payload_size
+        }
+        self.outgoing_data[connection_key] = data
+
+    def get_traffic_info(self, connection_key):
+        return self.traffic_info.get(connection_key, None)
+
+    def get_data_chunk(self, connection_key, payload_size):
+        """payload_size分のデータを取り出す"""
+        data = self.outgoing_data.get(connection_key, b'')
+        chunk = data[:payload_size]
+        return chunk
+
+    def update_data_after_send(self, connection_key, sent_bytes):
+        """データ送信後、送った分を削除"""
+        data = self.outgoing_data.get(connection_key, b'')
+        self.outgoing_data[connection_key] = data[sent_bytes:]
 
 class FTPServer(Application):
     def __init__(self, node, shared_files, verbose=False):

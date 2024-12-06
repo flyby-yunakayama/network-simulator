@@ -642,69 +642,73 @@ class Node:
 
     def send_tcp_data_packet(self, packet, attempt=0):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        if connection_key in self.tcp_connections:
-            if 'traffic_info' not in self.tcp_connections[connection_key]:
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"No traffic info found for {connection_key}")
-                return
+        app = self.application_layer  # FTPClientインスタンスを想定
 
-            traffic_info = self.tcp_connections[connection_key]['traffic_info']
-            if self.network_event_scheduler.current_time < traffic_info['end_time']:
-                if connection_key not in self.windows:
-                    self.windows[connection_key] = {}  # connection_keyごとの辞書を初期化
+        traffic_info = app.get_traffic_info(connection_key)
+        if not traffic_info:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"No traffic info found for {connection_key}")
+            return
 
-                if len(self.windows[connection_key]) < self.tcp_connections[connection_key]['cwnd']:  # 輻輳ウィンドウサイズのチェックを行い、ウィンドウサイズ以下の場合にのみ送信を許可
-                    # 送信するデータを取得
-                    remaining_data = self.tcp_connections[connection_key]['data']
-                    if not remaining_data:
-                        return  # 残りのデータがない場合、送信を中止
+        end_time = traffic_info['end_time']
+        if self.network_event_scheduler.current_time < end_time:
+            if connection_key not in self.windows:
+                self.windows[connection_key] = {}
 
-                    traffic_info = self.tcp_connections[connection_key]['traffic_info']
-                    payload_size = traffic_info['payload_size']
-                    data_to_send = remaining_data[:payload_size]
+            cwnd = self.tcp_connections[connection_key]['cwnd']
+            if len(self.windows[connection_key]) < cwnd:
+                remaining_data = app.outgoing_data.get(connection_key, b'')
+                if not remaining_data:
+                    # もう送るデータがない
+                    return
 
-                    # パラメータ設定
-                    data_packet_kwargs = {
-                        "source_port": packet.header["destination_port"],
-                        "destination_port": packet.header["source_port"],
-                        "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
-                        "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
-                        "flags": "PSH"
-                    }
+                payload_size = traffic_info['payload_size']
+                data_to_send = app.get_data_chunk(connection_key, payload_size)
 
-                    # パケットを送信
-                    self._send_tcp_packet(
-                        destination_ip=packet.header["source_ip"],
-                        destination_mac=packet.header["source_mac"],
-                        data=data_to_send,
-                        dscp=packet.header["dscp"],
-                        **data_packet_kwargs
-                    )
+                if not data_to_send:
+                    # ペイロードサイズ分取り出せなかった場合も終了
+                    return
 
-                    # 送信したパケット情報を履歴に記録
-                    sequence_number = self.tcp_connections[connection_key]['sequence_number']
-                    expected_ack_number = sequence_number + len(data_to_send)
-                    self.windows[connection_key][sequence_number] = {
-                        "packet_info": {
-                            'destination_ip': packet.header["source_ip"],
-                            'destination_mac': packet.header["source_mac"],
-                            'data': data_to_send,
-                            'dscp': packet.header["dscp"],
-                            'kwargs': data_packet_kwargs
-                        },
-                        "expected_ack_number": expected_ack_number,
-                        "attempt": attempt
-                    }
-                    # タイムアウトイベントをスケジュール
-                    self.schedule_timeout(connection_key, sequence_number)
+                data_packet_kwargs = {
+                    "source_port": packet.header["destination_port"],
+                    "destination_port": packet.header["source_port"],
+                    "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
+                    "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
+                    "flags": "PSH"
+                }
 
-                    # シーケンス番号と送信済みデータを更新
-                    self.tcp_connections[connection_key]['data'] = remaining_data[payload_size:]
-                    self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)  # 更新後のシーケンス番号を保存
+                # 実際のTCPパケット送信
+                self._send_tcp_packet(
+                    destination_ip=packet.header["source_ip"],
+                    destination_mac=packet.header["source_mac"],
+                    data=data_to_send,
+                    dscp=packet.header["dscp"],
+                    **data_packet_kwargs
+                )
 
-                    # 残りのデータがあれば、さらに送信
-                    if self.tcp_connections[connection_key]['data']:
-                        self.send_tcp_data_packet(packet, attempt)
+                sequence_number = self.tcp_connections[connection_key]['sequence_number']
+                expected_ack_number = sequence_number + len(data_to_send)
+                self.windows[connection_key][sequence_number] = {
+                    "packet_info": {
+                        'destination_ip': packet.header["source_ip"],
+                        'destination_mac': packet.header["source_mac"],
+                        'data': data_to_send,
+                        'dscp': packet.header["dscp"],
+                        'kwargs': data_packet_kwargs
+                    },
+                    "expected_ack_number": expected_ack_number,
+                    "attempt": attempt
+                }
+
+                self.schedule_timeout(connection_key, sequence_number)
+                self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)
+
+                # FTPClient側のデータを更新
+                app.update_data_after_send(connection_key, len(data_to_send))
+
+                # まだデータが残っていれば続けて送る
+                if app.outgoing_data.get(connection_key, b''):
+                    self.send_tcp_data_packet(packet, attempt)
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, dscp, **kwargs):
         tcp_header_size = 20
