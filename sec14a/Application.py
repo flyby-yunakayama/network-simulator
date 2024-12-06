@@ -7,13 +7,19 @@ class Application:
 
     def resolve_destination_url(self, destination_url, callback=None):
         """
-        DNS解決を試みる。既にurl_to_ip_mappingにあれば即座にIPを返し、
-        なければDNSクエリを送り、応答待ち状態にする。
-
-        :param destination_url: 解決したいURL
-        :param callback: 解決後に呼ばれるコールバック関数（任意）
-        :return: 解決済みの場合はIPアドレス、未解決ならNone
+        DNS解決を試みる。既にurl_to_ip_mappingにあれば即座にIPを返す。
+        CIDR付きIPアドレスならDNS不要なので直接それを返す。
+        そうでなければDNSクエリを送り、応答待ち状態にする。
         """
+        # CIDR付きIPかどうかの判定
+        if self.node.is_valid_cidr_notation(destination_url):
+            # CIDR付きIPが直接指定された場合はDNS不要
+            # url_to_ip_mappingやDNSクエリは行わず、そのまま返す。
+            if callback:
+                callback(destination_url)
+            return destination_url
+
+        # CIDR付きでなく、url_to_ip_mappingにも未登録ならDNSクエリ
         if destination_url in self.node.url_to_ip_mapping:
             # すでに解決済み
             resolved_ip = self.node.url_to_ip_mapping[destination_url]
