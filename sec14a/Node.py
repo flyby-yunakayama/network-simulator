@@ -291,6 +291,90 @@ class Node:
                 self.adjust_congestion_window(connection_key)
                 self.send_tcp_data_packet(packet)
 
+    def schedule_timeout(self, connection_key, sequence_number):
+        event_time = self.network_event_scheduler.current_time + self.timeout_interval
+        # タイムアウトイベントにconnection_keyも渡す
+        event_id = self.network_event_scheduler.schedule_event(event_time, self.handle_timeout, connection_key, sequence_number)
+
+        # イベントIDを接続情報に保存
+        if 'timeout_event_ids' not in self.tcp_connections[connection_key]:
+            self.tcp_connections[connection_key]['timeout_event_ids'] = []
+        self.tcp_connections[connection_key]['timeout_event_ids'].append(event_id)
+
+    def handle_timeout(self, connection_key, sequence_number):
+        """
+        タイムアウトしたパケットに対する処理を行います。
+        """
+        if connection_key in self.windows and sequence_number in self.windows[connection_key]:
+            attempt = self.windows[connection_key][sequence_number]["attempt"]
+            packet_info = self.windows[connection_key][sequence_number]["packet_info"]
+            
+            # 再送試行回数をチェック
+            if attempt < self.max_attempts - 1:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Timeout for sequence number {sequence_number}. Retransmitting packet.")
+                # パケット情報から再送するパケットを再構築
+                self.retransmit_packet(connection_key, sequence_number)
+            else:
+                # 最大試行回数に達した場合、パケットをドロップ
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Maximum attempts reached for sequence number: {sequence_number}. Dropping packet.")
+                del self.windows[connection_key][sequence_number]  # タイムアウトしたパケットをウィンドウから削除
+
+            # Renoでは、タイムアウトが発生した場合、スロースタートに戻る
+            self.transition_to_state(connection_key, 'slow_start')
+            
+            # タイムアウト処理の完了をログに記録
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Timeout handled for connection {connection_key}. State transitioned to slow_start.")
+
+    def cancel_timeout(self, connection_key, sequence_number):
+        if connection_key in self.tcp_connections and 'timeout_event_ids' in self.tcp_connections[connection_key]:
+            for event_id in self.tcp_connections[connection_key]['timeout_event_ids']:
+                self.network_event_scheduler.cancel_event(event_id)
+            # イベントIDリストをクリア
+            self.tcp_connections[connection_key]['timeout_event_ids'] = []
+
+    def find_retransmit_sequence_number(self, connection_key):
+        # この接続のウィンドウ内で最も小さい未ACKのシーケンス番号を探す
+        if connection_key in self.windows:
+            unacknowledged_sequence_numbers = self.windows[connection_key].keys()
+            if unacknowledged_sequence_numbers:
+                # シーケンス番号が未ACKのものだけを抽出し、最小のものを返す
+                min_unack_seq_num = min(unacknowledged_sequence_numbers)
+                return min_unack_seq_num
+        return None  # 再送すべきパケットがない場合
+
+    def retransmit_packet(self, connection_key, sequence_number):
+        if connection_key in self.windows and sequence_number in self.windows[connection_key]:
+            # パケット情報を windows 辞書から取得
+            packet_info = self.windows[connection_key][sequence_number]["packet_info"]
+
+            destination_ip = packet_info['destination_ip']
+            destination_mac = packet_info['destination_mac']
+            data = packet_info['data']
+            dscp = packet_info['dscp']
+            kwargs = packet_info['kwargs']
+
+            # パケットを再送信
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Retransmitting packet with sequence number {sequence_number} to {destination_ip}:{kwargs.get('destination_port')}")
+            self._send_tcp_packet(destination_ip, destination_mac, data, dscp, **kwargs)
+            # 再送したので、再送試行回数をインクリメント
+            self.windows[connection_key][sequence_number]["attempt"] += 1
+
+            # 再送試行回数が閾値を超えた場合
+            if self.windows[connection_key][sequence_number]["attempt"] >= self.max_attempts:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"Maximum retransmission attempts reached for packet with sequence number {sequence_number}. Dropping the packet.")
+                del self.windows[connection_key][sequence_number]
+            else:
+                # 再送をスケジュール
+                self.schedule_retransmission(connection_key)
+        else:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"No packet with sequence number {sequence_number} found in history for retransmission.")
+
     def remove_acked_packets_from_window(self, connection_key, ack_number):
         for seq, packet_info in list(self.windows[connection_key].items()):
             if packet_info["expected_ack_number"] <= ack_number:
