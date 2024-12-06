@@ -502,8 +502,6 @@ class Node:
 
         self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
 
-
-
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
         if self.network_event_scheduler.tcp_verbose:
@@ -623,24 +621,11 @@ class Node:
                 "destination_port": destination_port
             }
 
-            destination_mac = self.get_mac_address_from_ip(destination_ip)
-            if destination_mac is None:
-                # ARP未解決なら待機
-                self.send_arp_request(destination_ip)
-                if destination_ip not in self.waiting_for_arp_reply:
-                    self.waiting_for_arp_reply[destination_ip] = []
-                self.waiting_for_arp_reply[destination_ip].append((b"", "TCP", dscp, control_packet_kwargs))
-                return
-
-            self._send_transport_packet(
-                "TCP",
-                destination_ip,
-                destination_mac,
-                b"",
-                dscp,
-                **control_packet_kwargs
-            )
-            self.tcp_connections[connection_key]["sequence_number"] += 1
+            # _send_control_tcp_packetを呼んでSYNパケットを送信（ARP未解決時は待機）
+            sent = self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
+            # パケットが実際に送信（_send_transport_packet呼び出し）された場合のみシーケンス番号をインクリメント
+            if sent:
+                self.tcp_connections[connection_key]["sequence_number"] += 1
 
     def send_app_data(self, dst_ip, data, protocol="TCP", **kwargs):
         """
