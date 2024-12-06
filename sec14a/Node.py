@@ -618,8 +618,9 @@ class Node:
             print(f"TCP connection state updated to {new_state} for {connection_key}")
 
     def initiate_tcp_connection(self, destination_ip, destination_port, dscp=0):
-        # コネクション開始も、SYNフラグ付きのTCPパケットをsend_app_dataで送る。
-        # send_app_data内部でARP処理や、未確立コネクションでのハンドシェイク開始処理を行うように拡張可能。
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"Initiating TCP connection to {destination_ip}:{destination_port}")
+            
         source_port = self.select_random_port()
         # SYNパケット送信
         self.send_app_data(
