@@ -66,9 +66,6 @@ class ApplicationManager:
         print("on_connection_established", connection_key, app_type)
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.on_connection_established(connection_key)
-        elif app_type == None and self.ftp_client:  # マッピングがない場合
-            self.connection_app_map[connection_key] = "FTP"
-            self.ftp_client.on_connection_established(connection_key)
         elif app_type == "FTPSERVER" and self.ftp_server:
             self.ftp_server.on_connection_established(connection_key)
         elif app_type == None and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
