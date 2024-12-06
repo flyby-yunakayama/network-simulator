@@ -47,7 +47,7 @@ class Application:
             del self.waiting_for_dns[domain]
 
 class FTPClient(Application):
-    def __init__(self, node, server_url):
+    def __init__(self, node, server_url=None):
         super().__init__(node)
         self.server_url = server_url
         self.state = "INITIAL"
@@ -55,20 +55,18 @@ class FTPClient(Application):
         self.control_port = None
         self.file_to_retrieve = "testfile.txt"
 
-    def start(self):
-        self.server_ip = self.node.resolve_destination_ip(self.server_url)
-        if self.server_ip is None:
-            if self.server_url not in self.node.waiting_for_dns_reply:
-                self.node.waiting_for_dns_reply[self.server_url] = []
-            self.node.waiting_for_dns_reply[self.server_url].append(("FTP_CONTROL",))
-            self.node.send_dns_query(self.server_url)
-        else:
-            self.initiate_ftp_control_connection(self.server_ip)
+    def connect(self, server_ip, server_port=21):
+        """
+        明示的にサーバIPとポートを指定してFTPコントロール接続を開始するメソッド。
+        server_ipが直接指定できる場合はDNS解決を省略。
+        """
+        self.server_ip = server_ip
+        self.initiate_ftp_control_connection(server_ip, server_port)
 
-    def initiate_ftp_control_connection(self, server_ip):
-        # FTPは21番ポート
+    def initiate_ftp_control_connection(self, server_ip, server_port=21):
+        # FTPは21番ポートがデフォルト
         source_port = self.node.select_random_port()
-        destination_port = 21
+        destination_port = server_port
         self.control_port = destination_port
         # 21/TCPでこのアプリを登録
         self.node.register_application(destination_port, "TCP", self)
