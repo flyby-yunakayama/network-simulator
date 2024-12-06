@@ -453,15 +453,22 @@ class Node:
     def establish_TCP_connection(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
+            print("test1")
             if self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
                 return
             else:
                 self.update_tcp_connection_state(connection_key, "ESTABLISHED")
                 self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
         else:
-            # コネクション情報初期化など
-            self.initialize_connection_info(connection_key, state='ESTABLISHED')
-            self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
+            print("test2")
+            initial_seq = randint(1,10000)
+            self.initialize_connection_info(
+                connection_key,
+                state='ESTABLISHED',
+                sequence_number=initial_seq,  # 本来は事前段階で記憶した初期値を使用
+                acknowledgment_number=packet.header["sequence_number"] + 1,
+                data=b''
+            )
 
         if 'transfer_info' not in self.tcp_connections[connection_key] or self.tcp_connections[connection_key]['transfer_info'] is None:
             # 長めの有効時間を設定（1時間後まで許可）
