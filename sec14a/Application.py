@@ -376,6 +376,7 @@ class FTPServer:
         self.shared_files = shared_files
         self.verbose = verbose
         self.state = "READY"
+        self.traffic_info = {}
 
     def on_connection_established(self, connection_key):
         # client_ip, client_portが接続先(クライアント)
@@ -425,3 +426,11 @@ class FTPServer:
             destination_port=client_port
         )
 
+    def set_traffic_info(self, connection_key, end_time, payload_size, data):
+        self.traffic_info[connection_key] = {
+            
+        }
+        self.outgoing_data[connection_key] = data
+
+    def get_traffic_info(self, connection_key):
+        return self.traffic_info.get(connection_key, None)
