@@ -45,6 +45,8 @@ class ApplicationManager:
 
         app_type = self.connection_app_map.get((packet.header.get("source_ip"), packet.header.get("source_port")))
 
+        print("src", packet.header.get("source_ip"), packet.header.get("source_port"), "dst", packet.header.get("destination_ip"), packet.header.get("destination_port"), app_type)
+
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.on_packet_received(packet)
         elif app_type == "FTPSERVER" and self.ftp_server:
@@ -398,8 +400,6 @@ class FTPServer:
         if self.verbose:
             print("[FTPServer] Received: ", data.strip())
 
-        # packet.header["source_ip"], packet.header["source_port"]がクライアント側
-        # packet.header["destination_ip"], packet.header["destination_port"]がサーバ側
         client_ip = packet.header["source_ip"]
         client_port = packet.header["source_port"]  # クライアントポート
         server_port = packet.header["destination_port"]  # サーバ(自分)のポート(21)
