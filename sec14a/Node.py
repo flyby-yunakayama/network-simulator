@@ -642,6 +642,8 @@ class Node:
 
     def send_tcp_data_packet(self, packet, attempt=0):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        print(connection_key)
+        print(self.tcp_connections)
         app = self.application_layer  # FTPClientインスタンスを想定
 
         traffic_info = app.get_traffic_info(connection_key)
