@@ -555,7 +555,7 @@ class Node:
         pass
 
     def on_arp_reply_received(self, destination_ip, destination_mac):
-        # ARP解決後の再送もsend_app_dataで統一
+        print("on_arp_reply_received")
         if destination_ip in self.waiting_for_arp_reply:
             for data, protocol, dscp, kwargs in self.waiting_for_arp_reply[destination_ip]:
                 self.send_app_data(destination_ip, data, protocol=protocol, dscp=dscp, **kwargs)
@@ -574,7 +574,6 @@ class Node:
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
-        print("send arp reply")
         arp_reply_packet = ARPPacket(
             source_mac=self.mac_address,
             destination_mac=request_packet.header["source_mac"],
