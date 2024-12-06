@@ -11,24 +11,26 @@ from sec14a.Application import ApplicationManager
 class Node:
     def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server=None, mtu=1500, default_route=None):
         self.node_id = node_id
-        self.ip_address = ip_address  # IPアドレス
+        self.ip_address = ip_address
         self.network_event_scheduler = network_event_scheduler
         self.local_seed = self.network_event_scheduler.get_seed()
         if self.local_seed is not None:
             random.seed(self.local_seed)
+
         if mac_address is None:
-            self.mac_address = self.generate_mac_address()  # ランダムなMACアドレスを生成
+            self.mac_address = self.generate_mac_address()
         else:
             if not self.is_valid_mac_address(mac_address):
                 raise ValueError("無効なMACアドレス形式です。")
-            self.mac_address = mac_address  # MACアドレス
+            self.mac_address = mac_address
+
         self.links = []
-        self.applications = {} # ポート・プロトコルごとのアプリケーションインスタンス
-        self.used_ports = set()  # 使用中のポート番号を保持するセット
-        self.port_mapping = {}  # source_portをキーとし、destination_portを値とする辞書
-        self.tcp_connections = {}  # 接続状態を追跡する辞書
-        self.cwnd = 1  # 輻輳ウィンドウの初期値
-        self.ssthresh = 16  # スロースタート閾値の初期値
+        self.applications = {}
+        self.used_ports = set()
+        self.port_mapping = {}
+        self.tcp_connections = {}
+        self.cwnd = 1
+        self.ssthresh = 16
         self.MAX_CWND = 64
         self.tcp_state = {}
         self.max_attempts = 10
@@ -74,14 +76,12 @@ class Node:
             self.links.append(link)
 
     def generate_mac_address(self):
-        # ランダムなMACアドレスを生成
         return ':'.join(['{:02x}'.format((uuid.uuid4().int >> (i*8)) & 0xff) for i in range(6)])
 
     def register_application(self, port, protocol, application_instance):
         self.applications[(port, protocol)] = application_instance
-        # application_instanceがFTPServerの場合にApplicationManagerへも登録
+        # FTPServerの場合、ApplicationManagerへ登録
         if hasattr(application_instance, "__class__") and application_instance.__class__.__name__ == "FTPServer":
-            # FTPServerと判定できたらApplicationManagerのregister_ftp_server呼び出し
             if self.application_layer and hasattr(self.application_layer, 'register_ftp_server'):
                 self.application_layer.register_ftp_server(application_instance)
 
@@ -124,7 +124,7 @@ class Node:
         print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
 
     def process_ARP_packet(self, packet):
-        if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":  # ブロードキャスト
+        if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":
             self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
             packet.set_arrived(self.network_event_scheduler.current_time)
             if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
@@ -139,9 +139,6 @@ class Node:
                 self.add_to_arp_table(source_ip, source_mac)
                 self.on_arp_reply_received(source_ip, source_mac)
                 return
-
-    def add_dns_record(self, domain_name, ip_address):
-        self.url_to_ip_mapping[domain_name] = ip_address
 
     def process_UDP_packet(self, packet):
         if packet.header["destination_mac"] == self.mac_address:
@@ -164,30 +161,22 @@ class Node:
             if packet.header["destination_ip"] == self.ip_address:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
-
-                # Check TCP flags
                 flags = packet.header.get('flags', '')
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"TCP flags: {flags}")
 
-                # SYNパケットの処理
                 if "SYN" in flags:
-                    if "ACK" in flags:  # SYN-ACK受信（クライアント側想定）
+                    if "ACK" in flags:
                         self.establish_TCP_connection(packet)
                         self.send_TCP_ACK(packet)
                     else:
-                        # サーバ側がSYN受信（LISTEN状態想定）でSYN,ACK返答→SYN_RECEIVEDへ遷移
                         self.send_TCP_SYN_ACK(packet)
                     return
 
                 if "ACK" in flags:
-                    # ACK受信時にSYN_RECEIVED→ESTABLISHEDへの遷移を確認
                     connection_key = (packet.header["source_ip"], packet.header["source_port"])
-                    # コネクションがSYN_RECEIVEDだった場合、ここでestablish_TCP_connectionを呼ぶ
                     if connection_key in self.tcp_connections and self.tcp_connections[connection_key]['state'] == 'SYN_RECEIVED':
-                        # ACK受信したのでESTABLISHEDへ移行
                         self.establish_TCP_connection(packet)
-                    
                     self.handle_acknowledgement(packet)
 
                 if "PSH" in flags:
@@ -198,12 +187,10 @@ class Node:
                 if "FIN" in flags:
                     self.terminate_TCP_connection(packet)
 
-                # アプリ層へ通知
                 if self.application_layer and hasattr(self.application_layer, 'on_packet_received'):
                     self.application_layer.on_packet_received(packet)
                 else:
                     self.network_event_scheduler.log_packet_info(packet, "no application found", self.node_id)
-
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
@@ -436,16 +423,19 @@ class Node:
 
     def send_TCP_SYN_ACK(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        
+
         sequence_number = randint(1, 10000)
-        # 受信したSYNパケットのシーケンス番号に1を加えたものがACK番号
         acknowledgment_number = packet.header["sequence_number"] + 1
 
-        # 新しい接続情報を初期化
         if connection_key not in self.tcp_connections:
-            self.initialize_connection_info(connection_key=connection_key, state='SYN_RECEIVED', sequence_number=sequence_number, acknowledgment_number=acknowledgment_number, data=None)
+            self.initialize_connection_info(
+                connection_key=connection_key,
+                state='SYN_RECEIVED',
+                sequence_number=sequence_number,
+                acknowledgment_number=acknowledgment_number,
+                data=None
+            )
 
-        # パラメータ設定
         control_packet_kwargs = {
             "flags": "SYN,ACK",
             "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
@@ -453,13 +443,10 @@ class Node:
             "source_port": packet.header["destination_port"],
             "destination_port": packet.header["source_port"]
         }
-        self._send_tcp_packet(
-            destination_ip=packet.header["source_ip"],
-            destination_mac=packet.header["source_mac"],
-            data=b"",
-            dscp=packet.header["dscp"],
-            **control_packet_kwargs
-        )
+
+        destination_ip = packet.header["source_ip"]
+        dscp = packet.header["dscp"]
+        self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
 
         self.tcp_connections[connection_key]["sequence_number"] += 1
 
@@ -481,11 +468,9 @@ class Node:
             self.application_layer.on_connection_established(connection_key)
 
     def send_TCP_ACK(self, packet):
-        # コネクションキーを生成
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
 
         if connection_key in self.tcp_connections:
-            # パラメータ設定
             control_packet_kwargs = {
                 "flags": "ACK",
                 "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
@@ -493,16 +478,31 @@ class Node:
                 "source_port": packet.header["destination_port"],
                 "destination_port": packet.header["source_port"]
             }
-            self._send_tcp_packet(
-                destination_ip=packet.header["source_ip"],
-                destination_mac=packet.header["source_mac"],
-                data=b"",
-                dscp=packet.header["dscp"],
-                **control_packet_kwargs
-            )
+            destination_ip = packet.header["source_ip"]
+            dscp = packet.header["dscp"]
+
+            self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
         else:
             if self.network_event_scheduler.tcp_verbose:
                 print("Error: Connection key not found in tcp_connections.")
+
+    def _send_control_tcp_packet(self, destination_ip, data, dscp, **kwargs):
+        """
+        TCP制御パケット(SYN, SYN-ACK, ACKなど)送信用の共通処理。
+        ARP解決を含め、send_app_data相当の処理を内包することも可能。
+        """
+        destination_mac = self.get_mac_address_from_ip(destination_ip)
+        if destination_mac is None:
+            # ARP未解決なら待機
+            self.send_arp_request(destination_ip)
+            if destination_ip not in self.waiting_for_arp_reply:
+                self.waiting_for_arp_reply[destination_ip] = []
+            self.waiting_for_arp_reply[destination_ip].append((data, "TCP", dscp, kwargs))
+            return
+
+        self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
+
+
 
     def terminate_TCP_connection(self, packet):
         # TCP接続を終了する処理
@@ -556,10 +556,10 @@ class Node:
         pass
 
     def on_arp_reply_received(self, destination_ip, destination_mac):
+        # ARP解決後の再送もsend_app_dataで統一
         if destination_ip in self.waiting_for_arp_reply:
-            for packet_info in self.waiting_for_arp_reply[destination_ip]:
-                data, protocol, dscp, kwargs = packet_info
-                self.send_packet(destination_ip, data, protocol=protocol, dscp=dscp, **kwargs)
+            for data, protocol, dscp, kwargs in self.waiting_for_arp_reply[destination_ip]:
+                self.send_app_data(destination_ip, data, protocol=protocol, dscp=dscp, **kwargs)
             del self.waiting_for_arp_reply[destination_ip]
 
     def send_arp_request(self, ip_address):
@@ -618,12 +618,13 @@ class Node:
             print(f"TCP connection state updated to {new_state} for {connection_key}")
 
     def initiate_tcp_connection(self, destination_ip, destination_port, dscp=0):
-        # TCPコネクション開始用のラッパメソッド
-        # MACアドレスはARPを使って取得するため、send_packetでSYNパケットを送る。
+        # コネクション開始も、SYNフラグ付きのTCPパケットをsend_app_dataで送る。
+        # send_app_data内部でARP処理や、未確立コネクションでのハンドシェイク開始処理を行うように拡張可能。
         source_port = self.select_random_port()
-        self.send_packet(
-            destination_ip=destination_ip,
-            data=b'',
+        # SYNパケット送信
+        self.send_app_data(
+            destination_ip,
+            b"",
             protocol="TCP",
             dscp=dscp,
             source_port=source_port,
@@ -638,17 +639,38 @@ class Node:
 
             connection_key = (destination_ip, kwargs.get('destination_port'))
             if connection_key not in self.tcp_connections:
-                self.initialize_connection_info(connection_key=connection_key, state='SYN_SENT', sequence_number=randint(1, 10000), acknowledgment_number=0, data=b'')
+                self.initialize_connection_info(
+                    connection_key=connection_key,
+                    state='SYN_SENT',
+                    sequence_number=randint(1, 10000),
+                    acknowledgment_number=0,
+                    data=b''
+                )
 
             control_packet_kwargs = {
                 "flags": "SYN",
                 "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
                 "acknowledgment_number": 0,
                 "source_port": kwargs.get('source_port'),
-                "destination_port": kwargs.get('destination_port'),
-                "payload_size": 0
+                "destination_port": kwargs.get('destination_port')
             }
-            self._send_tcp_packet(destination_ip, destination_mac, b"", dscp, **control_packet_kwargs)
+
+            if destination_mac is None:
+                # ARP未解決なら待機
+                self.send_arp_request(destination_ip)
+                if destination_ip not in self.waiting_for_arp_reply:
+                    self.waiting_for_arp_reply[destination_ip] = []
+                self.waiting_for_arp_reply[destination_ip].append((b"", "TCP", dscp, control_packet_kwargs))
+                return
+
+            self._send_transport_packet(
+                "TCP",
+                destination_ip,
+                destination_mac,
+                b"",
+                dscp,
+                **control_packet_kwargs
+            )
             self.tcp_connections[connection_key]["sequence_number"] += 1
 
     def send_app_data(self, dst_ip, data, protocol="TCP", **kwargs):
