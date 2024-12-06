@@ -531,7 +531,6 @@ class Node:
         if packet.arrival_time == -1:
             self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
         elif isinstance(packet, ARPPacket):
-            print("ARP received")
             self.process_ARP_packet(packet)
         elif isinstance(packet, DHCPPacket):
             # DHCPパケットはNodeでは処理せず、アプリケーション層へ通知
@@ -575,6 +574,7 @@ class Node:
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
+        print("send arp reply")
         arp_reply_packet = ARPPacket(
             source_mac=self.mac_address,
             destination_mac=request_packet.header["source_mac"],
