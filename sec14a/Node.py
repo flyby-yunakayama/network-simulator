@@ -465,6 +465,9 @@ class Node:
             self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
 
         # アプリケーション層へコネクション確立を通知
+        if self.network_event_scheduler.tcp_verbose:
+            print(connection_key, "established")
+
         if self.application_layer and hasattr(self.application_layer, 'on_connection_established'):
             self.application_layer.on_connection_established(connection_key)
 

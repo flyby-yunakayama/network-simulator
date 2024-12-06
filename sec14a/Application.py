@@ -14,7 +14,6 @@ class ApplicationManager:
         self.udp_app = None
 
         # connection_keyやプロトコルに応じてアプリを特定するマップ
-        # 例: connection_app_map[(dest_ip, dest_port)] = "FTP"
         self.connection_app_map = {}
 
     def register_ftp_client(self, ftp_client):
