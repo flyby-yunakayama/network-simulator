@@ -76,6 +76,7 @@ class ApplicationManager:
         elif app_type == "FTPSERVER" and self.ftp_server:
             self.ftp_server.on_connection_established(connection_key)
         elif app_type == "None" and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
+            print(f"on_connection_established: {connection_key}, FTPSERVER")
             self.ftp_server.on_connection_established(connection_key)
         # UDPAppなども同様にハンドル可能
 
