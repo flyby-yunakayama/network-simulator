@@ -43,16 +43,7 @@ class ApplicationManager:
         if not protocol:
             return  # ARP, DHCP, DNSは別処理済み
 
-        dst_ip = packet.header.get("destination_ip")
-        dst_port = packet.header.get("destination_port")
-        src_ip = packet.header.get("source_ip")
-        src_port = packet.header.get("source_port")
-        connection_key = (src_ip, src_port, dst_ip, dst_port, protocol)
-
-        # 簡易的なロジック：connection_app_mapで特定できなければ、ポートやIPをみて判定
-        app_type = self.connection_app_map.get((dst_ip, dst_port))
-        # FTPサーバは通常受信側、FTPクライアントは送信側コネクションで判定するなどのロジックを適宜実装
-        # ここでは簡易的にapp_typeが"FTP"ならftp_client、"FTPSERVER"ならftp_server、"UDP"ならudp_appへ
+        app_type = self.connection_app_map.get((packet.header.get("source_ip"), packet.header.get("source_port")))
 
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.on_packet_received(packet)
@@ -79,21 +70,20 @@ class ApplicationManager:
         # UDPAppなども同様にハンドル可能
 
     def get_traffic_info(self, connection_key):
-        # connection_keyは(src_ip, src_port)
         app_type = self.connection_app_map.get(connection_key)
         if app_type == "FTP" and self.ftp_client:
             return self.ftp_client.get_traffic_info(connection_key)
         return None
 
     def get_data_chunk(self, connection_key, payload_size):
-        key = (connection_key[2], connection_key[3])
+        key = (connection_key[0], connection_key[1])
         app_type = self.connection_app_map.get(key)
         if app_type == "FTP" and self.ftp_client:
             return self.ftp_client.get_data_chunk((connection_key[2], connection_key[3]), payload_size)
         return None
 
     def update_data_after_send(self, connection_key, sent_bytes):
-        key = (connection_key[2], connection_key[3])
+        key = (connection_key[0], connection_key[1])
         app_type = self.connection_app_map.get(key)
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.update_data_after_send((connection_key[2], connection_key[3]), sent_bytes)
