@@ -555,10 +555,9 @@ class Node:
         pass
 
     def on_arp_reply_received(self, destination_ip, destination_mac):
-        print("on_arp_reply_received")
         if destination_ip in self.waiting_for_arp_reply:
             for data, protocol, dscp, kwargs in self.waiting_for_arp_reply[destination_ip]:
-                self.send_app_data(destination_ip, data, protocol=protocol, dscp=dscp, **kwargs)
+                self._send_transport_packet(protocol, destination_ip, destination_mac, data, dscp, **kwargs)
             del self.waiting_for_arp_reply[destination_ip]
 
     def send_arp_request(self, ip_address):
