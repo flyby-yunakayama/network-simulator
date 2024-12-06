@@ -6,6 +6,7 @@ from ipaddress import ip_interface, ip_network
 from sec14a.Switch import Switch
 from sec14a.Router import Router
 from sec14a.Packet import Packet, UDPPacket, TCPPacket, ARPPacket, DNSPacket, DHCPPacket
+from sec14a.Application import ApplicationManager
 
 class Node:
     def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server=None, mtu=1500, default_route=None):
@@ -46,14 +47,8 @@ class Node:
         label = f'Node {node_id}\n{mac_address}'
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
-        # ApplicationManagerを後からセット
-        self.application_layer = None
-
-    def set_application_layer(self, app):
-        """
-        アプリケーションレイヤ（ApplicationManagerインスタンス）を登録する。
-        """
-        self.application_layer = app
+        # ApplicationManagerをセット
+        self.application_layer = ApplicationManager(self)
 
     def is_valid_mac_address(self, mac_address):
         mac_format = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')

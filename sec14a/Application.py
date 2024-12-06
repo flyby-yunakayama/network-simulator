@@ -228,9 +228,9 @@ class DhcpClient:
 
 
 class UDPApp:
-    def __init__(self, node, app_manager, protocol="UDP"):
+    def __init__(self, node, protocol="UDP"):
         self.node = node
-        self.app_manager = app_manager
+        self.app_manager = node.application_layer
         self.protocol = protocol
         self.bitrate = None
         self.header_size = None
@@ -290,9 +290,9 @@ class UDPApp:
 
 
 class FTPClient:
-    def __init__(self, node, app_manager, server_url=None, verbose=False):
+    def __init__(self, node, server_url=None, verbose=False):
         self.node = node
-        self.app_manager = app_manager
+        self.app_manager = node.application_layer
         self.server_url = server_url
         self.verbose = verbose
         self.state = "NOT_CONNECTED"
@@ -359,9 +359,9 @@ class FTPClient:
 
 
 class FTPServer:
-    def __init__(self, node, app_manager, shared_files, verbose=False):
+    def __init__(self, node, shared_files, verbose=False):
         self.node = node
-        self.app_manager = app_manager
+        self.app_manager = node.application_layer  
         self.shared_files = shared_files
         self.verbose = verbose
         self.state = "READY"
