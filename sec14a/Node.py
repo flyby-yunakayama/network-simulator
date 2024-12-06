@@ -500,7 +500,6 @@ class Node:
             self.waiting_for_arp_reply[destination_ip].append((data, "TCP", dscp, kwargs))
             return
 
-        print("test", destination_ip)
         self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
 
     def terminate_TCP_connection(self, packet):
@@ -571,6 +570,7 @@ class Node:
             network_event_scheduler=self.network_event_scheduler
         )
         self.network_event_scheduler.log_packet_info(arp_request_packet, "ARP request", self.node_id)
+        print("send arp")
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
