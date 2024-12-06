@@ -79,6 +79,11 @@ class Node:
 
     def register_application(self, port, protocol, application_instance):
         self.applications[(port, protocol)] = application_instance
+        # application_instanceがFTPServerの場合にApplicationManagerへも登録
+        if hasattr(application_instance, "__class__") and application_instance.__class__.__name__ == "FTPServer":
+            # FTPServerと判定できたらApplicationManagerのregister_ftp_server呼び出し
+            if self.application_layer and hasattr(self.application_layer, 'register_ftp_server'):
+                self.application_layer.register_ftp_server(application_instance)
 
     def select_available_port(self):
         for port in range(1024, 49152):
