@@ -46,12 +46,12 @@ class Node:
         label = f'Node {node_id}\n{mac_address}'
         self.network_event_scheduler.add_node(node_id, label, ip_addresses=[ip_address])
 
-        # アプリケーション層への参照(後からセット)
+        # ApplicationManagerを後からセット
         self.application_layer = None
 
     def set_application_layer(self, app):
         """
-        アプリケーションレイヤ（Applicationインスタンス）を登録する。
+        アプリケーションレイヤ（ApplicationManagerインスタンス）を登録する。
         """
         self.application_layer = app
 
@@ -149,12 +149,10 @@ class Node:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
 
-                # UDPパケット宛先ポートでアプリ検索
-                app_key = (packet.header["destination_port"], "UDP")
-                if app_key in self.applications:
-                    self.applications[app_key].on_packet_received(packet)
+                if self.application_layer and hasattr(self.application_layer, 'on_packet_received'):
+                    self.application_layer.on_packet_received(packet)
                 else:
-                    self.process_data_packet(packet)  # 従来の処理
+                    self.process_data_packet(packet)
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
@@ -188,9 +186,9 @@ class Node:
                 if "FIN" in flags:
                     self.terminate_TCP_connection(packet)
 
-                app_key = (packet.header["destination_port"], "TCP")
-                if app_key in self.applications:
-                    self.applications[app_key].on_packet_received(packet)
+                # アプリ層へ通知
+                if self.application_layer and hasattr(self.application_layer, 'on_packet_received'):
+                    self.application_layer.on_packet_received(packet)
                 else:
                     self.network_event_scheduler.log_packet_info(packet, "no application found", self.node_id)
 
@@ -642,9 +640,7 @@ class Node:
 
     def send_tcp_data_packet(self, packet, attempt=0):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        print(connection_key)
-        print(self.tcp_connections)
-        app = self.application_layer  # FTPClientインスタンスを想定
+        app = self.application_layer  # ApplicationManagerインスタンス
 
         traffic_info = app.get_traffic_info(connection_key)
         if not traffic_info:
@@ -705,10 +701,8 @@ class Node:
                 self.schedule_timeout(connection_key, sequence_number)
                 self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)
 
-                # FTPClient側のデータを更新
                 app.update_data_after_send(connection_key, len(data_to_send))
 
-                # まだデータが残っていれば続けて送る
                 if app.outgoing_data.get(connection_key, b''):
                     self.send_tcp_data_packet(packet, attempt)
 

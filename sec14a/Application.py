@@ -1,18 +1,93 @@
 from sec14a.Packet import DNSPacket, DHCPPacket
 
-class Application:
+class ApplicationManager:
     def __init__(self, node):
         self.node = node
         self.node.set_application_layer(self)
-        # DNS, DHCPクライアントインスタンスを作成
+
+        # DNS, DHCPクライアントを内部で生成
         self.dns_client = DnsClient(node)
         self.dhcp_client = DhcpClient(node)
+
+        # 管理するアプリケーションインスタンス
+        self.ftp_client = None
+        self.ftp_server = None
+        self.udp_app = None
+
+        # connection_keyやプロトコルに応じてアプリを特定するマップ
+        # 例: connection_app_map[(dest_ip, dest_port)] = "FTP"
+        self.connection_app_map = {}
+
+    def register_ftp_client(self, ftp_client):
+        self.ftp_client = ftp_client
+
+    def register_ftp_server(self, ftp_server):
+        self.ftp_server = ftp_server
+
+    def register_udp_app(self, udp_app):
+        self.udp_app = udp_app
+
+    def map_connection_to_app(self, connection_key, app_type):
+        self.connection_app_map[connection_key] = app_type
 
     def on_dns_packet_received(self, packet):
         self.dns_client.on_dns_packet_received(packet)
 
     def on_dhcp_packet_received(self, packet):
         self.dhcp_client.on_dhcp_packet_received(packet)
+
+    def on_packet_received(self, packet):
+        """
+        Nodeから呼ばれるパケット受信イベント。
+        TCP/UDPなどのポートやIP情報を見て、どのアプリへ渡すか決定。
+        """
+        protocol = "TCP" if isinstance(packet, TCPPacket) else ("UDP" if isinstance(packet, UDPPacket) else None)
+        if not protocol:
+            return  # ARP, DHCP, DNSは別処理済み
+
+        dst_ip = packet.header.get("destination_ip")
+        dst_port = packet.header.get("destination_port")
+        src_ip = packet.header.get("source_ip")
+        src_port = packet.header.get("source_port")
+        connection_key = (src_ip, src_port, dst_ip, dst_port, protocol)
+
+        # 簡易的なロジック：connection_app_mapで特定できなければ、ポートやIPをみて判定
+        app_type = self.connection_app_map.get((dst_ip, dst_port))
+        # FTPサーバは通常受信側、FTPクライアントは送信側コネクションで判定するなどのロジックを適宜実装
+        # ここでは簡易的にapp_typeが"FTP"ならftp_client、"FTPSERVER"ならftp_server、"UDP"ならudp_appへ
+
+        if app_type == "FTP" and self.ftp_client:
+            self.ftp_client.on_packet_received(packet)
+        elif app_type == "FTPSERVER" and self.ftp_server:
+            self.ftp_server.on_packet_received(packet)
+        elif app_type == "UDP" and self.udp_app:
+            self.udp_app.on_packet_received(packet)
+        else:
+            # マッピングがない場合はドロップ、あるいはログ
+            pass
+
+    def get_traffic_info(self, connection_key):
+        # FTPClient等から呼ばれる
+        # connection_keyに合わせてFTPClientなどのget_traffic_info呼び出し
+        # ここではconnection_key形式を(宛先IP,宛先ポート)に簡易化
+        key = (connection_key[2], connection_key[3])  # (dst_ip,dst_port)
+        app_type = self.connection_app_map.get(key)
+        if app_type == "FTP" and self.ftp_client:
+            return self.ftp_client.get_traffic_info((connection_key[2], connection_key[3]))
+        return None
+
+    def get_data_chunk(self, connection_key, payload_size):
+        key = (connection_key[2], connection_key[3])
+        app_type = self.connection_app_map.get(key)
+        if app_type == "FTP" and self.ftp_client:
+            return self.ftp_client.get_data_chunk((connection_key[2], connection_key[3]), payload_size)
+        return None
+
+    def update_data_after_send(self, connection_key, sent_bytes):
+        key = (connection_key[2], connection_key[3])
+        app_type = self.connection_app_map.get(key)
+        if app_type == "FTP" and self.ftp_client:
+            self.ftp_client.update_data_after_send((connection_key[2], connection_key[3]), sent_bytes)
 
     def resolve_destination_url(self, destination_url, callback=None):
         if self.node.is_valid_cidr_notation(destination_url):
@@ -152,111 +227,77 @@ class DhcpClient:
         )
 
 
-class UDPApp(Application):
-    def __init__(self, node):
-        super().__init__(node)
+class UDPApp:
+    def __init__(self, node, app_manager, protocol="UDP"):
+        self.node = node
+        self.app_manager = app_manager
+        self.protocol = protocol
         self.bitrate = None
         self.header_size = None
         self.payload_size = None
         self.burstiness = None
-        self.protocol = "UDP"
         self.dscp = 0
         self.destination_ip = None
         self.destination_port = None
         self.source_port = None
         self.end_time = None
 
-    def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP", dscp=0):
-        """
-        UDPトラフィックを開始します。
-        :param destination_url: 宛先URLまたはIP
-        :param bitrate: ビットレート（bps）
-        :param start_time: トラフィック開始時間
-        :param duration: 持続時間（秒）
-        :param header_size: ヘッダーサイズ
-        :param payload_size: ペイロードサイズ
-        :param burstiness: バースト係数
-        :param protocol: "UDP"を想定
-        :param dscp: DSCP値
-        """
+    def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, dscp=0):
         self.bitrate = bitrate
         self.header_size = header_size
         self.payload_size = payload_size
         self.burstiness = burstiness
-        self.protocol = protocol
         self.dscp = dscp
         self.end_time = self.node.network_event_scheduler.current_time + duration
 
-        # ポート番号を決定
         self.source_port = self.node.select_random_port()
         self.destination_port = self.node.select_random_port()
 
-        # URLがIP形式かチェックし、IPでなければDNS解決する
-        resolved_ip = self.node.resolve_destination_ip(destination_url)
+        def on_resolved(ip):
+            self.destination_ip = ip
+            current_time = self.node.network_event_scheduler.current_time
+            delay = max(0, start_time - current_time)
+            self.node.network_event_scheduler.schedule_event(current_time + delay, self.schedule_traffic)
+            # UDP通信キーをApplicationManagerに登録
+            self.app_manager.map_connection_to_app((ip, self.destination_port), "UDP")
+
+        resolved_ip = self.app_manager.resolve_destination_url(destination_url, callback=on_resolved)
         if resolved_ip is not None:
-            # すでに解決済みの場合、すぐにスケジュール開始
+            # すでに解決済みなら即スケジュール
             self.destination_ip = resolved_ip
             self.node.network_event_scheduler.schedule_event(start_time, self.schedule_traffic)
-        else:
-            # DNS解決が必要
-            # DNS解決後のコールバックでスケジュール開始
-            def on_resolved(ip):
-                self.destination_ip = ip
-                # DNS解決完了後にstart_timeで送信開始
-                current_time = self.node.network_event_scheduler.current_time
-                delay = max(0, start_time - current_time)
-                self.node.network_event_scheduler.schedule_event(current_time + delay, self.schedule_traffic)
-
-            self.resolve_destination_url(destination_url, callback=on_resolved)
+            self.app_manager.map_connection_to_app((resolved_ip, self.destination_port), "UDP")
 
     def schedule_traffic(self):
-        """
-        トラフィック送信を開始するメソッド。
-        最初のパケット送出を現在時刻で行い、その後一定間隔でsend_packet_eventを呼ぶ。
-        """
-        # すぐに最初のパケット送信
         self.send_packet_event()
 
     def send_packet_event(self):
-        """
-        1パケット送信後、次のパケット送信をスケジュール。
-        end_timeを超えていたら送信終了。
-        """
         current_time = self.node.network_event_scheduler.current_time
         if current_time > self.end_time:
-            # 終了
             return
 
-        # データ生成
         data = b'X' * self.payload_size
-        # パケット送信
         self.node.send_packet(self.destination_ip, data, self.protocol, self.dscp,
                               source_port=self.source_port, destination_port=self.destination_port)
-
-        # 次のパケット送信までのインターバル計算
-        packet_size = self.header_size + self.payload_size  # トータルサイズ（簡易想定）
+        packet_size = self.header_size + self.payload_size
         interval = (packet_size * 8) / self.bitrate * self.burstiness
         next_time = current_time + interval
         self.node.network_event_scheduler.schedule_event(next_time, self.send_packet_event)
 
     def on_packet_received(self, packet):
-        """
-        UDP受信時の処理が必要ならここで実装可能。
-        今回は送信アプリケーションなので特に処理しない想定。
-        """
+        # UDP受信時の処理(今回は送信専用と仮定し、何もしない)
         pass
 
-class FTPClient(Application):
-    def __init__(self, node, server_url=None, verbose=False):
-        super().__init__(node)
+
+class FTPClient:
+    def __init__(self, node, app_manager, server_url=None, verbose=False):
+        self.node = node
+        self.app_manager = app_manager
         self.server_url = server_url
         self.verbose = verbose
         self.state = "NOT_CONNECTED"
         self.file_to_retrieve = None
-
-        # データ管理用辞書: { (ip, port): bytes }
         self.outgoing_data = {}
-        # トラフィック情報管理用辞書: { (ip, port): {"end_time":..., "payload_size":...} }
         self.traffic_info = {}
 
     def connect(self, server_ip, server_port=21):
@@ -264,6 +305,8 @@ class FTPClient(Application):
             print("[FTPClient] Requesting TCP connect to ", server_ip, server_port)
         self.state = "CONNECTING"
         self.node.initiate_tcp_connection(server_ip, server_port)
+        # FTP接続キーをmap
+        self.app_manager.map_connection_to_app((server_ip, server_port), "FTP")
 
     def on_packet_received(self, packet):
         data = packet.payload.decode('utf-8', errors='ignore')
@@ -279,7 +322,7 @@ class FTPClient(Application):
             if self.file_to_retrieve:
                 self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
         elif data.startswith("150"):
-            # ファイル転送開始
+            # ファイル転送開始時にトラフィック情報をセットするなど
             pass
         elif data.startswith("226"):
             # 転送完了
@@ -288,16 +331,14 @@ class FTPClient(Application):
     def send_ftp_command(self, command):
         if self.verbose:
             print("[FTPClient] Sending command:", command.strip())
-        self.node.send_app_data(self.server_url, command.encode('utf-8'), protocol="TCP")  # 仮メソッド
+        self.node.send_app_data(self.server_url, command.encode('utf-8'), protocol="TCP")
 
     def retrieve_file(self, filename):
         self.file_to_retrieve = filename
         if self.verbose:
             print("[FTPClient] Will retrieve file after login:", filename)
 
-    # 以下、Nodeのsend_tcp_data_packetが利用するデータ・トラフィック管理メソッド
     def set_traffic_info(self, connection_key, end_time, payload_size, data):
-        """FTPClient側で送信すべきデータや送信期限などをセットする"""
         self.traffic_info[connection_key] = {
             'end_time': end_time,
             'payload_size': payload_size
@@ -308,30 +349,31 @@ class FTPClient(Application):
         return self.traffic_info.get(connection_key, None)
 
     def get_data_chunk(self, connection_key, payload_size):
-        """payload_size分のデータを取り出す"""
         data = self.outgoing_data.get(connection_key, b'')
         chunk = data[:payload_size]
         return chunk
 
     def update_data_after_send(self, connection_key, sent_bytes):
-        """データ送信後、送った分を削除"""
         data = self.outgoing_data.get(connection_key, b'')
         self.outgoing_data[connection_key] = data[sent_bytes:]
 
-class FTPServer(Application):
-    def __init__(self, node, shared_files, verbose=False):
-        super().__init__(node)
+
+class FTPServer:
+    def __init__(self, node, app_manager, shared_files, verbose=False):
+        self.node = node
+        self.app_manager = app_manager
         self.shared_files = shared_files
         self.verbose = verbose
-        self.state = "READY"  # TCP接続はNodeで確立されると想定
+        self.state = "READY"
+
+        # FTPサーバの待ち受けポート(例:21)をFTPサーバアプリとしてマッピング
+        # 必要に応じてapp_manager.map_connection_to_app(("192.168.1.1",21), "FTPSERVER")など呼ぶ
 
     def on_packet_received(self, packet):
-        # この時点でTCP接続は確立済み
         data = packet.payload.decode('utf-8', errors='ignore')
         if self.verbose:
             print("[FTPServer] Received: ", data.strip())
 
-        # 最初のパケットを受け取ったら220を返す
         if self.state == "READY":
             self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "220 Service ready\r\n")
             self.state = "WAIT_USER"
@@ -345,10 +387,11 @@ class FTPServer(Application):
             filename = data.strip().split(" ")[1]
             file_data = self.shared_files.get(filename, b"Test file data.")
             self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "150 File status okay; about to open data connection.\r\n")
-            self.node.send_app_data(packet.header["source_ip"], file_data, protocol="TCP")  # 仮メソッド
+            self.node.send_app_data(packet.header["source_ip"], file_data, protocol="TCP")
             self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "226 Closing data connection.\r\n")
 
     def send_ftp_response(self, dst_ip, dst_port, src_port, response):
         if self.verbose:
             print("[FTPServer] Sending response:", response.strip())
-        self.node.send_app_data(dst_ip, response.encode('utf-8'), protocol="TCP")  # 仮メソッド
+        self.node.send_app_data(dst_ip, response.encode('utf-8'), protocol="TCP")
+
