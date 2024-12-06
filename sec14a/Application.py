@@ -144,11 +144,10 @@ class DnsClient:
             network_event_scheduler=self.node.network_event_scheduler
         )
         # UDPでDNSサーバへクエリ送信
-        self.node.send_packet(
+        self.node.send_app_data(
             self.node.dns_server_ip,
             dns_query_packet.to_bytes(),
             protocol="UDP",
-            dscp=0,
             source_port=53,
             destination_port=53
         )
@@ -187,11 +186,10 @@ class DhcpClient:
             message_type="DISCOVER",
             network_event_scheduler=self.node.network_event_scheduler
         )
-        self.node.send_packet(
+        self.node.send_app_data(
             "255.255.255.255",
             dhcp_discover_packet.to_bytes(),
             protocol="UDP",
-            dscp=0,
             source_port=68,
             destination_port=67
         )
@@ -226,11 +224,10 @@ class DhcpClient:
         )
         dhcp_request_packet.dhcp_data = {"requested_ip": requested_ip}
 
-        self.node.send_packet(
+        self.node.send_app_data(
             "255.255.255.255",
             dhcp_request_packet.to_bytes(),
             protocol="UDP",
-            dscp=0,
             source_port=68,
             destination_port=67
         )
