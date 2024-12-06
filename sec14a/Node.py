@@ -527,7 +527,6 @@ class Node:
             print(f"宛先IP: {destination_ip}, 宛先ポート: {destination_port}, 状態: {state['state']}")
 
     def receive_packet(self, packet, received_link):
-        print("receive_packet")
         if packet.arrival_time == -1:
             self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
         elif isinstance(packet, ARPPacket):

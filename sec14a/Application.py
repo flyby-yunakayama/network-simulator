@@ -384,12 +384,13 @@ class FTPServer:
         self.state = "READY"
 
     def on_connection_established(self, connection_key):
-        # 220メッセージを送信
+        # client_ip, client_portが接続先(クライアント)
         client_ip, client_port = connection_key
-        server_port = 21  # FTPデフォルトポート
+        server_port = 21  # 自サーバのFTP制御ポート
         if self.verbose:
             print("[FTPServer] Connection established. Sending 220 greeting.")
-        self.send_ftp_response(client_ip, server_port, client_port, "220 Service ready\r\n")
+        # 引数順: (dst_ip, client_port, server_port, response)
+        self.send_ftp_response(client_ip, client_port, server_port, "220 Service ready\r\n")
         self.state = "WAIT_USER"
 
     def on_packet_received(self, packet):
@@ -397,20 +398,36 @@ class FTPServer:
         if self.verbose:
             print("[FTPServer] Received: ", data.strip())
 
+        # packet.header["source_ip"], packet.header["source_port"]がクライアント側
+        # packet.header["destination_ip"], packet.header["destination_port"]がサーバ側
+        client_ip = packet.header["source_ip"]
+        client_port = packet.header["source_port"]  # クライアントポート
+        server_port = packet.header["destination_port"]  # サーバ(自分)のポート(21)
+
         if self.state == "WAIT_USER":
             if data.startswith("USER"):
-                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "331 User name okay, need password.\r\n")
+                self.send_ftp_response(client_ip, client_port, server_port, "331 User name okay, need password.\r\n")
             elif data.startswith("PASS"):
-                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "230 User logged in, proceed.\r\n")
+                self.send_ftp_response(client_ip, client_port, server_port, "230 User logged in, proceed.\r\n")
                 self.state = "LOGGED_IN"
             elif data.startswith("RETR"):
                 filename = data.strip().split(" ")[1]
                 file_data = self.shared_files.get(filename, b"Test file data.")
-                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "150 File status okay; about to open data connection.\r\n")
-                self.node.send_app_data(packet.header["source_ip"], file_data, protocol="TCP")
-                self.send_ftp_response(packet.header["source_ip"], packet.header["destination_port"], packet.header["source_port"], "226 Closing data connection.\r\n")
+                self.send_ftp_response(client_ip, client_port, server_port, "150 File status okay; about to open data connection.\r\n")
+                # データ送信時: クライアントへのデータ送信にはclient_portをdestination_portとして指定
+                self.node.send_app_data(client_ip, file_data, protocol="TCP", source_port=server_port, destination_port=client_port)
+                self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
 
-    def send_ftp_response(self, dst_ip, dst_port, src_port, response):
+    def send_ftp_response(self, dst_ip, client_port, server_port, response):
         if self.verbose:
             print("[FTPServer] Sending response:", response.strip())
-        self.node.send_app_data(dst_ip, response.encode('utf-8'), protocol="TCP")
+        # send_app_dataで送信
+        # destination_port=client_port(クライアントポート), source_port=server_port(サーバポート)
+        self.node.send_app_data(
+            dst_ip,
+            response.encode('utf-8'),
+            protocol="TCP",
+            source_port=server_port,
+            destination_port=client_port
+        )
+
