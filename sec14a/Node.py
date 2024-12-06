@@ -650,7 +650,7 @@ class Node:
             destination_port = kwargs.get('destination_port')
             if not destination_port:
                 # もしdestination_portが指定されていないなら、確立済みコネクションや
-                # map_connection_to_appで特定できるロジックを追加する
+                # map_connection_to_app で特定できるロジックを追加する
                 raise ValueError("TCP connection requires a destination_port")
 
             connection_key = (dst_ip, destination_port)
