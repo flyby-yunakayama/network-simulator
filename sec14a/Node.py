@@ -167,14 +167,22 @@ class Node:
 
                 # SYNパケットの処理
                 if "SYN" in flags:
-                    if "ACK" in flags:  # SYN-ACK受信
+                    if "ACK" in flags:  # SYN-ACK受信（クライアント側想定）
                         self.establish_TCP_connection(packet)
                         self.send_TCP_ACK(packet)
                     else:
+                        # サーバ側がSYN受信（LISTEN状態想定）でSYN,ACK返答→SYN_RECEIVEDへ遷移
                         self.send_TCP_SYN_ACK(packet)
                     return
 
                 if "ACK" in flags:
+                    # ACK受信時にSYN_RECEIVED→ESTABLISHEDへの遷移を確認
+                    connection_key = (packet.header["source_ip"], packet.header["source_port"])
+                    # コネクションがSYN_RECEIVEDだった場合、ここでestablish_TCP_connectionを呼ぶ
+                    if connection_key in self.tcp_connections and self.tcp_connections[connection_key]['state'] == 'SYN_RECEIVED':
+                        # ACK受信したのでESTABLISHEDへ移行
+                        self.establish_TCP_connection(packet)
+                    
                     self.handle_acknowledgement(packet)
 
                 if "PSH" in flags:
@@ -448,7 +456,6 @@ class Node:
             **control_packet_kwargs
         )
 
-        self.update_tcp_connection_state(connection_key, "ESTABLISHED")
         self.tcp_connections[connection_key]["sequence_number"] += 1
 
     def establish_TCP_connection(self, packet):
@@ -465,9 +472,6 @@ class Node:
             self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
 
         # アプリケーション層へコネクション確立を通知
-        if self.network_event_scheduler.tcp_verbose:
-            print(connection_key, "established")
-
         if self.application_layer and hasattr(self.application_layer, 'on_connection_established'):
             self.application_layer.on_connection_established(connection_key)
 
