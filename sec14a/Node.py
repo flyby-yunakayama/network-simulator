@@ -473,7 +473,8 @@ class Node:
                 'payload_size': payload_size,
                 # ファイル転送であればapp側で設定するが、ここではデフォルトで0bytes転送済みとする
                 'bytes_transferred': 0,
-                'progress': []
+                'progress': [],
+                'file_size': 0
             }
 
         # アプリケーション層へコネクション確立を通知
