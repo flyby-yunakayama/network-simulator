@@ -1,4 +1,4 @@
-from sec14a.Packet import DNSPacket, DHCPPacket
+from sec14a.Packet import DNSPacket, DHCPPacket, TCPPacket, UDPPacket
 
 class ApplicationManager:
     def __init__(self, node):
