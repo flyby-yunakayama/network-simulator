@@ -384,6 +384,10 @@ class FTPServer:
         self.verbose = verbose
         self.state = "READY"
 
+        server_ip = self.node.ip_address
+        server_port = 21
+        self.app_manager.map_connection_to_app((server_ip, server_port), "FTPSERVER")
+
     def on_connection_established(self, connection_key):
         # 220メッセージを送信
         client_ip, client_port = connection_key
