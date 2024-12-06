@@ -453,14 +453,12 @@ class Node:
     def establish_TCP_connection(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key in self.tcp_connections:
-            print("test1")
             if self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
                 return
             else:
                 self.update_tcp_connection_state(connection_key, "ESTABLISHED")
                 self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
         else:
-            print("test2")
             initial_seq = randint(1,10000)
             self.initialize_connection_info(
                 connection_key,
@@ -740,6 +738,7 @@ class Node:
             # ウィンドウ管理やシーケンス番号更新、再送タイマー設定など
             seq_num = self.tcp_connections[connection_key]['sequence_number']
             expected_ack = seq_num + len(chunk)
+            print(self.windows)
             self.windows[connection_key][seq_num] = {
                 "packet_info": {
                     'destination_ip': dst_ip,
