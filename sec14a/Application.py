@@ -179,6 +179,7 @@ class FTPClient(Application):
         if self.verbose:
             print(f"[FTPClient] Packet received: flags={flags}, data={data.strip()}")
 
+        # TCPハンドシェイク処理
         if "SYN" in flags and "ACK" in flags and self.state == "CONNECTING":
             self.state = "ESTABLISHED"
             if self.verbose:
@@ -197,26 +198,27 @@ class FTPClient(Application):
             self.state = "CLOSED"
             return
 
+        # FTPプロトコルメッセージ処理
         if data.startswith("220"):
             if self.verbose:
-                print("[FTPClient] Server ready, sending USER")
+                print("[FTPClient] Server ready (220), sending USER")
             self.send_ftp_command("USER anonymous\r\n")
         elif data.startswith("331"):
             if self.verbose:
-                print("[FTPClient] User name okay, need password, sending PASS")
+                print("[FTPClient] 331 received, sending PASS")
             self.send_ftp_command("PASS anonymous@\r\n")
         elif data.startswith("230"):
             if self.verbose:
-                print("[FTPClient] Logged in, sending RETR if file specified")
+                print("[FTPClient] 230 received, logged in. Sending RETR if file specified")
             if self.file_to_retrieve:
                 self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
         elif data.startswith("150"):
             if self.verbose:
-                print("[FTPClient] File status okay; starting transfer")
-            # データ転送が開始されるはず
+                print("[FTPClient] 150 received, file transfer starting")
+            # ファイルデータがサーバから送られるはず
         elif data.startswith("226"):
             if self.verbose:
-                print("[FTPClient] Transfer complete, sending FIN")
+                print("[FTPClient] 226 received, transfer complete. Sending FIN to close.")
             self.node.send_packet(packet.header["source_ip"], b"", protocol="TCP", dscp=0,
                                   source_port=packet.header["destination_port"], destination_port=packet.header["source_port"],
                                   flags="FIN")
@@ -253,6 +255,7 @@ class FTPServer(Application):
         if self.verbose:
             print(f"[FTPServer] Packet received: flags={flags}, data={data.strip()}")
 
+        # TCPハンドシェイク処理
         if "SYN" in flags and self.state == "LISTEN":
             self.state = "SYN_RECEIVED"
             if self.verbose:
@@ -278,17 +281,18 @@ class FTPServer(Application):
             self.state = "CLOSED"
             return
 
+        # FTPプロトコルメッセージ処理
         if data.startswith("USER"):
             if self.verbose:
-                print("[FTPServer] USER received, asking for PASS")
+                print("[FTPServer] USER received, sending 331")
             self.send_ftp_response(src_ip, dst_port, src_port, "331 User name okay, need password.\r\n")
         elif data.startswith("PASS"):
             if self.verbose:
-                print("[FTPServer] PASS received, login successful")
+                print("[FTPServer] PASS received, sending 230")
             self.send_ftp_response(src_ip, dst_port, src_port, "230 User logged in, proceed.\r\n")
         elif data.startswith("RETR"):
             if self.verbose:
-                print("[FTPServer] RETR received, sending 150 and then file data")
+                print("[FTPServer] RETR received, sending file data (150 then file then 226)")
             self.send_ftp_response(src_ip, dst_port, src_port, "150 File status okay; about to open data connection.\r\n")
             self.node.register_application(20, "TCP", self)
             filename = data.strip().split(" ")[1]
@@ -304,4 +308,3 @@ class FTPServer(Application):
             print(f"[FTPServer] Sending response: {response.strip()}")
         self.node.send_packet(dst_ip, response.encode('utf-8'), protocol="TCP", dscp=0,
                               source_port=source_port, destination_port=src_port, flags="PSH")
-
