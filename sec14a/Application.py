@@ -335,7 +335,7 @@ class FTPClient:
             pass
 
     def on_connection_established(self, connection_key):
-        # 接続確立ログのみ表示するなど、実際のコマンド送信はここでは行わない
+        self.set_traffic_info(connection_key)
         if self.verbose:
             print("[FTPClient] Connection established. Waiting for server greeting (220)...")
 
@@ -349,12 +349,16 @@ class FTPClient:
         if self.verbose:
             print("[FTPClient] Will retrieve file after login:", filename)
 
-    def set_traffic_info(self, connection_key, end_time, payload_size, data):
+    def set_traffic_info(self, connection_key):
+        end_time = self.node.network_event_scheduler.current_time + 3600
+        payload_size = 1460
         self.traffic_info[connection_key] = {
             'end_time': end_time,
-            'payload_size': payload_size
+            'payload_size': payload_size,
+            'bytes_transferred': 0,
+            'progress': [],
+            'file_size': 0
         }
-        self.outgoing_data[connection_key] = data
 
     def get_traffic_info(self, connection_key):
         return self.traffic_info.get(connection_key, None)
@@ -386,6 +390,7 @@ class FTPServer:
             print("[FTPServer] Connection established. Sending 220 greeting.")
         # 引数順: (dst_ip, client_port, server_port, response)
         self.send_ftp_response(client_ip, client_port, server_port, "220 Service ready\r\n")
+        self.set_traffic_info(connection_key)
         self.state = "WAIT_USER"
 
     def on_packet_received(self, packet):
@@ -426,11 +431,16 @@ class FTPServer:
             destination_port=client_port
         )
 
-    def set_traffic_info(self, connection_key, end_time, payload_size, data):
+    def set_traffic_info(self, connection_key):
+        end_time = self.node.network_event_scheduler.current_time + 3600
+        payload_size = 1460
         self.traffic_info[connection_key] = {
-            
+            'end_time': end_time,
+            'payload_size': payload_size,
+            'bytes_transferred': 0,
+            'progress': [],
+            'file_size': 0
         }
-        self.outgoing_data[connection_key] = data
 
     def get_traffic_info(self, connection_key):
         return self.traffic_info.get(connection_key, None)
