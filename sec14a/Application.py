@@ -58,6 +58,8 @@ class ApplicationManager:
             self.ftp_client.on_packet_received(packet)
         elif app_type == "FTPSERVER" and self.ftp_server:
             self.ftp_server.on_packet_received(packet)
+        elif app_type == "None" and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
+            self.ftp_server.on_packet_received(packet)
         elif app_type == "UDP" and self.udp_app:
             self.udp_app.on_packet_received(packet)
         else:
@@ -382,10 +384,6 @@ class FTPServer:
         self.shared_files = shared_files
         self.verbose = verbose
         self.state = "READY"
-
-        server_ip = self.node.ip_address
-        server_port = 21
-        self.app_manager.map_connection_to_app((server_ip, server_port), "FTPSERVER")
 
     def on_connection_established(self, connection_key):
         # 220メッセージを送信
