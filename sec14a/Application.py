@@ -46,6 +46,100 @@ class Application:
         for domain in resolved_domains:
             del self.waiting_for_dns[domain]
 
+class UDPApp(Application):
+    def __init__(self, node):
+        super().__init__(node)
+        self.bitrate = None
+        self.header_size = None
+        self.payload_size = None
+        self.burstiness = None
+        self.protocol = "UDP"
+        self.dscp = 0
+        self.destination_ip = None
+        self.destination_port = None
+        self.source_port = None
+        self.end_time = None
+
+    def start_traffic(self, destination_url, bitrate, start_time, duration, header_size, payload_size, burstiness=1.0, protocol="UDP", dscp=0):
+        """
+        UDPトラフィックを開始します。
+        :param destination_url: 宛先URLまたはIP
+        :param bitrate: ビットレート（bps）
+        :param start_time: トラフィック開始時間
+        :param duration: 持続時間（秒）
+        :param header_size: ヘッダーサイズ
+        :param payload_size: ペイロードサイズ
+        :param burstiness: バースト係数
+        :param protocol: "UDP"を想定
+        :param dscp: DSCP値
+        """
+        self.bitrate = bitrate
+        self.header_size = header_size
+        self.payload_size = payload_size
+        self.burstiness = burstiness
+        self.protocol = protocol
+        self.dscp = dscp
+        self.end_time = self.node.network_event_scheduler.current_time + duration
+
+        # ポート番号を決定
+        self.source_port = self.node.select_random_port()
+        self.destination_port = self.node.select_random_port()
+
+        # URLがIP形式かチェックし、IPでなければDNS解決する
+        resolved_ip = self.node.resolve_destination_ip(destination_url)
+        if resolved_ip is not None:
+            # すでに解決済みの場合、すぐにスケジュール開始
+            self.destination_ip = resolved_ip
+            self.node.network_event_scheduler.schedule_event(start_time, self.schedule_traffic)
+        else:
+            # DNS解決が必要
+            # DNS解決後のコールバックでスケジュール開始
+            def on_resolved(ip):
+                self.destination_ip = ip
+                # DNS解決完了後にstart_timeで送信開始
+                current_time = self.node.network_event_scheduler.current_time
+                delay = max(0, start_time - current_time)
+                self.node.network_event_scheduler.schedule_event(current_time + delay, self.schedule_traffic)
+
+            self.resolve_destination_url(destination_url, callback=on_resolved)
+
+    def schedule_traffic(self):
+        """
+        トラフィック送信を開始するメソッド。
+        最初のパケット送出を現在時刻で行い、その後一定間隔でsend_packet_eventを呼ぶ。
+        """
+        # すぐに最初のパケット送信
+        self.send_packet_event()
+
+    def send_packet_event(self):
+        """
+        1パケット送信後、次のパケット送信をスケジュール。
+        end_timeを超えていたら送信終了。
+        """
+        current_time = self.node.network_event_scheduler.current_time
+        if current_time > self.end_time:
+            # 終了
+            return
+
+        # データ生成
+        data = b'X' * self.payload_size
+        # パケット送信
+        self.node.send_packet(self.destination_ip, data, self.protocol, self.dscp,
+                              source_port=self.source_port, destination_port=self.destination_port)
+
+        # 次のパケット送信までのインターバル計算
+        packet_size = self.header_size + self.payload_size  # トータルサイズ（簡易想定）
+        interval = (packet_size * 8) / self.bitrate * self.burstiness
+        next_time = current_time + interval
+        self.node.network_event_scheduler.schedule_event(next_time, self.send_packet_event)
+
+    def on_packet_received(self, packet):
+        """
+        UDP受信時の処理が必要ならここで実装可能。
+        今回は送信アプリケーションなので特に処理しない想定。
+        """
+        pass
+
 class FTPClient(Application):
     def __init__(self, node, server_url=None):
         super().__init__(node)
