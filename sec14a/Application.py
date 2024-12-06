@@ -75,6 +75,8 @@ class ApplicationManager:
             self.ftp_client.on_connection_established(connection_key)
         elif app_type == "FTPSERVER" and self.ftp_server:
             self.ftp_server.on_connection_established(connection_key)
+        elif app_type == "None" and self.ftp_server:  # マッピングがない場合はFTPSERVERとして扱う
+            self.ftp_server.on_connection_established(connection_key)
         # UDPAppなども同様にハンドル可能
 
     def get_traffic_info(self, connection_key):
