@@ -313,7 +313,7 @@ class FTPClient:
         if self.verbose:
             print("[FTPClient] Requesting TCP connect to ", server_ip, server_port)
         self.state = "CONNECTING"
-        self.node.initiate_tcp_connection(server_ip, server_port)
+        self.node.initiate_tcp_handshake(server_ip, server_port)
         self.app_manager.map_connection_to_app((server_ip, server_port), "FTP")
 
     def on_packet_received(self, packet):

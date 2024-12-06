@@ -586,25 +586,6 @@ class Node:
         self.network_event_scheduler.log_packet_info(arp_reply_packet, "ARP reply", self.node_id)
         self._send_packet(arp_reply_packet)
 
-    def send_packet(self, destination_ip, data, protocol, dscp, **kwargs):
-        destination_mac = self.get_mac_address_from_ip(destination_ip)
-
-        if destination_mac is None:
-            self.send_arp_request(destination_ip)
-            if destination_ip not in self.waiting_for_arp_reply:
-                self.waiting_for_arp_reply[destination_ip] = []
-            self.waiting_for_arp_reply[destination_ip].append((data, protocol, dscp, kwargs))
-        else:
-            if protocol == "UDP":
-                self._send_udp_packet(destination_ip, destination_mac, data, dscp, **kwargs)
-            elif protocol == "TCP":
-                if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
-                    connection_key = (destination_ip, kwargs.get('destination_port'))
-                    self.pending_tcp_data[connection_key] = {"data": data, "kwargs": kwargs}
-                    self.initiate_tcp_handshake(destination_ip, destination_mac, dscp, **kwargs)
-                else:
-                    self._send_tcp_packet(destination_ip, destination_mac, data, dscp, **kwargs)
-
     def is_tcp_connection_established(self, destination_ip, destination_port):
         key = (destination_ip, destination_port)
         return self.tcp_connections.get(key, {}).get("state") == "ESTABLISHED"
@@ -617,28 +598,12 @@ class Node:
         if self.network_event_scheduler.tcp_verbose:
             print(f"TCP connection state updated to {new_state} for {connection_key}")
 
-    def initiate_tcp_connection(self, destination_ip, destination_port, dscp=0):
-        if self.network_event_scheduler.tcp_verbose:
-            print(f"Initiating TCP connection to {destination_ip}:{destination_port}")
-            
-        source_port = self.select_random_port()
-        # SYNパケット送信
-        self.send_app_data(
-            destination_ip,
-            b"",
-            protocol="TCP",
-            dscp=dscp,
-            source_port=source_port,
-            destination_port=destination_port,
-            flags="SYN"
-        )
-
-    def initiate_tcp_handshake(self, destination_ip, destination_mac, dscp, **kwargs):
-        if not self.is_tcp_connection_established(destination_ip, kwargs.get('destination_port')):
+    def initiate_tcp_handshake(self, destination_ip, destination_port, dscp=0):
+        if not self.is_tcp_connection_established(destination_ip, destination_port):
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{kwargs.get('destination_port')}")
+                print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{destination_port}")
 
-            connection_key = (destination_ip, kwargs.get('destination_port'))
+            connection_key = (destination_ip, destination_port)
             if connection_key not in self.tcp_connections:
                 self.initialize_connection_info(
                     connection_key=connection_key,
@@ -648,14 +613,17 @@ class Node:
                     data=b''
                 )
 
+            source_port = self.select_random_port()
+
             control_packet_kwargs = {
                 "flags": "SYN",
                 "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
                 "acknowledgment_number": 0,
-                "source_port": kwargs.get('source_port'),
-                "destination_port": kwargs.get('destination_port')
+                "source_port": source_port,
+                "destination_port": destination_port
             }
 
+            destination_mac = self.get_mac_address_from_ip(destination_ip)
             if destination_mac is None:
                 # ARP未解決なら待機
                 self.send_arp_request(destination_ip)
@@ -690,22 +658,18 @@ class Node:
             connection_key = (dst_ip, destination_port)
             app = self.application_layer
 
-            # SYNフラグが付いている場合はtraffic_infoが無くてもハンドシェイク開始
-            flags = kwargs.get('flags', "")
-            if "SYN" in flags:
-                # ハンドシェイク開始ロジック
-                self._send_syn_packet(dst_ip, data, **kwargs)
-                return
-
-            # SYN以外の場合、通常のdata送信にはtraffic_infoが必要
+            # TCPの場合、traffic_infoやウィンドウ管理が必要
             traffic_info = app.get_traffic_info(connection_key)
             if not traffic_info:
                 if self.network_event_scheduler.tcp_verbose:
-                    print(f"No traffic info found for {connection_key}, cannot send data. Possibly not established yet.")
+                    print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
+                # 必要に応じてSYN送信(ハンドシェイク開始)や、
+                # 一時バッファにデータを溜めるなどの処理を行うことも可能。
                 return
 
             end_time = traffic_info['end_time']
             if self.network_event_scheduler.current_time < end_time:
+                # ウィンドウやcwnd、輻輳制御を考慮したデータ送信
                 self._send_tcp_data(connection_key, dst_ip, data, **kwargs)
             else:
                 if self.network_event_scheduler.tcp_verbose:
