@@ -470,6 +470,8 @@ class Node:
     def update_ACK_number(self, packet):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if connection_key not in self.tcp_connections:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Connection key {connection_key} not found for updating ACK number.")
             return  # コネクション情報が存在しない場合は処理をスキップ
 
         received_sequence_number = packet.header["sequence_number"]
