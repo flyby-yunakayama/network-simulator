@@ -99,16 +99,6 @@ class Node:
     def select_random_port(self):
         return random.randint(1024, 49151)
 
-    def assign_destination_port(self, source_port):
-        destination_port = self.select_random_port()
-        self.port_mapping[source_port] = destination_port
-        return destination_port
-
-    def get_destination_port(self, source_port):
-        if source_port not in self.port_mapping:
-            return self.assign_destination_port(source_port)
-        return self.port_mapping[source_port]
-
     def add_to_arp_table(self, ip_address, mac_address):
         self.arp_table[ip_address] = mac_address
 
@@ -731,7 +721,12 @@ class Node:
                     data=b''
                 )
 
-            source_port = self.select_random_port()
+            # 一度割り当てたポートを記憶し、以後同じポートを使用
+            if connection_key not in self.port_mapping:
+                source_port = self.select_available_port()  # select_available_portはランダムだが、一度きり
+                self.port_mapping[connection_key] = source_port
+            else:
+                source_port = self.port_mapping[connection_key]
 
             control_packet_kwargs = {
                 "flags": "SYN",
@@ -748,27 +743,18 @@ class Node:
                 self.tcp_connections[connection_key]["sequence_number"] += 1
 
     def send_app_data(self, dst_ip, data, protocol="TCP", **kwargs):
-        """
-        アプリケーション側から呼ばれる汎用的なデータ送信メソッド。
-        プロトコルに応じて内部で適切な処理を行う。
-        """
         if protocol == "TCP":
             destination_port = kwargs.get('destination_port')
             if not destination_port:
-                # もしdestination_portが指定されていないなら、確立済みコネクションや
-                # map_connection_to_app で特定できるロジックを追加する
                 raise ValueError("TCP connection requires a destination_port")
 
             connection_key = (dst_ip, destination_port)
             app = self.application_layer
 
-            # TCPの場合、traffic_infoやウィンドウ管理が必要
             traffic_info = app.get_traffic_info(connection_key)
             if not traffic_info:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
-                # 必要に応じてSYN送信(ハンドシェイク開始)や、
-                # 一時バッファにデータを溜めるなどの処理を行うことも可能。
                 return
 
             end_time = traffic_info['end_time']
@@ -780,9 +766,23 @@ class Node:
                     print(f"End time reached for {connection_key}. No more data sent.")
             
         elif protocol == "UDP":
-            # UDPは単純な送信
-            source_port = kwargs.get('source_port', self.select_random_port())
-            destination_port = kwargs.get('destination_port', self.select_random_port())
+            destination_port = kwargs.get('destination_port')
+            if not destination_port:
+                # destination_portが指定されていないなら、設計的にはおかしいので例外
+                # 必要ならデフォルトポートや特定ポートに割り当て
+                raise ValueError("UDP communication requires a fixed destination_port")
+
+            connection_key = (dst_ip, destination_port)
+
+            # source_portを決定（初回のみ）
+            if connection_key not in self.port_mapping:
+                # 一度だけsource_portを割り当てる
+                assigned_port = kwargs.get('source_port')
+                if not assigned_port:
+                    assigned_port = self.select_available_port()  # 一度だけ選ぶ
+                self.port_mapping[connection_key] = assigned_port
+            source_port = self.port_mapping[connection_key]
+
             destination_mac = self.get_mac_address_from_ip(dst_ip)
             if destination_mac is None:
                 # ARP解決など
@@ -809,16 +809,24 @@ class Node:
             return
 
         payload_size = traffic_info['payload_size']
-        # dataをpayload_sizeずつに分割して送る処理を実装するか、
-        # ここでapp.update_data_after_sendを行うかなど設計次第
-        # 簡易実装:
         data_chunks = [data[i:i+payload_size] for i in range(0, len(data), payload_size)]
 
+        # 一度割り当てたソースポートを再利用
+        if connection_key not in self.port_mapping:
+            # 通常はハンドシェイク時に決まっているはず
+            self.port_mapping[connection_key] = self.select_available_port()
+        source_port = self.port_mapping[connection_key]
+
+        destination_port = kwargs.get('destination_port')
+        if not destination_port:
+            # connection_keyから取得
+            dst_ip_key, dst_port_key = connection_key
+            destination_port = dst_port_key
+
         for chunk in data_chunks:
-            # TCPヘッダ情報設定
             tcp_args = {
-                "source_port": kwargs.get('source_port', self.select_random_port()),
-                "destination_port": kwargs.get('destination_port'),
+                "source_port": source_port,
+                "destination_port": destination_port,
                 "sequence_number": self.tcp_connections[connection_key]['sequence_number'],
                 "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
                 "flags": "PSH"
