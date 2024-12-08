@@ -482,3 +482,7 @@ class FTPServer:
             'progress': [],
             'file_size': 0
         }
+
+    def get_traffic_info(self, connection_key):
+        return self.traffic_info.get(connection_key, None)
+
