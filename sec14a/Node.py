@@ -171,7 +171,7 @@ class Node:
                         self.establish_TCP_connection(connection_key, sequence_number)
                         self.send_TCP_ACK(connection_key, source_port, dscp)
                     else:
-                        self.send_TCP_SYN_ACK(packet)
+                        self.send_TCP_SYN_ACK(connection_key, source_port, sequence_number)
                     return
 
                 if "ACK" in flags:
@@ -513,11 +513,9 @@ class Node:
                 out_of_order_packets.append(received_sequence_number + payload_length)
                 out_of_order_packets.sort()
 
-    def send_TCP_SYN_ACK(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-
+    def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number):
         sequence_number = randint(1, 10000)
-        acknowledgment_number = packet.header["sequence_number"] + 1
+        acknowledgment_number = sequence_number + 1
 
         if connection_key not in self.tcp_connections:
             self.initialize_connection_info(
@@ -532,12 +530,12 @@ class Node:
             "flags": "SYN,ACK",
             "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
             "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
-            "source_port": packet.header["destination_port"],
-            "destination_port": packet.header["source_port"]
+            "source_port": source_port,
+            "destination_port": connection_key[1]
         }
 
-        destination_ip = packet.header["source_ip"]
-        dscp = packet.header["dscp"]
+        destination_ip = connection_key[0]
+        dscp = dscp
         self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
 
         self.tcp_connections[connection_key]["sequence_number"] += 1
