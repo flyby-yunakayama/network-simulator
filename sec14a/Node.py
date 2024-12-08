@@ -159,27 +159,34 @@ class Node:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"TCP flags: {flags}")
 
+                connection_key = (packet.header["source_ip"], packet.header["source_port"])
+                source_port = packet.header["destination_port"]
+                sequence_number = packet.header["sequence_number"]
+                ack_number = packet.header["acknowledgment_number"]
+                dscp = packet.header["dscp"]
+                payload_length = len(packet.payload)
+
                 if "SYN" in flags:
                     if "ACK" in flags:
-                        self.establish_TCP_connection(packet)
-                        self.send_TCP_ACK(packet)
+                        self.establish_TCP_connection(connection_key, sequence_number)
+                        self.send_TCP_ACK(connection_key, source_port, dscp)
                     else:
                         self.send_TCP_SYN_ACK(packet)
                     return
 
                 if "ACK" in flags:
-                    connection_key = (packet.header["source_ip"], packet.header["source_port"])
                     if connection_key in self.tcp_connections and self.tcp_connections[connection_key]['state'] == 'SYN_RECEIVED':
-                        self.establish_TCP_connection(packet)
-                    self.handle_acknowledgement(packet)
+                        sequence_number = packet.header["sequence_number"]
+                        self.establish_TCP_connection(connection_key, sequence_number)
+                    self.handle_acknowledgement(connection_key, ack_number)
 
                 if "PSH" in flags:
-                    self.update_ACK_number(packet)
-                    self.send_TCP_ACK(packet)
+                    self.update_ACK_number(connection_key, sequence_number, payload_length)
+                    self.send_TCP_ACK(connection_key, source_port, dscp)
                     self.process_data_packet(packet)
 
                 if "FIN" in flags:
-                    self.terminate_TCP_connection(packet)
+                    self.terminate_TCP_connection(connection_key)
 
                 if self.application_layer and hasattr(self.application_layer, 'on_packet_received'):
                     self.application_layer.on_packet_received(packet)
@@ -240,10 +247,7 @@ class Node:
 
         self.log_congestion_window(connection_key, self.tcp_connections[connection_key]['cwnd'], new_state)
 
-    def handle_acknowledgement(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        ack_number = packet.header["acknowledgment_number"]
-
+    def handle_acknowledgement(self, connection_key, ack_number):
         if connection_key not in self.tcp_connections:
             return  # コネクションが存在しない場合は何もしない
         
@@ -469,15 +473,11 @@ class Node:
                 return False
         return False
 
-    def update_ACK_number(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+    def update_ACK_number(self, connection_key, received_sequence_number, payload_length):
         if connection_key not in self.tcp_connections:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Connection key {connection_key} not found for updating ACK number.")
             return  # コネクション情報が存在しない場合は処理をスキップ
-
-        received_sequence_number = packet.header["sequence_number"]
-        payload_length = len(packet.payload)
 
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
@@ -542,21 +542,20 @@ class Node:
 
         self.tcp_connections[connection_key]["sequence_number"] += 1
 
-    def establish_TCP_connection(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+    def establish_TCP_connection(self, connection_key, sequence_number):
         if connection_key in self.tcp_connections:
             if self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
                 return
             else:
                 self.update_tcp_connection_state(connection_key, "ESTABLISHED")
-                self.tcp_connections[connection_key]["acknowledgment_number"] = packet.header["sequence_number"] + 1
+                self.tcp_connections[connection_key]["acknowledgment_number"] = sequence_number + 1
         else:
             initial_seq = randint(1,10000)
             self.initialize_connection_info(
                 connection_key,
                 state='ESTABLISHED',
                 sequence_number=initial_seq,  # 本来は事前段階で記憶した初期値を使用
-                acknowledgment_number=packet.header["sequence_number"] + 1,
+                acknowledgment_number=sequence_number + 1,
                 data=b''
             )
 
@@ -578,19 +577,17 @@ class Node:
         if self.application_layer and hasattr(self.application_layer, 'on_connection_established'):
             self.application_layer.on_connection_established(connection_key)
 
-    def send_TCP_ACK(self, packet):
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-
+    def send_TCP_ACK(self, connection_key, source_port, dscp):
         if connection_key in self.tcp_connections:
             control_packet_kwargs = {
                 "flags": "ACK",
                 "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
                 "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
-                "source_port": packet.header["destination_port"],
-                "destination_port": packet.header["source_port"]
+                "source_port": ,
+                "destination_port": connection_key[1]
             }
-            destination_ip = packet.header["source_ip"]
-            dscp = packet.header["dscp"]
+            destination_ip = connection_key[0]
+            dscp = dscp
 
             self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
         else:
@@ -613,11 +610,10 @@ class Node:
 
         self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
 
-    def terminate_TCP_connection(self, packet):
+    def terminate_TCP_connection(self, connection_key):
         # TCP接続を終了する処理
         if self.network_event_scheduler.tcp_verbose:
-            print(f"Terminating TCP connection with {packet.header['source_ip']}:{packet.header['source_port']}") 
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+            print(f"Terminating TCP connection with {connection_key}") 
         if connection_key in self.tcp_connections:
             del self.tcp_connections[connection_key]
             print(f"TCP connection terminated with {connection_key}")
