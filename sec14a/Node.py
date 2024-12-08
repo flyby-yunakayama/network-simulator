@@ -266,34 +266,46 @@ class Node:
         # 転送情報を取得
         transfer_info = self.tcp_connections[connection_key].get('transfer_info', None)
 
+        # 重複ACK処理などの輻輳制御前後で共通的に未送分データをチェックするヘルパー関数
+        def try_sending_next_chunk():
+            if transfer_info:
+                file_size = transfer_info.get('file_size', 0)
+                bytes_transferred = transfer_info.get('bytes_transferred', 0)
+                if bytes_transferred < file_size:
+                    # まだ送るべきデータあり
+                    app = self.application_layer
+                    chunk = app.get_data_chunk(connection_key, transfer_info['payload_size'])
+                    if chunk:
+                        dst_ip, dst_port = connection_key
+                        self.send_app_data(dst_ip, chunk, protocol="TCP", destination_port=dst_port)
+
         if transfer_info:
-            # シーケンス番号のベースを取得
             sequence_number_base = self.tcp_connections[connection_key].get("sequence_number_base", 0)
             bytes_acked = ack_number - sequence_number_base
             if bytes_acked > transfer_info['bytes_transferred']:
                 transfer_info['bytes_transferred'] = bytes_acked
-                # 進行状況を記録
                 transfer_info['progress'].append((self.network_event_scheduler.current_time, bytes_acked))
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Transfer Progress: {bytes_acked}/{transfer_info['file_size']} bytes transferred.")
 
-        # 重複ACKの処理
+        # 輻輳制御
         if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
+            # 重複ACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
-                self.fast_retransmit(connection_key)  # Fast retransmit
+                self.fast_retransmit(connection_key)
             else:
-                # cwndの調整（重複ACKではなく、送信データがNoneでない場合のみ）
+                # 重複ACKだが3回未満: cwnd調整（send_tcp_data_packetは削除）
                 if self.tcp_connections[connection_key]['data'] is not None:
                     self.adjust_congestion_window(connection_key)
-                    self.send_tcp_data_packet(packet)
+                    try_sending_next_chunk()
         else:
+            # 新しいACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
-            # cwndの調整（重複ACKではなく、送信データがNoneでない場合のみ）
             if self.tcp_connections[connection_key]['data'] is not None:
                 self.adjust_congestion_window(connection_key)
-                self.send_tcp_data_packet(packet)
+                try_sending_next_chunk()
 
     def schedule_timeout(self, connection_key, sequence_number):
         event_time = self.network_event_scheduler.current_time + self.timeout_interval
@@ -741,7 +753,6 @@ class Node:
         プロトコルに応じて内部で適切な処理を行う。
         """
         if protocol == "TCP":
-            # TCPの場合、connection_keyは相手側のIPとポートで統一
             destination_port = kwargs.get('destination_port')
             if not destination_port:
                 # もしdestination_portが指定されていないなら、確立済みコネクションや

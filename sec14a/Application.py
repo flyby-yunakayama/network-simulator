@@ -391,6 +391,7 @@ class FTPServer:
         self.verbose = verbose
         self.state = "READY"
         self.traffic_info = {}
+        self.outgoing_data = {}  # 送るべきファイルデータを保持するための辞書
 
     def on_connection_established(self, connection_key):
         # client_ip, client_portが接続先(クライアント)
@@ -409,8 +410,8 @@ class FTPServer:
             print("[FTPServer] Received: ", data.strip())
 
         client_ip = packet.header["source_ip"]
-        client_port = packet.header["source_port"]  # クライアントポート
-        server_port = packet.header["destination_port"]  # サーバ(自分)のポート(21)
+        client_port = packet.header["source_port"]
+        server_port = packet.header["destination_port"]
 
         if self.state == "WAIT_USER":
             if data.startswith("USER"):
@@ -421,16 +422,48 @@ class FTPServer:
             elif data.startswith("RETR"):
                 filename = data.strip().split(" ")[1]
                 file_data = self.shared_files.get(filename, b"Test file data.")
+
+                # traffic_infoにファイルサイズを設定
+                connection_key = (client_ip, client_port)
+                if connection_key in self.traffic_info:
+                    self.traffic_info[connection_key]['file_size'] = len(file_data)
+                    # 全ファイルデータをoutgoing_dataへ格納
+                    self.outgoing_data[connection_key] = file_data
+
                 self.send_ftp_response(client_ip, client_port, server_port, "150 File status okay; about to open data connection.\r\n")
-                # データ送信時: クライアントへのデータ送信にはclient_portをdestination_portとして指定
-                self.node.send_app_data(client_ip, file_data, protocol="TCP", source_port=server_port, destination_port=client_port)
+
+                # 最初のチャンクを取得して送信
+                chunk = self.get_data_chunk(connection_key, self.traffic_info[connection_key]['payload_size'])
+                if chunk:
+                    self.node.send_app_data(client_ip, chunk, protocol="TCP", source_port=server_port, destination_port=client_port)
+
                 self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
+
+    def get_data_chunk(self, connection_key, payload_size):
+        """
+        traffic_infoやoutgoing_dataから、まだ送るべきデータがある場合はpayload_size分取り出して返す。
+        """
+        if connection_key not in self.outgoing_data:
+            return b""
+
+        data = self.outgoing_data[connection_key]
+        if not data:
+            return b""
+
+        chunk = data[:payload_size]
+        return chunk
+
+    def update_data_after_send(self, connection_key, sent_bytes):
+        """
+        送信後にoutgoing_dataから送信済み分を削除する。
+        """
+        if connection_key in self.outgoing_data:
+            data = self.outgoing_data[connection_key]
+            self.outgoing_data[connection_key] = data[sent_bytes:]
 
     def send_ftp_response(self, dst_ip, client_port, server_port, response):
         if self.verbose:
             print("[FTPServer] Sending response:", response.strip())
-        # send_app_dataで送信
-        # destination_port=client_port(クライアントポート), source_port=server_port(サーバポート)
         self.node.send_app_data(
             dst_ip,
             response.encode('utf-8'),
@@ -449,6 +482,3 @@ class FTPServer:
             'progress': [],
             'file_size': 0
         }
-
-    def get_traffic_info(self, connection_key):
-        return self.traffic_info.get(connection_key, None)
