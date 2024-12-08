@@ -583,7 +583,7 @@ class Node:
                 "flags": "ACK",
                 "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
                 "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
-                "source_port": ,
+                "source_port": source_port,
                 "destination_port": connection_key[1]
             }
             destination_ip = connection_key[0]
