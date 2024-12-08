@@ -176,7 +176,6 @@ class Node:
 
                 if "ACK" in flags:
                     if connection_key in self.tcp_connections and self.tcp_connections[connection_key]['state'] == 'SYN_RECEIVED':
-                        sequence_number = packet.header["sequence_number"]
                         self.establish_TCP_connection(connection_key, sequence_number)
                     self.handle_acknowledgement(connection_key, ack_number)
 
@@ -271,6 +270,7 @@ class Node:
                     chunk = app.get_data_chunk(connection_key, transfer_info['payload_size'])
                     if chunk:
                         dst_ip, dst_port = connection_key
+                        print("handle_ack", connection_key)
                         self.send_app_data(dst_ip, chunk, protocol="TCP", destination_port=dst_port)
 
         if transfer_info:
