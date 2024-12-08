@@ -270,7 +270,6 @@ class Node:
                     chunk = app.get_data_chunk(connection_key, transfer_info['payload_size'])
                     if chunk:
                         dst_ip, dst_port = connection_key
-                        print("handle_ack", connection_key)
                         self.send_app_data(dst_ip, chunk, protocol="TCP", destination_port=dst_port)
 
         if transfer_info:

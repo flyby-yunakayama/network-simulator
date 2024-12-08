@@ -45,7 +45,7 @@ class ApplicationManager:
 
         app_type = self.connection_app_map.get((packet.header.get("source_ip"), packet.header.get("source_port")))
 
-        print("src", packet.header.get("source_ip"), packet.header.get("source_port"), "dst", packet.header.get("destination_ip"), packet.header.get("destination_port"), app_type)
+        # print("src", packet.header.get("source_ip"), packet.header.get("source_port"), "dst", packet.header.get("destination_ip"), packet.header.get("destination_port"), app_type)
 
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.on_packet_received(packet)
