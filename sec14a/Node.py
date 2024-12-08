@@ -171,7 +171,7 @@ class Node:
                         self.establish_TCP_connection(connection_key, sequence_number)
                         self.send_TCP_ACK(connection_key, source_port, dscp)
                     else:
-                        self.send_TCP_SYN_ACK(connection_key, source_port, sequence_number)
+                        self.send_TCP_SYN_ACK(connection_key, source_port, sequence_number, dscp)
                     return
 
                 if "ACK" in flags:
@@ -513,7 +513,7 @@ class Node:
                 out_of_order_packets.append(received_sequence_number + payload_length)
                 out_of_order_packets.sort()
 
-    def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number):
+    def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         sequence_number = randint(1, 10000)
         acknowledgment_number = sequence_number + 1
 
