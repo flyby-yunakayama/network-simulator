@@ -80,6 +80,10 @@ class Node:
 
     def register_application(self, port, protocol, application_instance):
         self.applications[(port, protocol)] = application_instance
+
+        # このポートは使用中であることを記録
+        self.used_ports.add(port)
+
         if hasattr(application_instance, "__class__"):
             class_name = application_instance.__class__.__name__
             if class_name == "FTPServer":
@@ -699,6 +703,37 @@ class Node:
         if self.network_event_scheduler.tcp_verbose:
             print(f"TCP connection state updated to {new_state} for {connection_key}")
 
+    def get_source_port(self, connection_key, protocol, app_type=None, fixed_port=None):
+        """
+        connection_key: (dst_ip, dst_port)
+        protocol: "TCP" or "UDP"
+        app_type: "FTP", "FTPSERVER", etc. (application managerで取得した種別)
+        fixed_port: None以外ならこのポートを必ず利用（サーバ固定ポートなど）
+        """
+
+        # もしfixed_portが指定されていれば、それを使う
+        if fixed_port is not None:
+            # fixed_portをused_portsへ登録しておく（初回のみ）
+            if fixed_port not in self.used_ports:
+                self.used_ports.add(fixed_port)
+            return fixed_port
+
+        # fixed_portがない場合、app_typeがFTPServerなら21などと決め打ち
+        if app_type == "FTPSERVER":
+            # FTPサーバは21固定
+            if 21 not in self.used_ports:
+                self.used_ports.add(21)
+            return 21
+
+        # 上記以外の場合、port_mappingに存在するか確認
+        if connection_key in self.port_mapping:
+            return self.port_mapping[connection_key]
+
+        # port_mappingにない場合、初回割り当て
+        source_port = self.select_available_port()
+        self.port_mapping[connection_key] = source_port
+        return source_port
+
     def initiate_tcp_handshake(self, destination_ip, destination_port, dscp=0):
         if not self.is_tcp_connection_established(destination_ip, destination_port):
             if self.network_event_scheduler.tcp_verbose:
@@ -714,12 +749,9 @@ class Node:
                     data=b''
                 )
 
-            # 一度割り当てたポートを記憶し、以後同じポートを使用
-            if connection_key not in self.port_mapping:
-                source_port = self.select_available_port()  # select_available_portはランダムだが、一度きり
-                self.port_mapping[connection_key] = source_port
-            else:
-                source_port = self.port_mapping[connection_key]
+            # app_typeをapplication_layerから取得する（なければNone）
+            app_type = self.application_layer.connection_app_map.get(connection_key, None)
+            source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
 
             control_packet_kwargs = {
                 "flags": "SYN",
@@ -742,9 +774,9 @@ class Node:
                 raise ValueError("TCP connection requires a destination_port")
 
             connection_key = (dst_ip, destination_port)
-            app = self.application_layer
+            app_type = self.application_layer.connection_app_map.get(connection_key, None)
 
-            traffic_info = app.get_traffic_info(connection_key)
+            traffic_info = self.application_layer.get_traffic_info(connection_key)
             if not traffic_info:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
@@ -752,8 +784,11 @@ class Node:
 
             end_time = traffic_info['end_time']
             if self.network_event_scheduler.current_time < end_time:
-                # ウィンドウやcwnd、輻輳制御を考慮したデータ送信
-                self._send_tcp_data(connection_key, dst_ip, data, **kwargs)
+                new_kwargs = dict(kwargs)
+                source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
+                new_kwargs['source_port'] = source_port
+                new_kwargs['destination_port'] = destination_port
+                self._send_tcp_data(connection_key, dst_ip, data, **new_kwargs)
             else:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"End time reached for {connection_key}. No more data sent.")
@@ -766,15 +801,10 @@ class Node:
                 raise ValueError("UDP communication requires a fixed destination_port")
 
             connection_key = (dst_ip, destination_port)
+            app_type = self.application_layer.connection_app_map.get(connection_key, None)
 
-            # source_portを決定（初回のみ）
-            if connection_key not in self.port_mapping:
-                # 一度だけsource_portを割り当てる
-                assigned_port = kwargs.get('source_port')
-                if not assigned_port:
-                    assigned_port = self.select_available_port()  # 一度だけ選ぶ
-                self.port_mapping[connection_key] = assigned_port
-            source_port = self.port_mapping[connection_key]
+            assigned_port = kwargs.get('source_port')
+            source_port = self.get_source_port(connection_key, "UDP", app_type=app_type, fixed_port=assigned_port)
 
             destination_mac = self.get_mac_address_from_ip(dst_ip)
             if destination_mac is None:
