@@ -447,7 +447,7 @@ class FTPServer:
                 print(self.traffic_info)
                 print(connection_key)
                 print(filename)
-                print(file_data)
+                print(len(file_data))
                 print("###################################")
                 if connection_key in self.traffic_info:
                     self.traffic_info[connection_key]['file_size'] = len(file_data)
