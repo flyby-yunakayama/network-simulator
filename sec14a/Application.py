@@ -441,7 +441,8 @@ class FTPServer:
             elif data.startswith("PASS"):
                 self.send_ftp_response(client_ip, client_port, server_port, "230 User logged in, proceed.\r\n")
                 self.state = "LOGGED_IN"
-            elif data.startswith("RETR"):
+        if self.state == "LOGGED_IN":
+            if data.startswith("RETR"):
                 filename = data.strip().split(" ")[1]
                 file_data = self.shared_files.get(filename, b"Test file data.")
                 print("###################################")
