@@ -268,6 +268,11 @@ class Node:
 
         # 転送情報を取得
         transfer_info = self.tcp_connections[connection_key].get('transfer_info', None)
+        print("---------------------")
+        print(connection_key)
+        print(ack_number)
+        print(transfer_info)
+        print("---------------------")
 
         # 重複ACK処理などの輻輳制御前後で共通的に未送分データをチェックするヘルパー関数
         def try_sending_next_chunk():
