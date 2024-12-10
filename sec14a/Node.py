@@ -737,6 +737,8 @@ class Node:
                 self.used_ports.add(21)
             return 21
 
+        print(connection_key, protocol, app_type)
+
         # 上記以外の場合、port_mappingに存在するか確認
         if connection_key in self.port_mapping:
             return self.port_mapping[connection_key]
