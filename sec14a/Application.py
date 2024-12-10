@@ -439,7 +439,9 @@ class FTPServer:
             elif data.startswith("RETR"):
                 filename = data.strip().split(" ")[1]
                 file_data = self.shared_files.get(filename, b"Test file data.")
+                print("###################################")
                 print(filename, file_data)
+                print("###################################")
 
                 # traffic_infoにファイルサイズを設定
                 connection_key = (client_ip, client_port)
