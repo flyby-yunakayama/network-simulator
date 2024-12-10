@@ -735,7 +735,7 @@ class Node:
             # FTPサーバは21固定
             if 21 not in self.used_ports:
                 self.used_ports.add(21)
-                self.port_mapping[connection_key] = 21
+            self.port_mapping[connection_key] = 21
             return 21
 
         # 上記以外の場合、port_mappingに存在するか確認
