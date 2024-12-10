@@ -451,6 +451,7 @@ class FTPServer:
                 print("###################################")
                 if connection_key in self.traffic_info:
                     self.traffic_info[connection_key]['file_size'] = len(file_data)
+                    print(self.traffic_info)
                     # 全ファイルデータをoutgoing_dataへ格納
                     self.outgoing_data[connection_key] = file_data
 
