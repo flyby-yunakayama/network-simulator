@@ -801,6 +801,7 @@ class Node:
                 source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
                 new_kwargs['source_port'] = source_port
                 new_kwargs['destination_port'] = destination_port
+                print("send_app_data", source_port, destination_port)
                 self._send_tcp_data(connection_key, dst_ip, data, **new_kwargs)
             else:
                 if self.network_event_scheduler.tcp_verbose:
