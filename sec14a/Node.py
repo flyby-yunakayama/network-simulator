@@ -795,6 +795,10 @@ class Node:
                     print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
                 return
 
+            print("###################################")
+            print(self.traffic_info[connection_key])
+            print("###################################")
+
             end_time = traffic_info['end_time']
             if self.network_event_scheduler.current_time < end_time:
                 new_kwargs = dict(kwargs)

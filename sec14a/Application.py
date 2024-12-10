@@ -442,16 +442,8 @@ class FTPServer:
                 file_data = self.shared_files.get(filename, b"Test file data.")
                 # traffic_infoにファイルサイズを設定
                 connection_key = (client_ip, client_port)
-
-                print("###################################")
-                print(self.traffic_info[connection_key])
-                print(connection_key)
-                print(filename)
-                print(len(file_data))
-                print("###################################")
                 if connection_key in self.traffic_info:
                     self.traffic_info[connection_key]['file_size'] = len(file_data)
-                    print(self.traffic_info)
                     # 全ファイルデータをoutgoing_dataへ格納
                     self.outgoing_data[connection_key] = file_data
 
