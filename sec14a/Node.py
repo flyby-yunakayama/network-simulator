@@ -722,13 +722,12 @@ class Node:
         app_type: "FTP", "FTPSERVER", etc. (application managerで取得した種別)
         fixed_port: None以外ならこのポートを必ず利用（サーバ固定ポートなど）
         """
-        print("get_source_port", connection_key, protocol, app_type)
-
         # もしfixed_portが指定されていれば、それを使う
         if fixed_port is not None:
             # fixed_portをused_portsへ登録しておく（初回のみ）
             if fixed_port not in self.used_ports:
                 self.used_ports.add(fixed_port)
+                self.port_mapping[connection_key] = fixed_port
             return fixed_port
 
         # fixed_portがない場合、app_typeがFTPServerなら21などと決め打ち
@@ -736,6 +735,7 @@ class Node:
             # FTPサーバは21固定
             if 21 not in self.used_ports:
                 self.used_ports.add(21)
+                self.port_mapping[connection_key] = 21
             return 21
 
         # 上記以外の場合、port_mappingに存在するか確認
@@ -801,7 +801,6 @@ class Node:
                 source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
                 new_kwargs['source_port'] = source_port
                 new_kwargs['destination_port'] = destination_port
-                print("send_app_data", source_port, destination_port)
                 self._send_tcp_data(connection_key, dst_ip, data, **new_kwargs)
             else:
                 if self.network_event_scheduler.tcp_verbose:
