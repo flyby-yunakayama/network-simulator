@@ -796,8 +796,7 @@ class Node:
                 return
 
             print("###################################")
-            print(connection_key)
-            print(traffic_info[connection_key])
+            print(traffic_info)
             print("###################################")
 
             end_time = traffic_info['end_time']
