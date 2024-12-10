@@ -444,7 +444,7 @@ class FTPServer:
                 connection_key = (client_ip, client_port)
 
                 print("###################################")
-                print(self.traffic_info)
+                print(self.traffic_info[connection_key])
                 print(connection_key)
                 print(filename)
                 print(len(file_data))
