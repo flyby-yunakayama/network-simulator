@@ -430,6 +430,9 @@ class FTPServer:
         client_port = packet.header["source_port"]
         server_port = packet.header["destination_port"]
 
+        print("###################################")
+        print(self.state, data)
+
         if self.state == "WAIT_USER":
             if data.startswith("USER"):
                 self.send_ftp_response(client_ip, client_port, server_port, "331 User name okay, need password.\r\n")
