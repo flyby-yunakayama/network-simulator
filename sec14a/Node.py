@@ -52,6 +52,12 @@ class Node:
         # ApplicationManagerをセット
         self.application_layer = ApplicationManager(self)
 
+        # IPがネットワークアドレスであればDHCP開始をスケジュール
+        if self.is_network_address(self.ip_address):
+            # DHCPクライアントはapplication_layer.dhcp_clientにある前提
+            if self.application_layer and self.application_layer.dhcp_client:
+                self.application_layer.dhcp_client.schedule_dhcp_discover()
+
     def is_valid_mac_address(self, mac_address):
         mac_format = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
         return bool(mac_format.match(mac_address))

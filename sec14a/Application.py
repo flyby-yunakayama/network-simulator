@@ -1,3 +1,5 @@
+import random
+
 from sec14a.Packet import DNSPacket, DHCPPacket, TCPPacket, UDPPacket
 
 class ApplicationManager:
@@ -170,9 +172,19 @@ class DhcpClient:
         self.node = node
         self.state = "INIT"
         self.requested_ip = None
-        self.start_dhcp()
 
-    def start_dhcp(self):
+    def schedule_dhcp_discover(self):
+        """
+        DHCP DISCOVERをランダムな遅延後に送信する。
+        Node側またはシナリオ側でこのメソッドが呼ばれることでDHCP開始。
+        """
+        initial_delay = random.uniform(0.5, 0.6)
+        self.node.network_event_scheduler.schedule_event(
+            self.node.network_event_scheduler.current_time + initial_delay,
+            self.send_dhcp_discover
+        )
+
+    def send_dhcp_discover(self):
         # DHCP Discover
         dhcp_discover_packet = DHCPPacket(
             source_mac=self.node.mac_address,
@@ -189,6 +201,7 @@ class DhcpClient:
             source_port=68,
             destination_port=67
         )
+        self.node.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node_id)
         self.state = "DISCOVER_SENT"
 
     def on_dhcp_packet_received(self, packet):
@@ -227,7 +240,11 @@ class DhcpClient:
             source_port=68,
             destination_port=67
         )
-
+        self.node.network_event_scheduler.log_packet_info(
+            dhcp_request_packet, 
+            "DHCP Request sent", 
+            self.node.node_id
+        )
 
 class UDPApp:
     def __init__(self, node, protocol="UDP"):
