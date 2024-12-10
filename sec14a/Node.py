@@ -722,6 +722,7 @@ class Node:
         app_type: "FTP", "FTPSERVER", etc. (application managerで取得した種別)
         fixed_port: None以外ならこのポートを必ず利用（サーバ固定ポートなど）
         """
+        print("get_source_port", connection_key, protocol, app_type)
 
         # もしfixed_portが指定されていれば、それを使う
         if fixed_port is not None:
@@ -736,8 +737,6 @@ class Node:
             if 21 not in self.used_ports:
                 self.used_ports.add(21)
             return 21
-
-        print(connection_key, protocol, app_type)
 
         # 上記以外の場合、port_mappingに存在するか確認
         if connection_key in self.port_mapping:
