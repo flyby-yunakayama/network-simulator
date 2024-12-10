@@ -272,6 +272,7 @@ class Node:
         print(connection_key)
         print(ack_number)
         print(transfer_info)
+        print(self.port_mapping[connection_key])
         print("---------------------")
 
         # 重複ACK処理などの輻輳制御前後で共通的に未送分データをチェックするヘルパー関数
