@@ -430,8 +430,10 @@ class FTPServer:
         client_port = packet.header["source_port"]
         server_port = packet.header["destination_port"]
 
+        print("################################### on_packet_received")
+        print(self.state)
+        print(data)
         print("###################################")
-        print(self.state, data)
 
         if self.state == "WAIT_USER":
             if data.startswith("USER"):
