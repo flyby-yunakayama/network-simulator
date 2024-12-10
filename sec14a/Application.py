@@ -430,11 +430,6 @@ class FTPServer:
         client_port = packet.header["source_port"]
         server_port = packet.header["destination_port"]
 
-        print("################################### on_packet_received")
-        print(self.state)
-        print(data)
-        print("###################################")
-
         if self.state == "WAIT_USER":
             if data.startswith("USER"):
                 self.send_ftp_response(client_ip, client_port, server_port, "331 User name okay, need password.\r\n")
@@ -445,12 +440,15 @@ class FTPServer:
             if data.startswith("RETR"):
                 filename = data.strip().split(" ")[1]
                 file_data = self.shared_files.get(filename, b"Test file data.")
-                print("###################################")
-                print(filename, file_data)
-                print("###################################")
-
                 # traffic_infoにファイルサイズを設定
                 connection_key = (client_ip, client_port)
+
+                print("###################################")
+                print(self.traffic_info)
+                print(connection_key)
+                print(filename)
+                print(file_data)
+                print("###################################")
                 if connection_key in self.traffic_info:
                     self.traffic_info[connection_key]['file_size'] = len(file_data)
                     # 全ファイルデータをoutgoing_dataへ格納
