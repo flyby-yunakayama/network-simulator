@@ -9,7 +9,7 @@ from sec14a.Packet import Packet, UDPPacket, TCPPacket, ARPPacket, DNSPacket, DH
 from sec14a.Application import ApplicationManager
 
 class Node:
-    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server=None, mtu=1500, default_route=None):
+    def __init__(self, node_id, ip_address, network_event_scheduler, mac_address=None, dns_server=None, mtu=10000, default_route=None):
         self.node_id = node_id
         self.ip_address = ip_address
         self.network_event_scheduler = network_event_scheduler
