@@ -529,7 +529,6 @@ class Node:
                 out_of_order_packets.sort()
 
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
-        sequence_number = randint(1, 10000)
         acknowledgment_number = sequence_number + 1
 
         if connection_key not in self.tcp_connections:
