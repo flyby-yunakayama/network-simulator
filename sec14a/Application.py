@@ -98,6 +98,7 @@ class ApplicationManager:
             if ti.get('file_size', 0) > 0:
                 self.ftp_client.update_data_after_send(connection_key, sent_bytes)
         elif app_type == "FTPSERVER" and self.ftp_server:
+            ti = self.ftp_server.traffic_info.get(connection_key, {})
             if ti.get('file_size', 0) > 0 and not ti.get('transfer_done', False):
                 # ファイル転送が有効なときのみ更新と完了確認
                 self.ftp_server.update_data_after_send(connection_key, sent_bytes)
