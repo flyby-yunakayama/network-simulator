@@ -105,8 +105,9 @@ class ApplicationManager:
             self.ftp_server.update_data_after_send(connection_key, sent_bytes)
             
             # update_data_after_sendの後にcheck_transfer_completeを呼ぶ
-            self.ftp_server.check_transfer_complete(connection_key, client_ip, client_port, server_port)
-
+            ti = self.ftp_server.traffic_info.get(connection_key, {})
+            if not ti.get('transfer_done', False):
+                self.ftp_server.check_transfer_complete(connection_key, client_ip, client_port, server_port)
 
     def resolve_destination_url(self, destination_url, callback=None):
         if self.node.is_valid_cidr_notation(destination_url):
@@ -427,6 +428,7 @@ class FTPServer:
         client_ip, client_port = connection_key
         server_port = 21  # 自サーバのFTP制御ポート
         self.set_traffic_info(connection_key)
+        self.traffic_info[connection_key]['transfer_done'] = False  # 転送完了フラグ
         if self.verbose:
             print("[FTPServer] Connection established. Sending 220 greeting.")
         # 引数順: (dst_ip, client_port, server_port, response)
@@ -503,6 +505,7 @@ class FTPServer:
         # 全データ送信・ACK済みか確認
         if ti['bytes_transferred'] >= ti['file_size'] and self.outgoing_data.get(connection_key, b'') == b'':
             self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
+            ti['transfer_done'] = True  # 転送完了フラグを立てる
             if self.verbose:
                 print(f"[FTPServer] Transfer complete for {connection_key}. Sent 226 response.")
 
