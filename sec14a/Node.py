@@ -871,7 +871,6 @@ class Node:
             # 通常はハンドシェイク時に決まっているはず
             self.port_mapping[connection_key] = self.select_available_port()
         source_port = self.port_mapping[connection_key]
-
         destination_port = kwargs.get('destination_port')
         if not destination_port:
             # connection_keyから取得
@@ -919,7 +918,9 @@ class Node:
             self.schedule_timeout(connection_key, seq_num)
             self.tcp_connections[connection_key]['sequence_number'] = expected_ack
 
-            app.update_data_after_send(connection_key, len(chunk))
+            # ファイルサイズが0以上＝ファイル転送中の場合に限りupdate_data_after_sendを呼ぶ
+            if traffic_info['file_size'] > 0 and len(chunk) > 0:
+                app.update_data_after_send(connection_key, len(chunk))
 
     def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):
         if protocol == "UDP":

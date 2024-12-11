@@ -94,20 +94,23 @@ class ApplicationManager:
         key = (connection_key[0], connection_key[1])
         app_type = self.connection_app_map.get(key)
         if app_type == "FTP" and self.ftp_client:
-            self.ftp_client.update_data_after_send(connection_key, sent_bytes)
-            # FTPクライアント側は特に何もない
+            ti = self.ftp_client.traffic_info.get(connection_key, {})
+            if ti.get('file_size', 0) > 0:
+                self.ftp_client.update_data_after_send(connection_key, sent_bytes)
         elif app_type == "FTPSERVER" and self.ftp_server:
-            # connection_keyからclient_ip, client_portを取得
-            client_ip, client_port = connection_key
-            server_port = 21  # FTP制御ポートなど、適切なポートを指定
-
-            # FTPサーバ側で送信後処理
-            self.ftp_server.update_data_after_send(connection_key, sent_bytes)
-            
-            # update_data_after_sendの後にcheck_transfer_completeを呼ぶ
-            ti = self.ftp_server.traffic_info.get(connection_key, {})
-            if not ti.get('transfer_done', False):
-                self.ftp_server.check_transfer_complete(connection_key, client_ip, client_port, server_port)
+            if ti.get('file_size', 0) > 0 and not ti.get('transfer_done', False):
+                # ファイル転送が有効なときのみ更新と完了確認
+                self.ftp_server.update_data_after_send(connection_key, sent_bytes)
+                client_ip, client_port = connection_key
+                server_port = 21
+                # update_data_after_sendの後にcheck_transfer_completeを呼ぶ
+                ti = self.ftp_server.traffic_info.get(connection_key, {})
+                if not ti.get('transfer_done', False):
+                    self.ftp_server.check_transfer_complete(connection_key, client_ip, client_port, server_port)
+            else:
+                # file_sizeが0の場合はコントロールメッセージなのでupdate_data_after_sendを呼ばないか、あるいは何もしない
+                # コントロールメッセージはファイル転送進行と無関係なため完了確認しない
+                pass
 
     def resolve_destination_url(self, destination_url, callback=None):
         if self.node.is_valid_cidr_notation(destination_url):
