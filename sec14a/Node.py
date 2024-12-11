@@ -260,6 +260,15 @@ class Node:
         if connection_key not in self.tcp_connections:
             return  # コネクションが存在しない場合は何もしない
         
+        if connection_key in self.tcp_connections:
+            print(f"[DEBUG] handle_acknowledgement for {connection_key}, ack_number={ack_number}")
+            print(f"[DEBUG] cwnd={self.tcp_connections[connection_key]['cwnd']}, ssthresh={self.tcp_connections[connection_key]['ssthresh']}")
+
+        # ウィンドウ内未ACKパケット一覧表示
+        if connection_key in self.windows:
+            unacked_seqs = sorted(self.windows[connection_key].keys())
+            print(f"[DEBUG] Unacked packets for {connection_key}: {unacked_seqs}")
+
         if connection_key not in self.windows:
             self.windows[connection_key] = {}  # 必要に応じて初期化
 
@@ -494,6 +503,10 @@ class Node:
                 print(f"Connection key {connection_key} not found for updating ACK number.")
             return  # コネクション情報が存在しない場合は処理をスキップ
 
+        print(f"[DEBUG] update_ACK_number connection_key={connection_key}, received_seq={received_sequence_number}, payload_len={payload_length}")
+        old_ack = self.tcp_connections[connection_key]["acknowledgment_number"]
+        print(f"[DEBUG] Before update: ack_number={old_ack}")
+
         # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
 
@@ -527,6 +540,9 @@ class Node:
             if received_sequence_number + payload_length not in out_of_order_packets:
                 out_of_order_packets.append(received_sequence_number + payload_length)
                 out_of_order_packets.sort()
+
+        new_ack = self.tcp_connections[connection_key]["acknowledgment_number"]
+        print(f"[DEBUG] After update: ack_number={new_ack}")
 
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         acknowledgment_number = sequence_number + 1

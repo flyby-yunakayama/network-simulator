@@ -95,6 +95,18 @@ class ApplicationManager:
         app_type = self.connection_app_map.get(key)
         if app_type == "FTP" and self.ftp_client:
             self.ftp_client.update_data_after_send(connection_key, sent_bytes)
+            # FTPクライアント側は特に何もない
+        elif app_type == "FTPSERVER" and self.ftp_server:
+            # connection_keyからclient_ip, client_portを取得
+            client_ip, client_port = connection_key
+            server_port = 21  # FTP制御ポートなど、適切なポートを指定
+
+            # FTPサーバ側で送信後処理
+            self.ftp_server.update_data_after_send(connection_key, sent_bytes)
+            
+            # update_data_after_sendの後にcheck_transfer_completeを呼ぶ
+            self.ftp_server.check_transfer_complete(connection_key, client_ip, client_port, server_port)
+
 
     def resolve_destination_url(self, destination_url, callback=None):
         if self.node.is_valid_cidr_notation(destination_url):
@@ -429,6 +441,7 @@ class FTPServer:
         client_ip = packet.header["source_ip"]
         client_port = packet.header["source_port"]
         server_port = packet.header["destination_port"]
+        connection_key = (client_ip, client_port)
 
         if self.state == "WAIT_USER":
             if data.startswith("USER"):
@@ -440,21 +453,24 @@ class FTPServer:
             if data.startswith("RETR"):
                 filename = data.strip().split(" ")[1]
                 file_data = self.shared_files.get(filename, b"Test file data.")
-                # traffic_infoにファイルサイズを設定
-                connection_key = (client_ip, client_port)
-                if connection_key in self.traffic_info:
-                    self.traffic_info[connection_key]['file_size'] = len(file_data)
-                    # 全ファイルデータをoutgoing_dataへ格納
-                    self.outgoing_data[connection_key] = file_data
 
+                self.traffic_info[connection_key]['file_size'] = len(file_data)
+                self.outgoing_data[connection_key] = file_data
+
+                # 150を返してデータ転送開始を知らせる
                 self.send_ftp_response(client_ip, client_port, server_port, "150 File status okay; about to open data connection.\r\n")
 
-                # 最初のチャンクを取得して送信
-                chunk = self.get_data_chunk(connection_key, self.traffic_info[connection_key]['payload_size'])
-                if chunk:
-                    self.node.send_app_data(client_ip, chunk, protocol="TCP", source_port=server_port, destination_port=client_port)
+                # 最初のチャンクを送信
+                self.send_next_chunk(connection_key, client_ip, client_port, server_port)
 
-                self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
+    def send_next_chunk(self, connection_key, client_ip, client_port, server_port):
+        chunk = self.get_data_chunk(connection_key, self.traffic_info[connection_key]['payload_size'])
+        if chunk:
+            self.node.send_app_data(client_ip, chunk, protocol="TCP", source_port=server_port, destination_port=client_port)
+        else:
+            # ここではデータが空になっただけで226を送らない。
+            # 全てACKされているかはACK処理後に確認する。
+            pass
 
     def get_data_chunk(self, connection_key, payload_size):
         """
@@ -471,12 +487,24 @@ class FTPServer:
         return chunk
 
     def update_data_after_send(self, connection_key, sent_bytes):
-        """
-        送信後にoutgoing_dataから送信済み分を削除する。
-        """
+        ti = self.traffic_info.get(connection_key)
+        if ti:
+            ti['bytes_transferred'] += sent_bytes
+            if self.verbose:
+                print(f"[FTPServer] {sent_bytes} bytes sent for {connection_key}. Total transferred: {ti['bytes_transferred']}/{ti['file_size']}")
+        
+        # outgoing_dataの先頭からsent_bytes分を削る
         if connection_key in self.outgoing_data:
             data = self.outgoing_data[connection_key]
             self.outgoing_data[connection_key] = data[sent_bytes:]
+
+    def check_transfer_complete(self, connection_key, client_ip, client_port, server_port):
+        ti = self.traffic_info[connection_key]
+        # 全データ送信・ACK済みか確認
+        if ti['bytes_transferred'] >= ti['file_size'] and self.outgoing_data.get(connection_key, b'') == b'':
+            self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
+            if self.verbose:
+                print(f"[FTPServer] Transfer complete for {connection_key}. Sent 226 response.")
 
     def send_ftp_response(self, dst_ip, client_port, server_port, response):
         if self.verbose:
