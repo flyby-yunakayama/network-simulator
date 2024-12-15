@@ -473,14 +473,12 @@ class FTPServer:
 
         elif self.state == "LOGGED_IN":
             if data.startswith("RETR"):
-                # ファイル名を取得
                 parts = data.strip().split(" ", 1)
                 if len(parts) < 2:
                     self.send_ftp_response(client_ip, client_port, server_port, "501 Syntax error in parameters or arguments.\r\n")
                     return
                 filename = parts[1]
 
-                # shared_filesから取得
                 file_data = self.shared_files.get(filename, None)
                 if file_data is None:
                     self.send_ftp_response(client_ip, client_port, server_port, "550 File not found.\r\n")
@@ -502,12 +500,15 @@ class FTPServer:
                 ti['progress'] = []
                 self.traffic_info[connection_key] = ti
 
+                # Node側のtransfer_infoにも反映（self.tcp_connectionsがNodeで管理されていると仮定）
+                if connection_key in self.node.tcp_connections:
+                    self.node.tcp_connections[connection_key]['transfer_info'] = ti
+
                 self.outgoing_data[connection_key] = file_data
 
-                # 150レスポンスを返してデータ転送開始
                 self.send_ftp_response(client_ip, client_port, server_port, "150 File status okay; about to open data connection.\r\n")
 
-                # 最初のチャンクを送信
+                # 最初のチャンク送信
                 self.send_next_chunk(connection_key, client_ip, client_port, server_port)
 
     def send_next_chunk(self, connection_key, client_ip, client_port, server_port):
