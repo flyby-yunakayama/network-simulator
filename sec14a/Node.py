@@ -288,12 +288,29 @@ class Node:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Transfer Progress: {bytes_acked}/{transfer_info['file_size']} bytes transferred.")
 
+        # fast_recovery中のpartial ACK処理追加:
+        # fast_recovery状態のとき、受信ACKがウィンドウ内の一部のみをACKする場合、
+        # cwndを増加させつつ追加パケットを送る。Renoではpartial ACK時に高速再送を行う。
+        state = self.tcp_connections[connection_key]['congestion_state']
+        if state == 'fast_recovery':
+            # partial ACKの判定（ACKがウィンドウ内の一部だけをACKしているかなどをチェック）
+            # 簡易なチェックとして、ACK番号がまだ再送すべきシーケンスより小さい場合をpartial ACKとする
+            seq_to_retransmit = self.find_retransmit_sequence_number(connection_key)
+            if seq_to_retransmit and ack_number < self.windows[connection_key][seq_to_retransmit]["expected_ack_number"]:
+                # partial ACKとみなす
+                # cwndを増やし、再送を継続
+                self.adjust_congestion_window(connection_key)
+                self.retransmit_packet(connection_key, seq_to_retransmit)
+                self.schedule_send_next_chunk(connection_key)
+                return
+
         # 輻輳制御処理
         if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
             # 重複ACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
                 self.fast_retransmit(connection_key)
+                self.schedule_send_next_chunk(connection_key)
             else:
                 # 重複ACKだが3回未満: cwnd調整
                 self.adjust_congestion_window(connection_key)
@@ -362,6 +379,9 @@ class Node:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Timeout handled for connection {connection_key}. State transitioned to slow_start.")
 
+            # タイムアウト後にもsend_next_chunkをスケジュールして再送を促す
+            self.schedule_send_next_chunk(connection_key)
+
     def cancel_timeout(self, connection_key, sequence_number):
         if connection_key in self.tcp_connections and 'timeout_event_ids' in self.tcp_connections[connection_key]:
             for event_id in self.tcp_connections[connection_key]['timeout_event_ids']:
@@ -383,7 +403,6 @@ class Node:
         if connection_key in self.windows and sequence_number in self.windows[connection_key]:
             # パケット情報を windows 辞書から取得
             packet_info = self.windows[connection_key][sequence_number]["packet_info"]
-
             destination_ip = packet_info['destination_ip']
             destination_mac = packet_info['destination_mac']
             data = packet_info['data']
@@ -393,8 +412,8 @@ class Node:
             # パケットを再送信
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Retransmitting packet with sequence number {sequence_number} to {destination_ip}:{kwargs.get('destination_port')}")
+
             self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
-            # 再送したので、再送試行回数をインクリメント
             self.windows[connection_key][sequence_number]["attempt"] += 1
 
             # 再送試行回数が閾値を超えた場合
