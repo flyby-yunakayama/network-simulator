@@ -277,12 +277,6 @@ class Node:
 
         # 転送情報を取得
         transfer_info = self.tcp_connections[connection_key].get('transfer_info', None)
-        print("---------------------")
-        print(connection_key)
-        print(ack_number)
-        print(transfer_info)
-        print(self.port_mapping[connection_key])
-        print("---------------------")
 
         # ここからは転送進捗更新など
         if transfer_info:
