@@ -393,7 +393,7 @@ class Node:
             # パケットを再送信
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Retransmitting packet with sequence number {sequence_number} to {destination_ip}:{kwargs.get('destination_port')}")
-            self._send_tcp_packet(destination_ip, destination_mac, data, dscp, **kwargs)
+            self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
             # 再送したので、再送試行回数をインクリメント
             self.windows[connection_key][sequence_number]["attempt"] += 1
 
