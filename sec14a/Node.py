@@ -357,13 +357,12 @@ class Node:
 
     def schedule_timeout(self, connection_key, sequence_number):
         event_time = self.network_event_scheduler.current_time + self.timeout_interval
-        # タイムアウトイベントにconnection_keyも渡す
         event_id = self.network_event_scheduler.schedule_event(event_time, self.handle_timeout, connection_key, sequence_number)
 
-        # イベントIDを接続情報に保存
+        # timeout_event_idsを辞書化: timeout_event_ids[sequence_number] = event_id
         if 'timeout_event_ids' not in self.tcp_connections[connection_key]:
-            self.tcp_connections[connection_key]['timeout_event_ids'] = []
-        self.tcp_connections[connection_key]['timeout_event_ids'].append(event_id)
+            self.tcp_connections[connection_key]['timeout_event_ids'] = {}
+        self.tcp_connections[connection_key]['timeout_event_ids'][sequence_number] = event_id
 
     def handle_timeout(self, connection_key, sequence_number):
         """
@@ -397,10 +396,9 @@ class Node:
 
     def cancel_timeout(self, connection_key, sequence_number):
         if connection_key in self.tcp_connections and 'timeout_event_ids' in self.tcp_connections[connection_key]:
-            for event_id in self.tcp_connections[connection_key]['timeout_event_ids']:
+            if sequence_number in self.tcp_connections[connection_key]['timeout_event_ids']:
+                event_id = self.tcp_connections[connection_key]['timeout_event_ids'].pop(sequence_number)
                 self.network_event_scheduler.cancel_event(event_id)
-            # イベントIDリストをクリア
-            self.tcp_connections[connection_key]['timeout_event_ids'].clear()
 
     def find_retransmit_sequence_number(self, connection_key):
         # この接続のウィンドウ内で最も小さい未ACKのシーケンス番号を探す
@@ -444,15 +442,22 @@ class Node:
 
     def remove_acked_packets_from_window(self, connection_key, ack_number):
         to_remove = []
-        for seq, packet_info in self.windows[connection_key].items():
+        for seq, packet_info in list(self.windows[connection_key].items()):
             if packet_info["expected_ack_number"] <= ack_number:
                 to_remove.append(seq)
 
         for seq in to_remove:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {self.windows[connection_key][seq]['expected_ack_number']}.")
-            # タイムアウトイベントのキャンセル
+            # タイムアウトイベントのキャンセル(シーケンス番号個別管理)
             self.cancel_timeout(connection_key, seq)
+            
+            # 再送イベントがあればキャンセル（必要ならretransmission_event_idsを用意）
+            if 'retransmission_event_ids' in self.tcp_connections[connection_key] and seq in self.tcp_connections[connection_key]['retransmission_event_ids']:
+                event_id = self.tcp_connections[connection_key]['retransmission_event_ids'].pop(seq)
+                self.network_event_scheduler.cancel_event(event_id)
+
+            # パケット削除
             del self.windows[connection_key][seq]
 
     def fast_retransmit(self, connection_key):
