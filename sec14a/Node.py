@@ -299,20 +299,23 @@ class Node:
         if state == 'fast_recovery':
             seq_to_retransmit = self.find_retransmit_sequence_number(connection_key)
             if seq_to_retransmit is not None:
-                # まだ再送すべきパケットが残っている
+                # partial ACK判定
                 if ack_number > last_ack and ack_number < self.windows[connection_key][seq_to_retransmit]["expected_ack_number"]:
-                    # partial ACKと判定
-                    # partial ACK時はRenoではcwndを1セグメント分増やし、未ACKのパケットを再送
-                    self.adjust_congestion_window(connection_key)  # cwndを少し増やす
+                    self.adjust_congestion_window(connection_key)
+                    # パケット再送
                     self.retransmit_packet(connection_key, seq_to_retransmit)
                     self.schedule_send_next_chunk(connection_key)
                     return
+                else:
+                    # partial ACKでない or 全ACK済みならfast_recovery終了
+                    self.tcp_connections[connection_key]['cwnd'] = self.tcp_connections[connection_key]['ssthresh']
+                    self.transition_to_state(connection_key, 'congestion_avoidance')
+                    self.schedule_send_next_chunk(connection_key)
+                    return
             else:
-                # 再送すべきパケットがもうない = 全ロスト分ACK済み
-                # fast recovery終了し、cwndをssthreshまで戻してcongestion_avoidanceへ
+                # 再送すべきパケットなし、fast recovery抜ける
                 self.tcp_connections[connection_key]['cwnd'] = self.tcp_connections[connection_key]['ssthresh']
                 self.transition_to_state(connection_key, 'congestion_avoidance')
-                # 継続的にデータを送るためnext_chunk送信をスケジュール
                 self.schedule_send_next_chunk(connection_key)
                 return
 
@@ -397,7 +400,7 @@ class Node:
             for event_id in self.tcp_connections[connection_key]['timeout_event_ids']:
                 self.network_event_scheduler.cancel_event(event_id)
             # イベントIDリストをクリア
-            self.tcp_connections[connection_key]['timeout_event_ids'] = []
+            self.tcp_connections[connection_key]['timeout_event_ids'].clear()
 
     def find_retransmit_sequence_number(self, connection_key):
         # この接続のウィンドウ内で最も小さい未ACKのシーケンス番号を探す
@@ -430,6 +433,7 @@ class Node:
             if self.windows[connection_key][sequence_number]["attempt"] >= self.max_attempts:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Maximum retransmission attempts reached for packet with sequence number {sequence_number}. Dropping the packet.")
+                self.cancel_timeout(connection_key, sequence_number)
                 del self.windows[connection_key][sequence_number]
             else:
                 # 再送をスケジュール
@@ -439,17 +443,27 @@ class Node:
                 print(f"No packet with sequence number {sequence_number} found in history for retransmission.")
 
     def remove_acked_packets_from_window(self, connection_key, ack_number):
-        for seq, packet_info in list(self.windows[connection_key].items()):
+        to_remove = []
+        for seq, packet_info in self.windows[connection_key].items():
             if packet_info["expected_ack_number"] <= ack_number:
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {packet_info['expected_ack_number']}.")
-                # タイムアウトイベントのキャンセル
-                self.cancel_timeout(connection_key, seq)
-                del self.windows[connection_key][seq]
+                to_remove.append(seq)
+
+        for seq in to_remove:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"Removing packet with sequence number {seq} from window for connection {connection_key} due to receiving ACK {ack_number}. Expected ACK was {self.windows[connection_key][seq]['expected_ack_number']}.")
+            # タイムアウトイベントのキャンセル
+            self.cancel_timeout(connection_key, seq)
+            del self.windows[connection_key][seq]
 
     def fast_retransmit(self, connection_key):
         self.transition_to_state(connection_key, 'fast_recovery')
-        self.schedule_retransmission(connection_key)
+        seq_num = self.find_retransmit_sequence_number(connection_key)
+        if seq_num is not None:
+            self.schedule_retransmission(connection_key)
+        else:
+            # 再送すべきパケットがない場合はfast_recoveryから抜けるロジックを追加してもよい
+            self.tcp_connections[connection_key]['cwnd'] = self.tcp_connections[connection_key]['ssthresh']
+            self.transition_to_state(connection_key, 'congestion_avoidance')
 
     def schedule_retransmission(self, connection_key):
         sequence_number = self.find_retransmit_sequence_number(connection_key)
