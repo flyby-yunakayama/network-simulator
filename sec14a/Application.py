@@ -509,23 +509,8 @@ class FTPServer:
         chunk = data[:payload_size]
         return chunk
 
-    def update_data_after_send(self, connection_key, sent_bytes):
-        ti = self.traffic_info.get(connection_key)
-        if ti:
-            ti['bytes_transferred'] += sent_bytes
-            if self.verbose:
-                print(f"[FTPServer] {sent_bytes} bytes sent for {connection_key}. Total transferred: {ti['bytes_transferred']}/{ti['file_size']}")
-        
-        if connection_key in self.outgoing_data:
-            data = self.outgoing_data[connection_key]
-            self.outgoing_data[connection_key] = data[sent_bytes:]
-
-        # ここでまだ転送完了していないなら次のチャンクを送る
-        ti = self.traffic_info.get(connection_key, {})
-        if ti.get('file_size', 0) > 0 and ti['bytes_transferred'] < ti['file_size']:
-            client_ip, client_port = connection_key
-            server_port = 21  # または接続に応じたサーバポート
-            self.send_next_chunk(connection_key, client_ip, client_port, server_port)
+    def update_data_after_send(self, connection_key, bytes_sent):
+        self.traffic_info[connection_key]['bytes_transferred'] += bytes_sent
 
     def check_transfer_complete(self, connection_key, client_ip, client_port, server_port):
         ti = self.traffic_info[connection_key]

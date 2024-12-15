@@ -284,19 +284,7 @@ class Node:
         print(self.port_mapping[connection_key])
         print("---------------------")
 
-        # 重複ACK処理などの輻輳制御前後で共通的に未送分データをチェックするヘルパー関数
-        def try_sending_next_chunk():
-            if transfer_info:
-                file_size = transfer_info.get('file_size', 0)
-                bytes_transferred = transfer_info.get('bytes_transferred', 0)
-                if bytes_transferred < file_size:
-                    # まだ送るべきデータあり
-                    app = self.application_layer
-                    chunk = app.get_data_chunk(connection_key, transfer_info['payload_size'])
-                    if chunk:
-                        dst_ip, dst_port = connection_key
-                        self.send_app_data(dst_ip, chunk, protocol="TCP", destination_port=dst_port)
-
+        # ここからは転送進捗更新など
         if transfer_info:
             sequence_number_base = self.tcp_connections[connection_key].get("sequence_number_base", 0)
             bytes_acked = ack_number - sequence_number_base
@@ -306,24 +294,46 @@ class Node:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Transfer Progress: {bytes_acked}/{transfer_info['file_size']} bytes transferred.")
 
-        # 輻輳制御
+        # 輻輳制御処理
         if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
             # 重複ACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
                 self.fast_retransmit(connection_key)
             else:
-                # 重複ACKだが3回未満: cwnd調整（send_tcp_data_packetは削除）
+                # 重複ACKだが3回未満: cwnd調整
                 if self.tcp_connections[connection_key]['data'] is not None:
                     self.adjust_congestion_window(connection_key)
-                    try_sending_next_chunk()
+                    # ここで直接次chunk送信せずに、イベントをスケジュール
+                    self.schedule_send_next_chunk(connection_key)
         else:
             # 新しいACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
             if self.tcp_connections[connection_key]['data'] is not None:
                 self.adjust_congestion_window(connection_key)
-                try_sending_next_chunk()
+                # ここも直接は呼ばずスケジュール
+                self.schedule_send_next_chunk(connection_key)
+
+    def schedule_send_next_chunk(self, connection_key):
+        # イベントスケジューラで僅かに遅れてsend_next_chunk_eventを呼ぶ
+        delay = 0.000001  # 必要に応じて調整
+        event_time = self.network_event_scheduler.current_time + delay
+        self.network_event_scheduler.schedule_event(event_time, self.send_next_chunk_event, connection_key)
+
+    def send_next_chunk_event(self, connection_key):
+        # ここで実際の次のチャンク送信処理を行う
+        transfer_info = self.tcp_connections[connection_key].get('transfer_info', None)
+        if transfer_info:
+            file_size = transfer_info.get('file_size', 0)
+            bytes_transferred = transfer_info.get('bytes_transferred', 0)
+            if bytes_transferred < file_size:
+                # まだ送るべきデータあり
+                app = self.application_layer
+                chunk = app.get_data_chunk(connection_key, transfer_info['payload_size'])
+                if chunk:
+                    dst_ip, dst_port = connection_key
+                    self.send_app_data(dst_ip, chunk, protocol="TCP", destination_port=dst_port)
 
     def schedule_timeout(self, connection_key, sequence_number):
         event_time = self.network_event_scheduler.current_time + self.timeout_interval
