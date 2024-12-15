@@ -922,6 +922,27 @@ class Node:
             if traffic_info and traffic_info.get('file_size', 0) > 0 and not traffic_info.get('transfer_done', False) and len(chunk) > 0:
                 app.update_data_after_send(connection_key, len(chunk))
 
+    def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags=""):
+        """
+        制御メッセージ（FTPの220,331,230,150,226など）の送信用関数。
+        ファイル転送ロジックに依存せず、直接_transport_packetを使う。
+        update_data_after_sendは呼ばない。
+        """
+        if source_port is None or destination_port is None:
+            raise ValueError("send_control_tcp_packet requires both source_port and destination_port")
+
+        destination_mac = self.get_mac_address_from_ip(dst_ip)
+        if destination_mac is None:
+            # ARP解決待ちキューに入れる
+            self.send_arp_request(dst_ip)
+            if dst_ip not in self.waiting_for_arp_reply:
+                self.waiting_for_arp_reply[dst_ip] = []
+            self.waiting_for_arp_reply[dst_ip].append((data, "TCP", dscp, {"source_port": source_port, "destination_port": destination_port, "flags": flags}))
+            return
+
+        # ファイル転送関連のロジックは不要、直接_transport_packetで送信
+        self._send_transport_packet("TCP", dst_ip, destination_mac, data, dscp, source_port=source_port, destination_port=destination_port, sequence_number=0, acknowledgment_number=0, flags=flags)
+
     def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):
         if protocol == "UDP":
             transport_header_size = 8

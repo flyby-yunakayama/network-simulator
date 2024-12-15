@@ -540,12 +540,14 @@ class FTPServer:
     def send_ftp_response(self, dst_ip, client_port, server_port, response):
         if self.verbose:
             print("[FTPServer] Sending response:", response.strip())
-        self.node.send_app_data(
+        # 制御メッセージ送信用関数を使用（send_control_tcp_packet）
+        self.node.send_control_tcp_packet(
             dst_ip,
             response.encode('utf-8'),
-            protocol="TCP",
+            dscp=0,
             source_port=server_port,
-            destination_port=client_port
+            destination_port=client_port,
+            flags="PSH"  # フラグは必要に応じて設定
         )
 
     def set_traffic_info(self, connection_key):
