@@ -292,19 +292,31 @@ class Node:
         # fast_recovery状態のとき、受信ACKがウィンドウ内の一部のみをACKする場合、
         # cwndを増加させつつ追加パケットを送る。Renoではpartial ACK時に高速再送を行う。
         state = self.tcp_connections[connection_key]['congestion_state']
+        last_ack = self.tcp_connections[connection_key].get("last_ack_number", 0)
+        self.tcp_connections[connection_key]["last_ack_number"] = ack_number
+
+        # fast_recovery中かつpartial ACKの処理
         if state == 'fast_recovery':
-            # partial ACKの判定（ACKがウィンドウ内の一部だけをACKしているかなどをチェック）
-            # 簡易なチェックとして、ACK番号がまだ再送すべきシーケンスより小さい場合をpartial ACKとする
             seq_to_retransmit = self.find_retransmit_sequence_number(connection_key)
-            if seq_to_retransmit and ack_number < self.windows[connection_key][seq_to_retransmit]["expected_ack_number"]:
-                # partial ACKとみなす
-                # cwndを増やし、再送を継続
-                self.adjust_congestion_window(connection_key)
-                self.retransmit_packet(connection_key, seq_to_retransmit)
+            if seq_to_retransmit is not None:
+                # まだ再送すべきパケットが残っている
+                if ack_number > last_ack and ack_number < self.windows[connection_key][seq_to_retransmit]["expected_ack_number"]:
+                    # partial ACKと判定
+                    # partial ACK時はRenoではcwndを1セグメント分増やし、未ACKのパケットを再送
+                    self.adjust_congestion_window(connection_key)  # cwndを少し増やす
+                    self.retransmit_packet(connection_key, seq_to_retransmit)
+                    self.schedule_send_next_chunk(connection_key)
+                    return
+            else:
+                # 再送すべきパケットがもうない = 全ロスト分ACK済み
+                # fast recovery終了し、cwndをssthreshまで戻してcongestion_avoidanceへ
+                self.tcp_connections[connection_key]['cwnd'] = self.tcp_connections[connection_key]['ssthresh']
+                self.transition_to_state(connection_key, 'congestion_avoidance')
+                # 継続的にデータを送るためnext_chunk送信をスケジュール
                 self.schedule_send_next_chunk(connection_key)
                 return
 
-        # 輻輳制御処理
+        # 通常ACK処理（fast_recoveryでない場合）
         if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
             # 重複ACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
@@ -312,13 +324,11 @@ class Node:
                 self.fast_retransmit(connection_key)
                 self.schedule_send_next_chunk(connection_key)
             else:
-                # 重複ACKだが3回未満: cwnd調整
                 self.adjust_congestion_window(connection_key)
                 self.schedule_send_next_chunk(connection_key)
         else:
             # 新しいACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
-            self.tcp_connections[connection_key]["last_ack_number"] = ack_number
             self.adjust_congestion_window(connection_key)
             self.schedule_send_next_chunk(connection_key)
 
