@@ -93,25 +93,42 @@ class ApplicationManager:
     def update_data_after_send(self, connection_key, sent_bytes):
         key = (connection_key[0], connection_key[1])
         app_type = self.connection_app_map.get(key)
-        if app_type == "FTP" and self.ftp_client:
-            ti = self.ftp_client.traffic_info.get(connection_key, {})
-            if ti.get('file_size', 0) > 0:
-                self.ftp_client.update_data_after_send(connection_key, sent_bytes)
-        elif app_type == "FTPSERVER" and self.ftp_server:
+
+        # デバッグ用出力：現在のconnection_keyとapp_type
+        print(f"[DEBUG update_data_after_send] connection_key={connection_key}, app_type={app_type}")
+        
+        # FTPサーバの場合
+        if app_type == "FTPSERVER" and self.ftp_server:
+            # デバッグ用出力：traffic_infoのキー一覧
+            print(f"[DEBUG update_data_after_send] ftp_server.traffic_info keys: {list(self.ftp_server.traffic_info.keys())}")
+            
             ti = self.ftp_server.traffic_info.get(connection_key, {})
+            # デバッグ用出力：このconnection_keyでのtraffic_info
+            print(f"[DEBUG update_data_after_send] ti for {connection_key}: {ti}")
+
             if ti.get('file_size', 0) > 0 and not ti.get('transfer_done', False):
-                # ファイル転送が有効なときのみ更新と完了確認
                 self.ftp_server.update_data_after_send(connection_key, sent_bytes)
                 client_ip, client_port = connection_key
                 server_port = 21
-                # update_data_after_sendの後にcheck_transfer_completeを呼ぶ
-                ti = self.ftp_server.traffic_info.get(connection_key, {})
-                if not ti.get('transfer_done', False):
-                    self.ftp_server.check_transfer_complete(connection_key, client_ip, client_port, server_port)
+                self.ftp_server.check_transfer_complete(connection_key, client_ip, client_port, server_port)
             else:
-                # file_sizeが0の場合はコントロールメッセージなのでupdate_data_after_sendを呼ばないか、あるいは何もしない
-                # コントロールメッセージはファイル転送進行と無関係なため完了確認しない
+                # ファイル転送中でない制御メッセージの場合は何もしない
                 pass
+
+        # FTPクライアントの場合
+        elif app_type == "FTP" and self.ftp_client:
+            # デバッグ用出力：ftp_client.traffic_infoのキー一覧
+            print(f"[DEBUG update_data_after_send] ftp_client.traffic_info keys: {list(self.ftp_client.traffic_info.keys())}")
+            
+            ti = self.ftp_client.traffic_info.get(connection_key, {})
+            # デバッグ用出力：このconnection_keyでのtraffic_info
+            print(f"[DEBUG update_data_after_send] ti for {connection_key}: {ti}")
+
+            if ti.get('file_size', 0) > 0:
+                self.ftp_client.update_data_after_send(connection_key, sent_bytes)
+        else:
+            # 非FTPやマッピングなしの場合は特に何もしない
+            print("[DEBUG update_data_after_send] No FTP client/server associated with this connection_key.")
 
     def resolve_destination_url(self, destination_url, callback=None):
         if self.node.is_valid_cidr_notation(destination_url):
@@ -499,10 +516,16 @@ class FTPServer:
             if self.verbose:
                 print(f"[FTPServer] {sent_bytes} bytes sent for {connection_key}. Total transferred: {ti['bytes_transferred']}/{ti['file_size']}")
         
-        # outgoing_dataの先頭からsent_bytes分を削る
         if connection_key in self.outgoing_data:
             data = self.outgoing_data[connection_key]
             self.outgoing_data[connection_key] = data[sent_bytes:]
+
+        # ここでまだ転送完了していないなら次のチャンクを送る
+        ti = self.traffic_info.get(connection_key, {})
+        if ti.get('file_size', 0) > 0 and ti['bytes_transferred'] < ti['file_size']:
+            client_ip, client_port = connection_key
+            server_port = 21  # または接続に応じたサーバポート
+            self.send_next_chunk(connection_key, client_ip, client_port, server_port)
 
     def check_transfer_complete(self, connection_key, client_ip, client_port, server_port):
         ti = self.traffic_info[connection_key]
