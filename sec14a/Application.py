@@ -542,12 +542,12 @@ class FTPServer:
             print("[FTPServer] Sending response:", response.strip())
         # 制御メッセージ送信用関数を使用（send_control_tcp_packet）
         self.node.send_control_tcp_packet(
-            dst_ip,
-            response.encode('utf-8'),
+            dst_ip=dst_ip,
+            data=response.encode('utf-8'),
             dscp=0,
             source_port=server_port,
             destination_port=client_port,
-            flags="PSH"  # フラグは必要に応じて設定
+            flags="PSH"  # 制御メッセージなのでPSH程度でOK
         )
 
     def set_traffic_info(self, connection_key):

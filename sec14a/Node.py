@@ -924,24 +924,65 @@ class Node:
 
     def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags=""):
         """
-        制御メッセージ（FTPの220,331,230,150,226など）の送信用関数。
-        ファイル転送ロジックに依存せず、直接_transport_packetを使う。
-        update_data_after_sendは呼ばない。
+        制御メッセージ(FTPの220,331,230,150,226など)を送信するための関数。
+        file_sizeやtransfer_doneなどファイル転送特有のロジックは排除するが、
+        コネクションやポート割り当ての処理はsend_app_dataと同様に行う必要がある。
         """
-        if source_port is None or destination_port is None:
-            raise ValueError("send_control_tcp_packet requires both source_port and destination_port")
 
+        # パラメータチェック
+        if not destination_port:
+            raise ValueError("send_control_tcp_packet requires a destination_port")
+
+        # connection_keyを生成
+        connection_key = (dst_ip, destination_port)
+
+        # app_type（FTPサーバやクライアントなど）を取得
+        app_type = self.application_layer.connection_app_map.get(connection_key, None)
+
+        # TCPの場合、ソースポートが未指定なら割り当てる
+        if source_port is None:
+            source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
+
+        # port_mappingがない場合はここで設定
+        if connection_key not in self.port_mapping:
+            self.port_mapping[connection_key] = source_port
+
+        # tcp_connectionsがない場合は初期化する
+        if connection_key not in self.tcp_connections:
+            # まだコネクション情報がない場合は適当に初期化する。
+            # ここではシーケンス番号やACK番号を0で初期化する。
+            self.initialize_connection_info(connection_key=connection_key, state='ESTABLISHED', sequence_number=0, acknowledgment_number=0, data=b'')
+
+        # tcp_connectionsからシーケンス番号等を取得
+        seq_num = self.tcp_connections[connection_key]['sequence_number']
+        ack_num = self.tcp_connections[connection_key]['acknowledgment_number']
+
+        # データ送信後にシーケンス番号を進める
+        # control packetは単発のメッセージなので、送信後にseq_numを増やすだけでOK
+        # アプリ側でACKがくるまでは特に大きく管理しなくてもよい
+        self.tcp_connections[connection_key]['sequence_number'] = seq_num + len(data)
+
+        # 宛先MACアドレスをARPで取得または待機
         destination_mac = self.get_mac_address_from_ip(dst_ip)
         if destination_mac is None:
-            # ARP解決待ちキューに入れる
             self.send_arp_request(dst_ip)
             if dst_ip not in self.waiting_for_arp_reply:
                 self.waiting_for_arp_reply[dst_ip] = []
-            self.waiting_for_arp_reply[dst_ip].append((data, "TCP", dscp, {"source_port": source_port, "destination_port": destination_port, "flags": flags}))
+            self.waiting_for_arp_reply[dst_ip].append((data, "TCP", dscp, {
+                "source_port": source_port,
+                "destination_port": destination_port,
+                "flags": flags
+            }))
             return
 
-        # ファイル転送関連のロジックは不要、直接_transport_packetで送信
-        self._send_transport_packet("TCP", dst_ip, destination_mac, data, dscp, source_port=source_port, destination_port=destination_port, sequence_number=0, acknowledgment_number=0, flags=flags)
+        # ファイル転送ロジック(update_data_after_send)は呼ばず、
+        # 直接_transport_packetでパケット送信
+        self._send_transport_packet("TCP", dst_ip, destination_mac, data, dscp,
+                                    source_port=source_port,
+                                    destination_port=destination_port,
+                                    sequence_number=seq_num,
+                                    acknowledgment_number=ack_num,
+                                    flags=flags)
 
     def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):
         if protocol == "UDP":
