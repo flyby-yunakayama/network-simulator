@@ -302,18 +302,14 @@ class Node:
                 self.fast_retransmit(connection_key)
             else:
                 # 重複ACKだが3回未満: cwnd調整
-                if self.tcp_connections[connection_key]['data'] is not None:
-                    self.adjust_congestion_window(connection_key)
-                    # ここで直接次chunk送信せずに、イベントをスケジュール
-                    self.schedule_send_next_chunk(connection_key)
+                self.adjust_congestion_window(connection_key)
+                self.schedule_send_next_chunk(connection_key)
         else:
             # 新しいACK
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
             self.tcp_connections[connection_key]["last_ack_number"] = ack_number
-            if self.tcp_connections[connection_key]['data'] is not None:
-                self.adjust_congestion_window(connection_key)
-                # ここも直接は呼ばずスケジュール
-                self.schedule_send_next_chunk(connection_key)
+            self.adjust_congestion_window(connection_key)
+            self.schedule_send_next_chunk(connection_key)
 
     def schedule_send_next_chunk(self, connection_key):
         # イベントスケジューラで僅かに遅れてsend_next_chunk_eventを呼ぶ
