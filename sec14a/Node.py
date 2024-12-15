@@ -918,8 +918,8 @@ class Node:
             self.schedule_timeout(connection_key, seq_num)
             self.tcp_connections[connection_key]['sequence_number'] = expected_ack
 
-            # ファイルサイズが0以上＝ファイル転送中の場合に限りupdate_data_after_sendを呼ぶ
-            if traffic_info['file_size'] > 0 and len(chunk) > 0:
+            # ファイル転送中で、まだtransfer_doneがFalseかつ実データがある場合のみupdate_data_after_sendを呼ぶ
+            if traffic_info and traffic_info.get('file_size', 0) > 0 and not traffic_info.get('transfer_done', False) and len(chunk) > 0:
                 app.update_data_after_send(connection_key, len(chunk))
 
     def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):

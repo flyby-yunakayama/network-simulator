@@ -531,8 +531,9 @@ class FTPServer:
         ti = self.traffic_info[connection_key]
         # 全データ送信・ACK済みか確認
         if ti['bytes_transferred'] >= ti['file_size'] and self.outgoing_data.get(connection_key, b'') == b'':
+            # まずtransfer_doneをTrueにして、226送信後のupdate_data_after_sendで再度check_transfer_completeを呼ばれないようにする
+            ti['transfer_done'] = True
             self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
-            ti['transfer_done'] = True  # 転送完了フラグを立てる
             if self.verbose:
                 print(f"[FTPServer] Transfer complete for {connection_key}. Sent 226 response.")
 
