@@ -445,14 +445,12 @@ class FTPServer:
         self.outgoing_data = {}  # 送るべきファイルデータを保持するための辞書
 
     def on_connection_established(self, connection_key):
-        # client_ip, client_portが接続先(クライアント)
         client_ip, client_port = connection_key
         server_port = 21  # 自サーバのFTP制御ポート
         self.set_traffic_info(connection_key)
         self.traffic_info[connection_key]['transfer_done'] = False  # 転送完了フラグ
         if self.verbose:
             print("[FTPServer] Connection established. Sending 220 greeting.")
-        # 引数順: (dst_ip, client_port, server_port, response)
         self.send_ftp_response(client_ip, client_port, server_port, "220 Service ready\r\n")
         self.state = "WAIT_USER"
 
@@ -472,15 +470,41 @@ class FTPServer:
             elif data.startswith("PASS"):
                 self.send_ftp_response(client_ip, client_port, server_port, "230 User logged in, proceed.\r\n")
                 self.state = "LOGGED_IN"
-        if self.state == "LOGGED_IN":
-            if data.startswith("RETR"):
-                filename = data.strip().split(" ")[1]
-                file_data = self.shared_files.get(filename, b"Test file data.")
 
-                self.traffic_info[connection_key]['file_size'] = len(file_data)
+        elif self.state == "LOGGED_IN":
+            if data.startswith("RETR"):
+                # ファイル名を取得
+                parts = data.strip().split(" ", 1)
+                if len(parts) < 2:
+                    self.send_ftp_response(client_ip, client_port, server_port, "501 Syntax error in parameters or arguments.\r\n")
+                    return
+                filename = parts[1]
+
+                # shared_filesから取得
+                file_data = self.shared_files.get(filename, None)
+                if file_data is None:
+                    self.send_ftp_response(client_ip, client_port, server_port, "550 File not found.\r\n")
+                    return
+
+                file_size = len(file_data)
+                ti = self.traffic_info.get(connection_key, {
+                    'end_time': self.node.network_event_scheduler.current_time + 3600,
+                    'payload_size': 1460,
+                    'bytes_transferred': 0,
+                    'progress': [],
+                    'file_size': file_size,
+                    'transfer_done': False
+                })
+
+                ti['file_size'] = file_size
+                ti['transfer_done'] = False
+                ti['bytes_transferred'] = 0
+                ti['progress'] = []
+                self.traffic_info[connection_key] = ti
+
                 self.outgoing_data[connection_key] = file_data
 
-                # 150を返してデータ転送開始を知らせる
+                # 150レスポンスを返してデータ転送開始
                 self.send_ftp_response(client_ip, client_port, server_port, "150 File status okay; about to open data connection.\r\n")
 
                 # 最初のチャンクを送信
@@ -491,48 +515,53 @@ class FTPServer:
         if chunk:
             self.node.send_app_data(client_ip, chunk, protocol="TCP", source_port=server_port, destination_port=client_port)
         else:
-            # ここではデータが空になっただけで226を送らない。
-            # 全てACKされているかはACK処理後に確認する。
+            # 送るべきデータが尽きた。ACK後にtransfer_done確認へ
             pass
 
     def get_data_chunk(self, connection_key, payload_size):
         """
-        traffic_infoやoutgoing_dataから、まだ送るべきデータがある場合はpayload_size分取り出して返す。
+        outgoing_dataからpayload_size分のデータを取り出す。
         """
         if connection_key not in self.outgoing_data:
             return b""
-
         data = self.outgoing_data[connection_key]
         if not data:
             return b""
-
         chunk = data[:payload_size]
+        # chunk送出後、outgoing_dataをスライス
+        self.outgoing_data[connection_key] = data[payload_size:]
         return chunk
 
     def update_data_after_send(self, connection_key, bytes_sent):
+        # データ送信後に呼ばれる
         self.traffic_info[connection_key]['bytes_transferred'] += bytes_sent
+        # 送信直後に転送完了確認
+        ti = self.traffic_info[connection_key]
+        client_ip, client_port = connection_key
+        server_port = 21
+        self.check_transfer_complete(connection_key, client_ip, client_port, server_port)
 
     def check_transfer_complete(self, connection_key, client_ip, client_port, server_port):
         ti = self.traffic_info[connection_key]
-        # 全データ送信・ACK済みか確認
-        if ti['bytes_transferred'] >= ti['file_size'] and self.outgoing_data.get(connection_key, b'') == b'':
-            # まずtransfer_doneをTrueにして、226送信後のupdate_data_after_sendで再度check_transfer_completeを呼ばれないようにする
-            ti['transfer_done'] = True
-            self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
-            if self.verbose:
-                print(f"[FTPServer] Transfer complete for {connection_key}. Sent 226 response.")
+        # 全データを送信済みかつ全ACKされているか確認
+        # ここでは、bytes_transferred >= file_sizeかつoutgoing_dataが空なら完了とする
+        if ti['bytes_transferred'] >= ti['file_size'] and (self.outgoing_data.get(connection_key, b'') == b''):
+            if not ti['transfer_done']:
+                ti['transfer_done'] = True
+                self.send_ftp_response(client_ip, client_port, server_port, "226 Closing data connection.\r\n")
+                if self.verbose:
+                    print(f"[FTPServer] Transfer complete for {connection_key}. Sent 226 response.")
 
     def send_ftp_response(self, dst_ip, client_port, server_port, response):
         if self.verbose:
             print("[FTPServer] Sending response:", response.strip())
-        # 制御メッセージ送信用関数を使用（send_control_tcp_packet）
         self.node.send_control_tcp_packet(
             dst_ip=dst_ip,
             data=response.encode('utf-8'),
             dscp=0,
             source_port=server_port,
             destination_port=client_port,
-            flags="PSH"  # 制御メッセージなのでPSH程度でOK
+            flags="PSH"
         )
 
     def set_traffic_info(self, connection_key):
@@ -543,7 +572,8 @@ class FTPServer:
             'payload_size': payload_size,
             'bytes_transferred': 0,
             'progress': [],
-            'file_size': 0
+            'file_size': 0,
+            'transfer_done': False
         }
 
     def get_traffic_info(self, connection_key):
