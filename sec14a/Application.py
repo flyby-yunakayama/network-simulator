@@ -84,10 +84,11 @@ class ApplicationManager:
         return None
 
     def get_data_chunk(self, connection_key, payload_size):
-        key = (connection_key[0], connection_key[1])
-        app_type = self.connection_app_map.get(key)
+        app_type = self.connection_app_map.get(connection_key)
         if app_type == "FTP" and self.ftp_client:
             return self.ftp_client.get_data_chunk(connection_key, payload_size)
+        elif app_type == "FTPSERVER" and self.ftp_server:
+            return self.ftp_server.get_data_chunk(connection_key, payload_size)
         return None
 
     def update_data_after_send(self, connection_key, sent_bytes):
