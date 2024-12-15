@@ -478,37 +478,26 @@ class FTPServer:
                     self.send_ftp_response(client_ip, client_port, server_port, "501 Syntax error in parameters or arguments.\r\n")
                     return
                 filename = parts[1]
-
                 file_data = self.shared_files.get(filename, None)
                 if file_data is None:
                     self.send_ftp_response(client_ip, client_port, server_port, "550 File not found.\r\n")
                     return
-
+                
                 file_size = len(file_data)
-                ti = self.traffic_info.get(connection_key, {
+                transfer_info = {
                     'end_time': self.node.network_event_scheduler.current_time + 3600,
                     'payload_size': 1460,
                     'bytes_transferred': 0,
                     'progress': [],
                     'file_size': file_size,
                     'transfer_done': False
-                })
+                }
 
-                ti['file_size'] = file_size
-                ti['transfer_done'] = False
-                ti['bytes_transferred'] = 0
-                ti['progress'] = []
-                self.traffic_info[connection_key] = ti
-
-                # Node側のtransfer_infoにも反映（self.tcp_connectionsがNodeで管理されていると仮定）
-                if connection_key in self.node.tcp_connections:
-                    self.node.tcp_connections[connection_key]['transfer_info'] = ti
-
+                # Node側のtransfer_infoに直接設定
+                self.node.tcp_connections[connection_key]['transfer_info'] = transfer_info
                 self.outgoing_data[connection_key] = file_data
 
                 self.send_ftp_response(client_ip, client_port, server_port, "150 File status okay; about to open data connection.\r\n")
-
-                # 最初のチャンク送信
                 self.send_next_chunk(connection_key, client_ip, client_port, server_port)
 
     def send_next_chunk(self, connection_key, client_ip, client_port, server_port):
