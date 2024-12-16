@@ -234,16 +234,26 @@ class Node:
         cwnd = self.tcp_connections[connection_key]['cwnd']
         ssthresh = self.tcp_connections[connection_key]['ssthresh']
 
+        # 状態遷移の前に現在の状態を保存
+        prev_state = self.tcp_connections[connection_key]['congestion_state']
+
         if new_state == 'slow_start':
             # スロースタート状態への遷移
-            self.tcp_connections[connection_key]['cwnd'] = max(cwnd // 4, 2)  # より緩やかな減少
-            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 4)  # 最小値を4に
+            if prev_state == 'fast_recovery':
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd // 2, 4)
+            else:
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd // 4, 4)
+            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 8)
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {ssthresh}, cwnd reset to {self.tcp_connections[connection_key]['cwnd']}.")
+                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {self.tcp_connections[connection_key]['ssthresh']}, cwnd set to {self.tcp_connections[connection_key]['cwnd']}.")
 
         elif new_state == 'congestion_avoidance':
             # 輻輳回避状態への遷移
+            if prev_state == 'slow_start':
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd, 4)
+            else:
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd + 1, 4)
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
@@ -251,7 +261,7 @@ class Node:
         elif new_state == 'fast_recovery':
             # Fast Recovery状態への遷移
             self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 2)
-            self.tcp_connections[connection_key]['cwnd'] = ssthresh + 3  # ssthresh + 3つの重複ACKを考慮
+            self.tcp_connections[connection_key]['cwnd'] = ssthresh + 3
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Transitioning to {new_state} for connection {connection_key}. cwnd set to {self.tcp_connections[connection_key]['cwnd']}.")
