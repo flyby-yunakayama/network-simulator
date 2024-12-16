@@ -261,7 +261,7 @@ class Node:
     def handle_acknowledgement(self, connection_key, ack_number):
         if connection_key not in self.tcp_connections:
             return  # コネクションが存在しない場合は何もしない
-        
+
         if connection_key in self.tcp_connections:
             print(f"[DEBUG] handle_acknowledgement for {connection_key}, ack_number={ack_number}")
             print(f"[DEBUG] cwnd={self.tcp_connections[connection_key]['cwnd']}, ssthresh={self.tcp_connections[connection_key]['ssthresh']}")
@@ -303,7 +303,11 @@ class Node:
             if seq_to_retransmit is not None:
                 # partial ACK判定
                 if ack_number > last_ack and ack_number < self.windows[connection_key][seq_to_retransmit]["expected_ack_number"]:
-                    self.adjust_congestion_window(connection_key)
+                    # partial ACK時はcwndを1減少させ、最小値を保証
+                    self.tcp_connections[connection_key]['cwnd'] = max(
+                        self.tcp_connections[connection_key]['cwnd'] - 1,
+                        self.tcp_connections[connection_key]['ssthresh']
+                    )
                     # パケット再送
                     self.retransmit_packet(connection_key, seq_to_retransmit)
                     self.schedule_send_next_chunk(connection_key)
@@ -369,7 +373,12 @@ class Node:
         if connection_key in self.windows and sequence_number in self.windows[connection_key]:
             attempt = self.windows[connection_key][sequence_number]["attempt"]
             packet_info = self.windows[connection_key][sequence_number]["packet_info"]
-            
+
+            # タイムアウト時のssthreshとcwndの更新
+            current_cwnd = self.tcp_connections[connection_key]['cwnd']
+            self.tcp_connections[connection_key]['ssthresh'] = max(current_cwnd // 2, 2)
+            self.tcp_connections[connection_key]['cwnd'] = 1
+
             # 再送試行回数をチェック
             if attempt < self.max_attempts - 1:
                 if self.network_event_scheduler.tcp_verbose:
@@ -382,9 +391,9 @@ class Node:
                     print(f"Maximum attempts reached for sequence number: {sequence_number}. Dropping packet.")
                 del self.windows[connection_key][sequence_number]  # タイムアウトしたパケットをウィンドウから削除
 
-            # Renoでは、タイムアウトが発生した場合、スロースタートに戻る
+            # スロースタートに遷移
             self.transition_to_state(connection_key, 'slow_start')
-            
+
             # タイムアウト処理の完了をログに記録
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Timeout handled for connection {connection_key}. State transitioned to slow_start.")
@@ -426,12 +435,22 @@ class Node:
             self.windows[connection_key][sequence_number]["attempt"] += 1
 
             if self.windows[connection_key][sequence_number]["attempt"] >= self.max_attempts:
-                # 最大試行回数到達
+                # 最大試行回数到達時の処理
                 if self.network_event_scheduler.tcp_verbose:
-                    print(f"Maximum retransmission attempts reached for packet with sequence number {sequence_number}. Dropping the packet.")
+                    print(f"Maximum retransmission attempts reached for packet with sequence number {sequence_number}. Resetting connection state.")
+
+                # タイムアウト時のssthreshとcwndの更新
+                current_cwnd = self.tcp_connections[connection_key]['cwnd']
+                self.tcp_connections[connection_key]['ssthresh'] = max(current_cwnd // 2, 2)
+                self.tcp_connections[connection_key]['cwnd'] = 1
+
+                # イベントとウィンドウエントリのクリーンアップ
                 self.cancel_timeout(connection_key, sequence_number)
-                self.cancel_retransmission_event(connection_key, sequence_number)  # 再送イベントキャンセル
+                self.cancel_retransmission_event(connection_key, sequence_number)
                 del self.windows[connection_key][sequence_number]
+
+                # スロースタートへの遷移
+                self.transition_to_state(connection_key, 'slow_start')
             else:
                 # 再送イベントを再スケジュール前にキャンセルしてから再スケジュール
                 self.cancel_retransmission_event(connection_key, sequence_number)
@@ -497,7 +516,6 @@ class Node:
         ssthresh = self.tcp_connections[connection_key]['ssthresh']
 
         if state == 'slow_start':
-            # スロースタート: cwndを指数関数的に増加させる
             new_cwnd = min(cwnd + 1, self.MAX_CWND)
             self.tcp_connections[connection_key]['cwnd'] = new_cwnd
             self.log_congestion_window(connection_key, new_cwnd, 'slow_start')
@@ -506,12 +524,11 @@ class Node:
                 print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in slow start.")
 
             if new_cwnd >= ssthresh:
-                # ssthreshに達したら輻輳回避へ移行
                 self.transition_to_state(connection_key, 'congestion_avoidance')
 
         elif state == 'congestion_avoidance':
-            # 輻輳回避: cwndを線形に増加
-            new_cwnd = min(cwnd + (1 / cwnd), self.MAX_CWND)
+            increment = max(1, int(1 / cwnd))
+            new_cwnd = min(cwnd + increment, self.MAX_CWND)
             self.tcp_connections[connection_key]['cwnd'] = new_cwnd
             self.log_congestion_window(connection_key, new_cwnd, 'congestion_avoidance')
 
@@ -519,7 +536,6 @@ class Node:
                 print(f"Updated cwnd to {new_cwnd} for connection {connection_key} in congestion avoidance.")
 
         elif state == 'fast_recovery':
-            # Fast Recovery: cwndを1増加させる
             new_cwnd = min(cwnd + 1, self.MAX_CWND)
             self.tcp_connections[connection_key]['cwnd'] = new_cwnd
             self.log_congestion_window(connection_key, new_cwnd, 'fast_recovery')
@@ -535,9 +551,8 @@ class Node:
                     last_ack_number = self.tcp_connections[connection_key].get("last_ack_number")
                     print(f"Duplicate ACK threshold reached for connection {connection_key} with ACK number {last_ack_number}.")
 
-                # スロースタート状態への遷移
-                self.transition_to_state(connection_key, 'slow_start')
-
+                # 3重複ACK検出時にfast_retransmitを呼び出し、fast_recoveryに遷移
+                self.fast_retransmit(connection_key)
                 return True
             else:
                 return False
