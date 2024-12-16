@@ -12,6 +12,8 @@ class Link:
         self.bandwidth = bandwidth
         self.delay = delay
         self.loss_rate = loss_rate
+        self.dropped_packets = 0  # パケットロスのカウント用
+        self.total_packets = 0    # 総パケット数のカウント用
         self.is_active = True
         self.network_event_scheduler = network_event_scheduler
         self.local_seed = self.network_event_scheduler.get_seed()
@@ -32,7 +34,7 @@ class Link:
         # リンクとIPアドレスをノードに追加
         node_x.add_link(self, ip_x)
         node_y.add_link(self, ip_y)
-        
+
         label = f'{bandwidth/1000000} Mbps, {delay} s'
         self.network_event_scheduler.add_link(node_x.node_id, node_y.node_id, label, self.bandwidth, self.delay)
 
@@ -156,14 +158,23 @@ class Link:
                 if self.network_event_scheduler.link_verbose:
                     print(f"{self.network_event_scheduler.current_time:.6f}: Packet transferred from Link {self.node_x.node_id}-{self.node_y.node_id} to {from_node.node_id}. Packet size: {packet.size} bytes, Priority: {packet.get_priority()}")
 
+                self.total_packets += 1
                 if self.should_drop_packet(packet):
+                    self.dropped_packets += 1
                     if self.network_event_scheduler.link_verbose:
-                        print(f"{self.network_event_scheduler.current_time:.6f}: Packet dropped at Link {self.node_x.node_id}-{self.node_y.node_id}.")
+                        print(f"{self.network_event_scheduler.current_time:.6f}: Packet dropped at Link {self.node_x.node_id}-{self.node_y.node_id}. "
+                              f"Total drops: {self.dropped_packets}/{self.total_packets} "
+                              f"({self.dropped_packets/self.total_packets*100:.2f}%)")
                     packet.set_arrived(-1)
                 else:
                     next_node = self.node_x if from_node != self.node_x else self.node_y
+                    # 伝搬遅延とキュー遅延を分離
+                    propagation_delay = self.delay
+                    queuing_delay = len(queue) * packet.size * 8 / self.bandwidth
+                    total_delay = min(propagation_delay + queuing_delay, self.delay * 2)  # 最大遅延を制限
+
                     self.network_event_scheduler.schedule_event(
-                        self.network_event_scheduler.current_time + self.delay,
+                        self.network_event_scheduler.current_time + total_delay,
                         next_node.receive_packet,
                         packet,
                         self

@@ -30,8 +30,8 @@ class Node:
         self.port_mapping = {}
         self.tcp_connections = {}
         self.cwnd = 1
-        self.ssthresh = 16
-        self.MAX_CWND = 64
+        self.ssthresh = 32
+        self.MAX_CWND = 128
         self.tcp_state = {}
         self.max_attempts = 10
         self.windows = {}
@@ -236,11 +236,11 @@ class Node:
 
         if new_state == 'slow_start':
             # スロースタート状態への遷移
-            self.tcp_connections[connection_key]['cwnd'] = 1
-            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 2)
+            self.tcp_connections[connection_key]['cwnd'] = max(cwnd // 4, 2)  # より緩やかな減少
+            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 4)  # 最小値を4に
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {ssthresh}, cwnd reset to 1.")
+                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {ssthresh}, cwnd reset to {self.tcp_connections[connection_key]['cwnd']}.")
 
         elif new_state == 'congestion_avoidance':
             # 輻輳回避状態への遷移
