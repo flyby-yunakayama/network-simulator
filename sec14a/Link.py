@@ -168,20 +168,11 @@ class Link:
                     packet.set_arrived(-1)
                 else:
                     next_node = self.node_x if from_node != self.node_x else self.node_y
-                    # 遅延計算の最適化（より洗練された方法）
+                    # 遅延計算の最適化
                     propagation_delay = self.delay
                     queue_size = len(queue)
-
-                    # パケットサイズに基づく理論的な最小遅延を計算
-                    theoretical_min_delay = packet.size * 8 / self.bandwidth
-
-                    # キューサイズに基づく動的な制限係数を計算（キューが大きいほど厳しく制限）
-                    queue_factor = 1.0 / (1.0 + queue_size * 0.1)  # キューサイズが大きいほど小さくなる係数
-                    max_queuing_delay = self.delay * 0.25 * queue_factor  # キューが大きいほど制限が厳しくなる
-
-                    # キュー遅延を計算して制限を適用
-                    queuing_delay = min(queue_size * theoretical_min_delay, max_queuing_delay)
-                    total_delay = min(propagation_delay + queuing_delay, self.delay)  # 合計遅延を基本遅延以下に制限
+                    queue_factor = min(queue_size / 10, 1.0)  # キューサイズに基づく係数（最大1.0）
+                    total_delay = propagation_delay * (1 + queue_factor * 0.5)  # キューによる追加遅延を50%に制限
 
                     self.network_event_scheduler.schedule_event(
                         self.network_event_scheduler.current_time + total_delay,
@@ -218,15 +209,21 @@ class Link:
                 self.is_transferring_yx = False
 
     def should_drop_packet(self, packet):
-        """パケットがドロップされるべきかどうかを判断するメソッド"""
-        # パケットがUDPPacketの場合、ロス率に応じてドロップする
-        if isinstance(packet, UDPPacket):
-            return random.random() < self.loss_rate
-        # パケットがTCPPacketでフラグがPSHの場合、ロス率に応じてドロップする
-        elif isinstance(packet, TCPPacket) and "PSH" in packet.header.get('flags', ''):
-            return random.random() < self.loss_rate
-        # それ以外の場合はドロップしない
-        return False
+        """パケットをドロップするかどうかを決定する"""
+        if not isinstance(packet, (TCPPacket, UDPPacket)):
+            return False
+
+        # TCPパケットの場合、PSHフラグがある場合のみドロップ対象
+        if isinstance(packet, TCPPacket):
+            if "PSH" not in packet.header.get('flags', ''):
+                return False
+
+        # キューサイズに基づくドロップ確率の調整
+        queue_size = len(self.priority_queues_xy[packet.get_priority()])
+        queue_factor = min(queue_size / 10, 1.0)  # キューサイズによる係数
+        effective_loss_rate = self.loss_rate * (1 + queue_factor)  # キューサイズに応じて損失率を増加
+
+        return random.random() < effective_loss_rate
 
     def __str__(self):
         return f"リンク({self.node_x.node_id} ↔ {self.node_y.node_id}, 帯域幅: {self.bandwidth}, 遅延: {self.delay}, パケットロス率: {self.loss_rate})"
