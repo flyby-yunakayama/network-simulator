@@ -30,19 +30,19 @@ link1 = Link(client1, server1, bandwidth=1000000, delay=0.01, loss_rate=0.04, ne
 #nes.draw()
 
 # ファイル読み込み（サーバ側ファイル想定）
-file_path = '/content/sample_data/california_housing_test.csv'
+file_path = 'data/cat.jpg'
 with open(file_path, 'rb') as f:
     file_data = f.read()
 
 # サーバにファイル登録
-ftp_server.shared_files["testfile.txt"] = file_data
+ftp_server.shared_files["cat.jpg"] = file_data
 
 # クライアント側でFTP転送を開始する処理
 # ここでは1.0秒後に実行されるようスケジューリング
 def start_ftp_transfer():
     ftp_client.connect(server_ip="192.168.1.250/24", server_port=21)
     # コネクション確立後、USER/PASSとRETR testfile.txtを行うようなロジックをFTPClient内に実装
-    ftp_client.retrieve_file("testfile.txt")
+    ftp_client.retrieve_file("cat.jpg")
 
 # UDPトラフィック開始処理
 def start_udp_traffic():
