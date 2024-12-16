@@ -168,13 +168,20 @@ class Link:
                     packet.set_arrived(-1)
                 else:
                     next_node = self.node_x if from_node != self.node_x else self.node_y
-                    # 遅延計算の最適化
+                    # 遅延計算の最適化（より洗練された方法）
                     propagation_delay = self.delay
                     queue_size = len(queue)
-                    # キュー遅延を厳格に制限（帯域幅に基づく理論的な最小値を考慮）
+
+                    # パケットサイズに基づく理論的な最小遅延を計算
                     theoretical_min_delay = packet.size * 8 / self.bandwidth
-                    queuing_delay = min(queue_size * theoretical_min_delay, self.delay / 2)  # キュー遅延を伝搬遅延の半分に制限
-                    total_delay = propagation_delay + queuing_delay
+
+                    # キューサイズに基づく動的な制限係数を計算（キューが大きいほど厳しく制限）
+                    queue_factor = 1.0 / (1.0 + queue_size * 0.1)  # キューサイズが大きいほど小さくなる係数
+                    max_queuing_delay = self.delay * 0.25 * queue_factor  # キューが大きいほど制限が厳しくなる
+
+                    # キュー遅延を計算して制限を適用
+                    queuing_delay = min(queue_size * theoretical_min_delay, max_queuing_delay)
+                    total_delay = min(propagation_delay + queuing_delay, self.delay)  # 合計遅延を基本遅延以下に制限
 
                     self.network_event_scheduler.schedule_event(
                         self.network_event_scheduler.current_time + total_delay,
