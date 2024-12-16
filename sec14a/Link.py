@@ -168,11 +168,30 @@ class Link:
                     packet.set_arrived(-1)
                 else:
                     next_node = self.node_x if from_node != self.node_x else self.node_y
-                    # 遅延計算の最適化
+                    # 遅延計算の最適化（より厳密な制御と制限）
                     propagation_delay = self.delay
                     queue_size = len(queue)
-                    queue_factor = min(queue_size / 10, 1.0)  # キューサイズに基づく係数（最大1.0）
-                    total_delay = propagation_delay * (1 + queue_factor * 0.5)  # キューによる追加遅延を50%に制限
+
+                    # 理論的な最小遅延を計算
+                    theoretical_min_delay = packet.size * 8 / self.bandwidth
+
+                    # キューサイズに基づく係数（より厳密な制御）
+                    queue_factor = min(queue_size / 30, 0.3)  # キューの影響をさらに抑制
+
+                    # 基本遅延の計算
+                    base_delay = max(propagation_delay, theoretical_min_delay)
+
+                    # キューによる追加遅延を計算（より制限的）
+                    queue_delay = base_delay * queue_factor
+
+                    # 合計遅延を計算し、上限を設定
+                    total_delay = base_delay + queue_delay
+                    max_delay = base_delay * 1.3  # 最大で基本遅延の1.3倍まで
+                    total_delay = min(total_delay, max_delay)
+
+                    # デバッグ情報の出力
+                    if self.network_event_scheduler.link_verbose:
+                        print(f"Delay calculation: base={base_delay:.6f}, queue={queue_delay:.6f}, total={total_delay:.6f}")
 
                     self.network_event_scheduler.schedule_event(
                         self.network_event_scheduler.current_time + total_delay,
@@ -193,8 +212,6 @@ class Link:
                     if self.network_event_scheduler.link_verbose:
                         print(f"{self.network_event_scheduler.current_time:.6f}: Schedule next packet transfer after {packet_transfer_time} seconds")
                 else:
-                    #print(f"{self.network_event_scheduler.current_time:.6f}, queue is empty")
-                    # キューが空の場合、転送中フラグをリセット
                     if from_node == self.node_x:
                         self.is_transferring_xy = False
                     else:
@@ -202,7 +219,6 @@ class Link:
 
                 break  # 一度に一つのパケットのみ処理
         else:
-            # キューが空の場合、転送中フラグをリセット
             if from_node == self.node_x:
                 self.is_transferring_xy = False
             else:

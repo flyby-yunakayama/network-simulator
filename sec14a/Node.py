@@ -222,7 +222,7 @@ class Node:
         }
 
     def transition_to_state(self, connection_key, new_state):
-        """状態遷移を管理する（クールダウン期間付き）"""
+        """状態遷移を管理する（クールダウン期間と遷移条件の厳密化）"""
         if connection_key not in self.tcp_connections:
             return
 
@@ -240,7 +240,7 @@ class Node:
 
         # 前回の状態遷移からの経過時間をチェック
         last_transition = self.tcp_connections[connection_key].get('last_transition_time', 0)
-        cooldown_period = 0.2  # クールダウン期間を0.2秒に増加
+        cooldown_period = 0.25  # クールダウン期間をさらに延長
         if current_time - last_transition < cooldown_period:  # クールダウン期間中は状態遷移をスキップ
             return
 
