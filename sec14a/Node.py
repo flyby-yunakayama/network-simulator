@@ -30,8 +30,8 @@ class Node:
         self.port_mapping = {}
         self.tcp_connections = {}
         self.cwnd = 1
-        self.ssthresh = 16
-        self.MAX_CWND = 64
+        self.ssthresh = 32
+        self.MAX_CWND = 128
         self.tcp_state = {}
         self.max_attempts = 10
         self.windows = {}
@@ -222,7 +222,7 @@ class Node:
         }
 
     def transition_to_state(self, connection_key, new_state):
-        """指定された状態へ遷移し、関連する操作を行います。"""
+        """状態遷移を管理する（クールダウン期間と遷移条件の厳密化）"""
         if connection_key not in self.tcp_connections:
             return
 
@@ -233,25 +233,48 @@ class Node:
         # 現在のcwndとssthreshを取得
         cwnd = self.tcp_connections[connection_key]['cwnd']
         ssthresh = self.tcp_connections[connection_key]['ssthresh']
+        current_time = self.network_event_scheduler.current_time
+
+        # 状態遷移の前に現在の状態を保存
+        prev_state = self.tcp_connections[connection_key]['congestion_state']
+
+        # 前回の状態遷移からの経過時間をチェック
+        last_transition = self.tcp_connections[connection_key].get('last_transition_time', 0)
+        cooldown_period = 0.25  # クールダウン期間をさらに延長
+        if current_time - last_transition < cooldown_period:  # クールダウン期間中は状態遷移をスキップ
+            return
+
+        # 状態遷移時刻を更新
+        self.tcp_connections[connection_key]['last_transition_time'] = current_time
 
         if new_state == 'slow_start':
             # スロースタート状態への遷移
-            self.tcp_connections[connection_key]['cwnd'] = 1
-            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 2)
+            if prev_state == 'fast_recovery':
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd // 2, 4)
+            else:
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd // 4, 4)
+            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 8)
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {ssthresh}, cwnd reset to 1.")
+                print(f"Transitioning to {new_state} for connection {connection_key}. ssthresh set to {self.tcp_connections[connection_key]['ssthresh']}, cwnd set to {self.tcp_connections[connection_key]['cwnd']}.")
 
         elif new_state == 'congestion_avoidance':
             # 輻輳回避状態への遷移
+            if prev_state == 'slow_start':
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd, 4)
+            else:
+                self.tcp_connections[connection_key]['cwnd'] = max(cwnd + 1, 4)
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Transitioning to {new_state} for connection {connection_key}. Continuing to increase cwnd linearly.")
 
         elif new_state == 'fast_recovery':
-            # Fast Recovery状態への遷移
-            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 2)
-            self.tcp_connections[connection_key]['cwnd'] = ssthresh + 3  # ssthresh + 3つの重複ACKを考慮
+            # Fast Recovery状態への遷移をより安定化
+            self.tcp_connections[connection_key]['ssthresh'] = max(cwnd // 2, 4)
+            if prev_state == 'congestion_avoidance':
+                self.tcp_connections[connection_key]['cwnd'] = max(ssthresh + 2, 4)
+            else:
+                self.tcp_connections[connection_key]['cwnd'] = max(ssthresh + 3, 4)
             self.tcp_connections[connection_key]['congestion_state'] = new_state
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Transitioning to {new_state} for connection {connection_key}. cwnd set to {self.tcp_connections[connection_key]['cwnd']}.")

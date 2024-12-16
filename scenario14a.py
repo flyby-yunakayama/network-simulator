@@ -3,6 +3,13 @@ from sec14a.Node import Node
 from sec14a.Switch import Switch
 from sec14a.Link import Link
 from sec14a.Application import UDPApp, FTPClient, FTPServer
+import argparse
+
+# コマンドライン引数の処理
+parser = argparse.ArgumentParser(description='ネットワークシミュレーション実行')
+parser.add_argument('--loss_rate', type=float, default=0.04,
+                  help='パケットロス率 (0.0 ~ 1.0)')
+args = parser.parse_args()
 
 nes = NetworkEventScheduler(seed=7, log_enabled=True, verbose=False, tcp_verbose=True, link_verbose=False)
 
@@ -24,7 +31,7 @@ client1.register_application(0, "TCP", ftp_client)
 udp_app = UDPApp(client1)
 
 # リンクの設定
-link1 = Link(client1, server1, bandwidth=1000000, delay=0.01, loss_rate=0.04, network_event_scheduler=nes)
+link1 = Link(client1, server1, bandwidth=1000000, delay=0.01, loss_rate=args.loss_rate, network_event_scheduler=nes)
 
 # ネットワークのトポロジを描画
 #nes.draw()
