@@ -248,6 +248,7 @@ class NetworkEventScheduler:
                 data["received_packets"] += 1
                 data["received_bytes"] += log["size"]
                 # send_timeがあればそちらを使用
+                print(log["arrival_time"], log["send_time"])
                 if "send_time" in log and log["send_time"] is not None:
                     delay = log["arrival_time"] - log["send_time"]
                 else:
