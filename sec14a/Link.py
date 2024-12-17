@@ -168,30 +168,11 @@ class Link:
                     packet.set_arrived(-1)
                 else:
                     next_node = self.node_x if from_node != self.node_x else self.node_y
-                    # 遅延計算の最適化（より厳密な制御と制限）
+
+                    # 遅延計算
                     propagation_delay = self.delay
-                    queue_size = len(queue)
-
-                    # 理論的な最小遅延を計算
-                    theoretical_min_delay = packet.size * 8 / self.bandwidth
-
-                    # キューサイズに基づく係数（より厳密な制御）
-                    queue_factor = min(queue_size / 30, 0.3)  # キューの影響をさらに抑制
-
-                    # 基本遅延の計算
-                    base_delay = max(propagation_delay, theoretical_min_delay)
-
-                    # キューによる追加遅延を計算（より制限的）
-                    queue_delay = base_delay * queue_factor
-
-                    # 合計遅延を計算し、上限を設定
-                    total_delay = base_delay + queue_delay
-                    max_delay = base_delay * 1.3  # 最大で基本遅延の1.3倍まで
-                    total_delay = min(total_delay, max_delay)
-
-                    # デバッグ情報の出力
-                    if self.network_event_scheduler.link_verbose:
-                        print(f"Delay calculation: base={base_delay:.6f}, queue={queue_delay:.6f}, total={total_delay:.6f}")
+                    transmission_time = (packet.size * 8) / self.bandwidth
+                    total_delay = propagation_delay + transmission_time
 
                     self.network_event_scheduler.schedule_event(
                         self.network_event_scheduler.current_time + total_delay,
