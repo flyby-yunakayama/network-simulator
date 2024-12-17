@@ -222,7 +222,7 @@ class Node:
         }
 
     def transition_to_state(self, connection_key, new_state):
-        """状態遷移を管理する（クールダウン期間と遷移条件の厳密化）"""
+        """状態遷移を管理する"""
         if connection_key not in self.tcp_connections:
             return
 
@@ -233,10 +233,6 @@ class Node:
         # 現在のcwndとssthreshを取得
         cwnd = self.tcp_connections[connection_key]['cwnd']
         ssthresh = self.tcp_connections[connection_key]['ssthresh']
-        current_time = self.network_event_scheduler.current_time
-
-        # 状態遷移の前に現在の状態を保存
-        prev_state = self.tcp_connections[connection_key]['congestion_state']
 
         if new_state == 'slow_start':
             # スロースタート状態への遷移（タイムアウト時）
@@ -294,14 +290,18 @@ class Node:
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Transfer Progress: {bytes_acked}/{transfer_info['file_size']} bytes transferred.")
 
-        # fast_recovery中のpartial ACK処理追加:
-        # fast_recovery状態のとき、受信ACKがウィンドウ内の一部のみをACKする場合、
-        # cwndを増加させつつ追加パケットを送る。Renoではpartial ACK時に高速再送を行う。
-        state = self.tcp_connections[connection_key]['congestion_state']
+        # 現在のACK番号と前回のACK番号を取得
         last_ack = self.tcp_connections[connection_key].get("last_ack_number", 0)
+
+        # ACK番号の判定
+        is_duplicate_ack = (ack_number == last_ack)
+
+        # 最新のACK番号を設定
         self.tcp_connections[connection_key]["last_ack_number"] = ack_number
 
-        # fast_recovery中かつpartial ACKの処理
+        # fast_recovery中のpartial ACK処理追加
+        state = self.tcp_connections[connection_key]['congestion_state']
+
         if state == 'fast_recovery':
             seq_to_retransmit = self.find_retransmit_sequence_number(connection_key)
             if seq_to_retransmit is not None:
@@ -322,25 +322,16 @@ class Node:
                     self.transition_to_state(connection_key, 'congestion_avoidance')
                     self.schedule_send_next_chunk(connection_key)
                     return
-            else:
-                # 再送すべきパケットなし、fast recovery抜ける
-                self.tcp_connections[connection_key]['cwnd'] = self.tcp_connections[connection_key]['ssthresh']
-                self.transition_to_state(connection_key, 'congestion_avoidance')
-                self.schedule_send_next_chunk(connection_key)
-                return
 
         # 通常ACK処理（fast_recoveryでない場合）
-        if self.tcp_connections[connection_key]["last_ack_number"] == ack_number:
-            # 重複ACK
+        if is_duplicate_ack:
+            # 重複ACKとしてカウント
             self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
             if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
                 self.fast_retransmit(connection_key)
                 self.schedule_send_next_chunk(connection_key)
-            else:
-                self.adjust_congestion_window(connection_key)
-                self.schedule_send_next_chunk(connection_key)
         else:
-            # 新しいACK
+            # 新しいACKとして処理
             self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
             self.adjust_congestion_window(connection_key)
             self.schedule_send_next_chunk(connection_key)
@@ -486,7 +477,7 @@ class Node:
             self.cancel_retransmission_event(connection_key, seq_num)
             self.schedule_retransmission(connection_key)
         else:
-            # 再送すべきパケットなしの場合の処理(必要に応じて)
+            # 再送すべきパケットなしの場合の処理
             self.tcp_connections[connection_key]['cwnd'] = self.tcp_connections[connection_key]['ssthresh']
             self.transition_to_state(connection_key, 'congestion_avoidance')
 
