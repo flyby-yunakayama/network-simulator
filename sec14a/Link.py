@@ -174,6 +174,10 @@ class Link:
                     transmission_time = (packet.size * 8) / self.bandwidth
                     total_delay = propagation_delay + transmission_time
 
+                    if getattr(packet, 'send_time', None) is None and from_node.ip_address == packet.header["source_ip"]:
+                        packet.send_time = self.network_event_scheduler.current_time
+                    self.network_event_scheduler.log_packet_info(packet, "sent", from_node.node_id)
+
                     self.network_event_scheduler.schedule_event(
                         self.network_event_scheduler.current_time + total_delay,
                         next_node.receive_packet,
