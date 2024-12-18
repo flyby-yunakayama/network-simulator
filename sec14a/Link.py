@@ -219,12 +219,7 @@ class Link:
             if "PSH" not in packet.header.get('flags', ''):
                 return False
 
-        # キューサイズに基づくドロップ確率の調整
-        queue_size = len(self.priority_queues_xy[packet.get_priority()])
-        queue_factor = min(queue_size / 10, 1.0)  # キューサイズによる係数
-        effective_loss_rate = self.loss_rate * (1 + queue_factor)  # キューサイズに応じて損失率を増加
-
-        return random.random() < effective_loss_rate
+        return random.random() < self.loss_rate
 
     def __str__(self):
         return f"リンク({self.node_x.node_id} ↔ {self.node_y.node_id}, 帯域幅: {self.bandwidth}, 遅延: {self.delay}, パケットロス率: {self.loss_rate})"
