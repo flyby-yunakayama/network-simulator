@@ -997,6 +997,7 @@ class Node:
 
             # ファイル転送中で、まだtransfer_doneがFalseかつ実データがある場合のみupdate_data_after_sendを呼ぶ
             if traffic_info and traffic_info.get('file_size', 0) > 0 and not traffic_info.get('transfer_done', False) and len(chunk) > 0:
+                app = self.application_layer
                 app.update_data_after_send(connection_key, len(chunk))
 
     def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags=""):
