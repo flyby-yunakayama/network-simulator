@@ -539,7 +539,7 @@ class FTPServer:
             dscp=0,
             source_port=server_port,
             destination_port=client_port,
-            flags="PSH"
+            flags="ACK"
         )
 
     def set_traffic_info(self, connection_key):

@@ -282,7 +282,7 @@ class Node:
         transfer_info = self.tcp_connections[connection_key].get('transfer_info', None)
 
         # ここからは転送進捗更新など
-        if transfer_info:
+        if transfer_info and transfer_info['file_size'] > 0:
             sequence_number_base = self.tcp_connections[connection_key].get("sequence_number_base", 0)
             bytes_acked = ack_number - sequence_number_base
             if bytes_acked > transfer_info['bytes_transferred']:
@@ -1000,7 +1000,7 @@ class Node:
                 app = self.application_layer
                 app.update_data_after_send(connection_key, len(chunk))
 
-    def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags=""):
+    def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags="ACK"):
         """
         制御メッセージ(FTPの220,331,230,150,226など)を送信するための関数。
         file_sizeやtransfer_doneなどファイル転送特有のロジックは排除するが、
