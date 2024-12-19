@@ -166,24 +166,24 @@ class Link:
                               f"Total drops: {self.dropped_packets}/{self.total_packets} "
                               f"({self.dropped_packets/self.total_packets*100:.2f}%)")
                     packet.set_arrived(-1)
-                else:
-                    next_node = self.node_x if from_node != self.node_x else self.node_y
 
-                    # 遅延計算
-                    propagation_delay = self.delay
-                    transmission_time = (packet.size * 8) / self.bandwidth
-                    total_delay = propagation_delay + transmission_time
+                next_node = self.node_x if from_node != self.node_x else self.node_y
 
-                    if getattr(packet, 'send_time', None) is None and from_node.ip_address == packet.header["source_ip"]:
-                        packet.send_time = self.network_event_scheduler.current_time
-                    self.network_event_scheduler.log_packet_info(packet, "sent", from_node.node_id)
+                # 遅延計算
+                propagation_delay = self.delay
+                transmission_time = (packet.size * 8) / self.bandwidth
+                total_delay = propagation_delay + transmission_time
 
-                    self.network_event_scheduler.schedule_event(
-                        self.network_event_scheduler.current_time + total_delay,
-                        next_node.receive_packet,
-                        packet,
-                        self
-                    )
+                if getattr(packet, 'send_time', None) is None and from_node.ip_address == packet.header["source_ip"]:
+                    packet.send_time = self.network_event_scheduler.current_time
+                self.network_event_scheduler.log_packet_info(packet, "sent", from_node.node_id)
+
+                self.network_event_scheduler.schedule_event(
+                    self.network_event_scheduler.current_time + total_delay,
+                    next_node.receive_packet,
+                    packet,
+                    self
+                )
 
                 # 現在のパケットの転送時間後に次のパケット送信をスケジュール
                 if self.network_event_scheduler.link_verbose:
