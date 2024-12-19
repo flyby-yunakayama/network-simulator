@@ -495,7 +495,7 @@ class FTPServer:
                 self.send_next_chunk(connection_key, client_ip, client_port, server_port)
 
     def send_next_chunk(self, connection_key, client_ip, client_port, server_port):
-        chunk = self.get_data_chunk(connection_key, self.traffic_info[connection_key]['payload_size'])
+        chunk = self.get_data_chunk(connection_key, self.node.tcp_connections[connection_key]['transfer_info']['payload_size'])
         if chunk:
             self.node.send_app_data(client_ip, chunk, protocol="TCP", source_port=server_port, destination_port=client_port)
         else:
