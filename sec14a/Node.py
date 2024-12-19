@@ -881,6 +881,7 @@ class Node:
             print(connection_key, traffic_info)
             print("###################################")
 
+            app_type = self.application_layer.connection_app_map.get(connection_key, None)
             end_time = traffic_info['end_time']
             if self.network_event_scheduler.current_time < end_time:
                 new_kwargs = dict(kwargs)
