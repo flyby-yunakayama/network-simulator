@@ -130,7 +130,7 @@ class Node:
     def process_ARP_packet(self, packet):
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
         packet.set_arrived(self.network_event_scheduler.current_time)
-
+        
         if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF":
             if packet.payload.get("operation") == "request" and packet.payload["destination_ip"] == self.ip_address:
                 self._send_arp_reply(packet)
