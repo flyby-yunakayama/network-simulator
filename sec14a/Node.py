@@ -381,6 +381,8 @@ class Node:
                     print(f"Timeout for sequence number {sequence_number}. Retransmitting packet.")
                 # パケット情報から再送するパケットを再構築
                 self.retransmit_packet(connection_key, sequence_number)
+                # 再送後に再度timeout設定
+                self.schedule_timeout(connection_key, sequence_number)
             else:
                 # 最大試行回数に達した場合、パケットをドロップ
                 if self.network_event_scheduler.tcp_verbose:
