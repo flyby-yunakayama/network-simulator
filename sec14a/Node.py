@@ -864,10 +864,15 @@ class Node:
                 raise ValueError("TCP connection requires a destination_port")
 
             connection_key = (dst_ip, destination_port)
-            app_type = self.application_layer.connection_app_map.get(connection_key, None)
+            conn_info = self.tcp_connections.get(connection_key)
+            if not conn_info:
+                if self.network_event_scheduler.tcp_verbose:
+                    print(f"No connection info found for {connection_key}. Cannot send data.")
+                return
 
-            traffic_info = self.application_layer.get_traffic_info(connection_key)
+            traffic_info = conn_info.get('transfer_info')
             if not traffic_info:
+                # traffic_infoがセットされていない場合も対応
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
                 return
@@ -920,9 +925,18 @@ class Node:
         TCP特有のデータ送信処理をまとめたヘルパー関数。
         Nodeのconnection_keyに対応するコネクション情報、appからのdata取得やsplitを行う。
         """
-        app = self.application_layer
-        traffic_info = app.get_traffic_info(connection_key)
+        # Nodeのtcp_connectionsからコネクション情報を取得
+        connection_info = self.tcp_connections.get(connection_key)
+        if not connection_info:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"[DEBUG] No connection info found for {connection_key}. Cannot send TCP data.")
+            return
+
+        # transfer_infoを取得
+        traffic_info = connection_info.get('transfer_info')
         if not traffic_info:
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"[DEBUG] No transfer_info found for {connection_key}. Cannot send TCP data.")
             return
 
         payload_size = traffic_info['payload_size']
