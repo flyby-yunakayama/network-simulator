@@ -430,9 +430,6 @@ class Node:
             self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
             self.windows[connection_key][sequence_number]["attempt"] += 1
 
-            # 再送パケットに対して改めてタイムアウトを設定
-            self.schedule_timeout(connection_key, sequence_number)
-
             if self.windows[connection_key][sequence_number]["attempt"] >= self.max_attempts:
                 # 最大試行回数到達時の処理
                 if self.network_event_scheduler.tcp_verbose:
