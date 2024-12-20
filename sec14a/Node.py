@@ -1048,6 +1048,7 @@ class Node:
         トランスポート層のパケットを送信する。
         """
         if isinstance(packet, TCPPacket):
+            print(f"[DEBUG] Sending TCP packet: Src={packet.source_ip}:{packet.source_port} Dst={packet.destination_ip}:{packet.destination_port} Flags={packet.flags} Seq={packet.sequence_number} Ack={packet.acknowledgment_number}")
             self._send_ip_packet_data(packet)
         else:
             raise ValueError("Invalid packet type")
