@@ -182,6 +182,7 @@ class Node:
                         self.establish_TCP_connection(connection_key, sequence_number)
                         self.send_TCP_ACK(connection_key, source_port, dscp)
                     else:
+                        self.establish_TCP_connection(connection_key, sequence_number)
                         self.send_TCP_SYN_ACK(connection_key, source_port, sequence_number, dscp)
                     return
 
@@ -193,10 +194,12 @@ class Node:
                 if "PSH" in flags:
                     self.update_ACK_number(connection_key, sequence_number, payload_length)
                     self.send_TCP_ACK(connection_key, source_port, dscp)
-                    self.process_data_packet(packet)
+                    if self.application_layer and hasattr(self.application_layer, 'on_data_received'):
+                        self.application_layer.on_data_received(connection_key, packet.payload)
 
                 if "FIN" in flags:
                     self.terminate_TCP_connection(connection_key)
+                    self.send_TCP_ACK(connection_key, source_port, dscp)
 
                 if self.application_layer and hasattr(self.application_layer, 'on_packet_received'):
                     self.application_layer.on_packet_received(packet)
@@ -418,11 +421,30 @@ class Node:
                 self.network_event_scheduler.cancel_event(event_id)
 
     def remove_acked_packets_from_window(self, connection_key, ack_number):
-        for seq, packet_info in list(self.windows[connection_key].items()):
-            if packet_info["expected_ack_number"] <= ack_number:
-                self.cancel_timeout(connection_key, seq)
-                self.cancel_retransmission_event(connection_key, seq)  # 再送イベントのキャンセルを追加
-                del self.windows[connection_key][seq]
+        """
+        ACKされたパケットをウィンドウから削除する
+        """
+        if connection_key not in self.tcp_connections:
+            return
+
+        window = self.tcp_connections[connection_key].get('window', [])
+        if not window:
+            return
+
+        print(f"[DEBUG] Removing acked packets up to {ack_number}")
+        print(f"[DEBUG] Window before: {window}")
+
+        # Remove acknowledged packets from window
+        self.tcp_connections[connection_key]['window'] = [
+            seq for seq in window if seq >= ack_number
+        ]
+
+        print(f"[DEBUG] Window after: {self.tcp_connections[connection_key]['window']}")
+
+        # Update next expected sequence number if window is empty
+        if not self.tcp_connections[connection_key]['window']:
+            self.tcp_connections[connection_key]['next_expected_seq'] = ack_number
+            print(f"[DEBUG] Updated next expected sequence to {ack_number}")
 
     def fast_retransmit(self, connection_key):
         self.transition_to_state(connection_key, 'fast_recovery')
@@ -519,21 +541,23 @@ class Node:
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
         received_end = received_sequence_number + payload_length
 
+        # Initialize next_expected_seq if not present
+        if 'next_expected_seq' not in self.tcp_connections[connection_key]:
+            self.tcp_connections[connection_key]['next_expected_seq'] = current_ack_number
+            print(f"[DEBUG] Initialized next_expected_seq to {current_ack_number}")
+
+        next_expected = self.tcp_connections[connection_key]['next_expected_seq']
+
         # TCPの基本動作に従った実装：
         # 1. 期待するシーケンス番号と一致する場合はACKを更新
         # 2. 期待するシーケンス番号より前のデータは既に受信済み
         # 3. 期待するシーケンス番号より後ろのデータは受信バッファに保存（今回は実装省略）
-        if received_sequence_number <= current_ack_number and received_end > current_ack_number:
-            # 受信済みデータの一部を含むが、新しいデータも含む場合
+        if received_sequence_number == next_expected:
             self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
-            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end} (partial new data)")
-        elif received_sequence_number == current_ack_number:
-            # 期待通りのシーケンス番号を受信
-            self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
-            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end} (in-order)")
+            self.tcp_connections[connection_key]['next_expected_seq'] = received_end
+            print(f"[DEBUG] Updated ACK to {received_end} (in-order packet)")
         else:
-            # それ以外の場合は現在のACKを維持（ギャップまたは重複）
-            print(f"[DEBUG] Maintaining ACK {current_ack_number} (received seq={received_sequence_number}, end={received_end})")
+            print(f"[DEBUG] Maintaining ACK {current_ack_number} (out-of-order packet, expected {next_expected})")
 
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         acknowledgment_number = sequence_number + 1
@@ -542,10 +566,13 @@ class Node:
             self.initialize_connection_info(
                 connection_key=connection_key,
                 state='SYN_RECEIVED',
-                sequence_number=sequence_number,
+                sequence_number=1,
                 acknowledgment_number=acknowledgment_number,
                 data=None
             )
+        else:
+            self.tcp_connections[connection_key]['state'] = 'SYN_RECEIVED'
+            self.tcp_connections[connection_key]['acknowledgment_number'] = acknowledgment_number
 
         control_packet_kwargs = {
             "flags": "SYN,ACK",
@@ -565,37 +592,46 @@ class Node:
         if connection_key in self.tcp_connections:
             if self.tcp_connections[connection_key]['state'] == 'ESTABLISHED':
                 return
-            else:
-                self.update_tcp_connection_state(connection_key, "ESTABLISHED")
-                self.tcp_connections[connection_key]["acknowledgment_number"] = sequence_number + 1
-                print(f"[DEBUG] Connection {connection_key} established.")
-                print(f"[DEBUG] Initial sequence number: {self.tcp_connections[connection_key]['sequence_number']}")
-                print(f"[DEBUG] Initial ACK number: {sequence_number + 1}")
-        else:
-            initial_seq = 1
-            self.initialize_connection_info(
-                connection_key,
-                state='ESTABLISHED',
-                sequence_number=initial_seq,
-                acknowledgment_number=sequence_number + 1,
-                data=b''
-            )
-            print(f"[DEBUG] New connection {connection_key} established.")
-            print(f"[DEBUG] Initial sequence number: {initial_seq}")
-            print(f"[DEBUG] Initial ACK number: {sequence_number + 1}")
 
-        if 'transfer_info' not in self.tcp_connections[connection_key] or self.tcp_connections[connection_key]['transfer_info'] is None:
-            end_time = self.network_event_scheduler.current_time + 3600
-            payload_size = 1460
+            # Update connection state
+            self.update_tcp_connection_state(connection_key, "ESTABLISHED")
+
+            # Set initial sequence number for this side of connection
+            if "sequence_number" not in self.tcp_connections[connection_key]:
+                self.tcp_connections[connection_key]["sequence_number"] = 1
+
+            # Set acknowledgment number based on received sequence number
+            self.tcp_connections[connection_key]["acknowledgment_number"] = sequence_number + 1
+
+            print(f"[DEBUG] Connection {connection_key} established")
+            print(f"[DEBUG] Our sequence number: {self.tcp_connections[connection_key]['sequence_number']}")
+            print(f"[DEBUG] Their sequence number: {sequence_number}")
+            print(f"[DEBUG] Our ACK number: {self.tcp_connections[connection_key]['acknowledgment_number']}")
+            return
+
+        # Initialize new connection
+        print(f"[DEBUG] Establishing new connection for {connection_key}")
+        print(f"[DEBUG] Received initial sequence number: {sequence_number}")
+
+        self.initialize_connection_info(
+            connection_key,
+            state='ESTABLISHED',
+            sequence_number=1,  # Our initial sequence number
+            acknowledgment_number=sequence_number + 1,  # Their sequence number + 1
+            data=b''
+        )
+
+        # Initialize transfer info
+        if 'transfer_info' not in self.tcp_connections[connection_key]:
             self.tcp_connections[connection_key]['transfer_info'] = {
-                'end_time': end_time,
-                'payload_size': payload_size,
+                'end_time': self.network_event_scheduler.current_time + 3600,
+                'payload_size': 1460,
                 'bytes_transferred': 0,
                 'progress': [],
                 'file_size': 0
             }
 
-        # アプリケーション層へコネクション確立を通知
+        # Notify application layer
         if self.application_layer and hasattr(self.application_layer, 'on_connection_established'):
             self.application_layer.on_connection_established(connection_key)
 
@@ -789,219 +825,179 @@ class Node:
             if sent:
                 self.tcp_connections[connection_key]["sequence_number"] += 1
 
-    def send_app_data(self, dst_ip, data, protocol="TCP", **kwargs):
+    def send_app_data(self, destination_ip, destination_port, data, protocol="TCP", **kwargs):
+        """
+        アプリケーション層からのデータ送信要求を処理する
+        Parameters:
+        - destination_ip: 送信先IPアドレス
+        - destination_port: 送信先ポート番号
+        - data: 送信データ
+        - protocol: プロトコル（"TCP" or "UDP"）
+        - **kwargs: その他のパラメータ
+        """
         if protocol == "TCP":
-            destination_port = kwargs.get('destination_port')
-            if not destination_port:
-                raise ValueError("TCP connection requires a destination_port")
+            print(f"[DEBUG] Sending TCP data to {destination_ip}:{destination_port}")
+            print(f"[DEBUG] Data length: {len(data)}")
 
-            connection_key = (dst_ip, destination_port)
-            conn_info = self.tcp_connections.get(connection_key)
-            if not conn_info:
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"No connection info found for {connection_key}. Cannot send data.")
-                return
+            connection_key = (destination_ip, destination_port)
 
-            traffic_info = conn_info.get('transfer_info')
-            if not traffic_info:
-                # traffic_infoがセットされていない場合も対応
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"No traffic info found for {connection_key}, setting up new connection or queueing data.")
-                return
+            # コネクションが確立されていない場合は送信しない
+            if not self.is_tcp_connection_established(connection_key):
+                print(f"[DEBUG] Connection not established for {connection_key}")
+                return False
 
-            print("###################################")
-            print(connection_key, traffic_info)
-            print("###################################")
+            # データを送信
+            self._send_tcp_data(
+                connection_key,
+                destination_ip,
+                data,
+                **kwargs
+            )
 
-            app_type = self.application_layer.connection_app_map.get(connection_key, None)
-            end_time = traffic_info['end_time']
-            if self.network_event_scheduler.current_time < end_time:
-                new_kwargs = dict(kwargs)
-                source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
-                new_kwargs['source_port'] = source_port
-                new_kwargs['destination_port'] = destination_port
-                self._send_tcp_data(connection_key, dst_ip, data, **new_kwargs)
-            else:
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"End time reached for {connection_key}. No more data sent.")
-            
+            print(f"[DEBUG] TCP data sent successfully to {connection_key}")
+            return True
+
         elif protocol == "UDP":
-            destination_port = kwargs.get('destination_port')
-            if not destination_port:
-                # destination_portが指定されていないなら、設計的にはおかしいので例外
-                # 必要ならデフォルトポートや特定ポートに割り当て
-                raise ValueError("UDP communication requires a fixed destination_port")
+            # UDPの場合は直接送信
+            source_port = kwargs.get('source_port', self.select_available_port())
+            destination_mac = self.get_mac_address_from_ip(destination_ip)
 
-            connection_key = (dst_ip, destination_port)
-            app_type = self.application_layer.connection_app_map.get(connection_key, None)
-
-            assigned_port = kwargs.get('source_port')
-            source_port = self.get_source_port(connection_key, "UDP", app_type=app_type, fixed_port=assigned_port)
-
-            destination_mac = self.get_mac_address_from_ip(dst_ip)
             if destination_mac is None:
-                # ARP解決など
-                self.send_arp_request(dst_ip)
-                # ARP解決後に再送するロジックを入れるか、waiting_for_arp_replyに追加するか
-                if dst_ip not in self.waiting_for_arp_reply:
-                    self.waiting_for_arp_reply[dst_ip] = []
-                self.waiting_for_arp_reply[dst_ip].append((data, protocol, 0, {'source_port': source_port, 'destination_port': destination_port}))
-                return
+                print(f"[DEBUG] No MAC address found for {destination_ip}, sending ARP request")
+                self.send_arp_request(destination_ip)
+                return False
 
-            # UDPパケット送信
-            self._send_transport_packet("UDP", dst_ip, destination_mac, data, 0, source_port=source_port, destination_port=destination_port)
+            self._send_transport_packet(
+                "UDP",
+                destination_ip,
+                destination_mac,
+                data,
+                0,
+                source_port=source_port,
+                destination_port=destination_port
+            )
+            print(f"[DEBUG] UDP data sent successfully to {destination_ip}:{destination_port}")
+            return True
+
         else:
             raise ValueError(f"Unsupported protocol: {protocol}")
 
-    def _send_tcp_data(self, connection_key, dst_ip, data, **kwargs):
+    def _send_tcp_data(self, connection_key, destination_ip, data, **kwargs):
         """
         TCP特有のデータ送信処理をまとめたヘルパー関数。
-        Nodeのconnection_keyに対応するコネクション情報、appからのdata取得やsplitを行う。
+        Parameters:
+        - connection_key: コネクションを識別するキー (destination_ip, destination_port)
+        - destination_ip: 送信先IPアドレス
+        - data: 送信データ
+        - **kwargs: その他のパラメータ
         """
         # コネクション情報の取得
         connection_info = self.tcp_connections.get(connection_key)
         if not connection_info:
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"[DEBUG] No connection info found for {connection_key}. Cannot send TCP data.")
-            return
+            print(f"[DEBUG] No connection info found for {connection_key}. Cannot send TCP data.")
+            return False
 
         # 転送情報の取得
         traffic_info = connection_info.get('transfer_info')
         if not traffic_info:
-            if self.network_event_scheduler.tcp_verbose:
-                print(f"[DEBUG] No transfer_info found for {connection_key}. Cannot send TCP data.")
-            return
+            print(f"[DEBUG] No traffic info found for {connection_key}")
+            return False
 
-        # データをMSSサイズに分割
-        payload_size = traffic_info['payload_size']
-        data_chunks = [data[i:i+payload_size] for i in range(0, len(data), payload_size)]
+        # MSSに基づいてデータを分割
+        mss = connection_info.get('mss', 1460)
+        chunks = [data[i:i + mss] for i in range(0, len(data), mss)]
 
-        # ポート番号の取得
-        if connection_key not in self.port_mapping:
-            self.port_mapping[connection_key] = self.select_available_port()
-        source_port = self.port_mapping[connection_key]
-        destination_port = kwargs.get('destination_port', connection_key[1])
-
-        # シーケンス番号の初期値を取得
-        current_seq = self.tcp_connections[connection_key]['sequence_number']
-        print(f"[DEBUG] Starting data transfer with sequence number: {current_seq}")
-
-        for chunk in data_chunks:
-            # TCPヘッダ情報の設定
+        for chunk in chunks:
+            # TCPパケットの送信に必要な引数を準備
             tcp_args = {
-                "source_port": source_port,
-                "destination_port": destination_port,
-                "sequence_number": current_seq,
-                "acknowledgment_number": self.tcp_connections[connection_key]['acknowledgment_number'],
-                "flags": "PSH"
+                'source_port': connection_info['source_port'],
+                'destination_port': connection_key[1],
+                'sequence_number': connection_info['sequence_number'],
+                'acknowledgment_number': connection_info['acknowledgment_number'],
+                'window_size': connection_info['window_size'],
+                'flags': {'PSH': True, 'ACK': True}
             }
 
-            # 宛先MACアドレスの解決
-            destination_mac = self.get_mac_address_from_ip(dst_ip)
-            if not destination_mac:
-                self.send_arp_request(dst_ip)
-                if dst_ip not in self.waiting_for_arp_reply:
-                    self.waiting_for_arp_reply[dst_ip] = []
-                self.waiting_for_arp_reply[dst_ip].append((chunk, "TCP", 0, tcp_args))
-                return
+            # 送信先MACアドレスの取得
+            destination_mac = self.get_mac_address_from_ip(destination_ip)
+            if destination_mac is None:
+                print(f"[DEBUG] No MAC address found for {destination_ip}, sending ARP request")
+                self.send_arp_request(destination_ip)
+                if destination_ip not in self.waiting_for_arp_reply:
+                    self.waiting_for_arp_reply[destination_ip] = []
+                self.waiting_for_arp_reply[destination_ip].append((chunk, "TCP", 0, tcp_args))
+                return False
 
-            # パケット送信
-            self._send_transport_packet("TCP", dst_ip, destination_mac, chunk, 0, **tcp_args)
+            # TCPパケット送信
+            self._send_transport_packet(
+                "TCP",
+                destination_ip,
+                destination_mac,
+                chunk,
+                0,
+                **tcp_args
+            )
 
-            # 送信データの管理
-            expected_ack = current_seq + len(chunk)
-            if connection_key not in self.windows:
-                self.windows[connection_key] = {}
+            # シーケンス番号を更新
+            connection_info['sequence_number'] += len(chunk)
 
-            # 送信ウィンドウの更新
-            self.windows[connection_key][current_seq] = {
-                "packet_info": {
-                    'destination_ip': dst_ip,
-                    'destination_mac': destination_mac,
-                    'data': chunk,
-                    'dscp': 0,
-                    'kwargs': tcp_args
-                },
-                "expected_ack_number": expected_ack,
-                "attempt": 0
-            }
+        return True
 
-            # タイムアウト設定とシーケンス番号の更新
-            self.schedule_timeout(connection_key, current_seq)
-            current_seq = expected_ack
-            self.tcp_connections[connection_key]['sequence_number'] = current_seq
-            print(f"[DEBUG] Sent chunk with sequence number: {tcp_args['sequence_number']}, expecting ACK: {expected_ack}")
+        return True
 
-            # 転送進捗の更新
-            if traffic_info and traffic_info.get('file_size', 0) > 0 and not traffic_info.get('transfer_done', False) and len(chunk) > 0:
-                self.application_layer.update_data_after_send(connection_key, len(chunk))
-
-            # ファイル転送中で、まだtransfer_doneがFalseかつ実データがある場合のみupdate_data_after_sendを呼ぶ
-            if traffic_info and traffic_info.get('file_size', 0) > 0 and not traffic_info.get('transfer_done', False) and len(chunk) > 0:
-                app = self.application_layer
-                app.update_data_after_send(connection_key, len(chunk))
-
-    def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags="ACK"):
+    def send_control_tcp_packet(self, destination_ip, destination_port, data, flags="ACK", **kwargs):
         """
         制御メッセージ(FTPの220,331,230,150,226など)を送信するための関数。
-        file_sizeやtransfer_doneなどファイル転送特有のロジックは排除するが、
-        コネクションやポート割り当ての処理はsend_app_dataと同様に行う必要がある。
+        Parameters:
+        - destination_ip: 送信先IPアドレス
+        - destination_port: 送信先ポート番号
+        - data: 送信データ
+        - flags: TCPフラグ（デフォルトはACK）
+        - **kwargs: その他のパラメータ
         """
+        connection_key = (destination_ip, destination_port)
 
-        # パラメータチェック
-        if not destination_port:
-            raise ValueError("send_control_tcp_packet requires a destination_port")
+        # コネクション情報の取得
+        connection_info = self.tcp_connections.get(connection_key)
+        if not connection_info:
+            print(f"[DEBUG] No connection info found for {connection_key}. Cannot send control packet.")
+            return False
 
-        # connection_keyを生成
-        connection_key = (dst_ip, destination_port)
+        # TCPパケットの送信に必要な引数を準備
+        tcp_args = {
+            'source_port': connection_info['source_port'],
+            'destination_port': destination_port,
+            'sequence_number': connection_info['sequence_number'],
+            'acknowledgment_number': connection_info['acknowledgment_number'],
+            'window_size': connection_info['window_size'],
+            'flags': {flags: True}
+        }
 
-        # app_type（FTPサーバやクライアントなど）を取得
-        app_type = self.application_layer.connection_app_map.get(connection_key, None)
-
-        # TCPの場合、ソースポートが未指定なら割り当てる
-        if source_port is None:
-            source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
-
-        # port_mappingがない場合はここで設定
-        if connection_key not in self.port_mapping:
-            self.port_mapping[connection_key] = source_port
-
-        # tcp_connectionsがない場合は初期化する
-        if connection_key not in self.tcp_connections:
-            # まだコネクション情報がない場合は適当に初期化する。
-            # ここではシーケンス番号やACK番号を0で初期化する。
-            self.initialize_connection_info(connection_key=connection_key, state='ESTABLISHED', sequence_number=0, acknowledgment_number=0, data=b'')
-
-        # tcp_connectionsからシーケンス番号等を取得
-        seq_num = self.tcp_connections[connection_key]['sequence_number']
-        ack_num = self.tcp_connections[connection_key]['acknowledgment_number']
-
-        # データ送信後にシーケンス番号を進める
-        # control packetは単発のメッセージなので、送信後にseq_numを増やすだけでOK
-        # アプリ側でACKがくるまでは特に大きく管理しなくてもよい
-        self.tcp_connections[connection_key]['sequence_number'] = seq_num + len(data)
-
-        # 宛先MACアドレスをARPで取得または待機
-        destination_mac = self.get_mac_address_from_ip(dst_ip)
+        # 送信先MACアドレスの取得
+        destination_mac = self.get_mac_address_from_ip(destination_ip)
         if destination_mac is None:
-            self.send_arp_request(dst_ip)
-            if dst_ip not in self.waiting_for_arp_reply:
-                self.waiting_for_arp_reply[dst_ip] = []
-            self.waiting_for_arp_reply[dst_ip].append((data, "TCP", dscp, {
-                "source_port": source_port,
-                "destination_port": destination_port,
-                "flags": flags
-            }))
-            return
+            print(f"[DEBUG] No MAC address found for {destination_ip}, sending ARP request")
+            self.send_arp_request(destination_ip)
+            if destination_ip not in self.waiting_for_arp_reply:
+                self.waiting_for_arp_reply[destination_ip] = []
+            self.waiting_for_arp_reply[destination_ip].append((data, "TCP", 0, tcp_args))
+            return False
 
-        # ファイル転送ロジック(update_data_after_send)は呼ばず、
-        # 直接_transport_packetでパケット送信
-        self._send_transport_packet("TCP", dst_ip, destination_mac, data, dscp,
-                                    source_port=source_port,
-                                    destination_port=destination_port,
-                                    sequence_number=seq_num,
-                                    acknowledgment_number=ack_num,
-                                    flags=flags)
+        # TCPパケット送信
+        self._send_transport_packet(
+            "TCP",
+            destination_ip,
+            destination_mac,
+            data,
+            0,
+            **tcp_args
+        )
+
+        # シーケンス番号を更新（データ長が0でない場合のみ）
+        if len(data) > 0:
+            connection_info['sequence_number'] += len(data)
+
+        return True
 
     def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):
         if protocol == "UDP":
