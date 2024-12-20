@@ -561,34 +561,37 @@ class Node:
         else:
             print(f"[DEBUG] Maintaining ACK {current_ack_number} (out-of-order packet, expected {next_expected})")
 
-    def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
-        acknowledgment_number = sequence_number + 1
+    def send_TCP_SYN_ACK(self, packet):
+        """
+        SYN-ACKパケットを送信する。
+        """
+        print(f"[DEBUG] Sending SYN-ACK in response to SYN from {packet.source_ip}:{packet.source_port}")
 
+        # コネクションキーを生成（クライアントのIPとポート）
+        connection_key = (packet.source_ip, packet.source_port)
+
+        # コネクション情報を初期化
         if connection_key not in self.tcp_connections:
-            self.initialize_connection_info(
-                connection_key=connection_key,
-                state='SYN_RECEIVED',
-                sequence_number=1,
-                acknowledgment_number=acknowledgment_number,
-                data=None
-            )
-        else:
-            self.tcp_connections[connection_key]['state'] = 'SYN_RECEIVED'
-            self.tcp_connections[connection_key]['acknowledgment_number'] = acknowledgment_number
+            print(f"[DEBUG] Initializing connection for SYN-ACK: {connection_key}")
+            self.initialize_connection_info(connection_key, packet.source_ip, packet.source_port)
 
-        control_packet_kwargs = {
-            "flags": "SYN,ACK",
-            "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
-            "acknowledgment_number": self.tcp_connections[connection_key]["acknowledgment_number"],
-            "source_port": source_port,
-            "destination_port": connection_key[1]
-        }
+        # 初期シーケンス番号を設定
+        initial_sequence_number = 0  # 実際のTCPでは乱数を使用
+        self.tcp_connections[connection_key]['sequence_number'] = initial_sequence_number
+        self.tcp_connections[connection_key]['acknowledgment_number'] = packet.sequence_number + 1
+        self.tcp_connections[connection_key]['state'] = 'SYN_RECEIVED'
 
-        destination_ip = connection_key[0]
-        dscp = dscp
-        self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
+        print(f"[DEBUG] Sending SYN-ACK with Seq={initial_sequence_number}, Ack={packet.sequence_number + 1}")
 
-        self.tcp_connections[connection_key]["sequence_number"] += 1
+        # SYN-ACKパケットを送信
+        self.send_control_tcp_packet(
+            destination_ip=packet.source_ip,
+            destination_port=packet.source_port,
+            flags="SYN ACK",
+            source_port=packet.destination_port,
+            sequence_number=initial_sequence_number,
+            acknowledgment_number=packet.sequence_number + 1
+        )
 
     def establish_TCP_connection(self, connection_key, sequence_number):
         if connection_key in self.tcp_connections:
@@ -695,25 +698,24 @@ class Node:
             destination_ip, destination_port = connection
             print(f"宛先IP: {destination_ip}, 宛先ポート: {destination_port}, 状態: {state['state']}")
 
-    def receive_packet(self, packet, received_link):
-        if packet.arrival_time == -1:
-            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
-        elif isinstance(packet, ARPPacket):
-            self.process_ARP_packet(packet)
-        elif isinstance(packet, DHCPPacket):
-            # DHCPパケットはNodeでは処理せず、アプリケーション層へ通知
-            if self.application_layer and hasattr(self.application_layer, 'on_dhcp_packet_received'):
-                self.application_layer.on_dhcp_packet_received(packet)
-        elif isinstance(packet, DNSPacket):
-            # DNSパケットはアプリケーション層へ通知
-            if self.application_layer and hasattr(self.application_layer, 'on_dns_packet_received'):
-                self.application_layer.on_dns_packet_received(packet)
+    def receive_packet(self, packet):
+        """
+        パケットを受信する。
+        """
+        print(f"[DEBUG] Received packet: Type={type(packet).__name__}, Src={packet.source_ip}:{getattr(packet, 'source_port', 'N/A')}, Dst={packet.destination_ip}:{getattr(packet, 'destination_port', 'N/A')}")
+
+        if packet.destination_mac != self.mac_address and packet.destination_mac != "FF:FF:FF:FF:FF:FF":
+            print(f"[DEBUG] Packet dropped: wrong MAC address. Expected {self.mac_address}, got {packet.destination_mac}")
+            return
+
+        if isinstance(packet, TCPPacket):
+            print(f"[DEBUG] Processing TCP packet with flags: {packet.flags}")
+            self.process_TCP_packet(packet)
         elif isinstance(packet, UDPPacket):
             self.process_UDP_packet(packet)
-        elif isinstance(packet, TCPPacket):
-            self.process_TCP_packet(packet)
-        else:
-            self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
+        elif isinstance(packet, ARPPacket):
+            print(f"[DEBUG] Processing ARP packet: {packet.arp_type}")
+            self.process_ARP_packet(packet)
 
     def process_data_packet(self, packet):
         # フラグメンテーション処理等は省略
@@ -801,39 +803,42 @@ class Node:
         """
         TCPハンドシェイクを開始する。
         """
-        print(f"[DEBUG] Initiating TCP handshake to {destination_ip}:{destination_port} from port {source_port}")
-
         if source_port is None:
             source_port = self.select_available_port("TCP")
+
+        print(f"[DEBUG] Initiating TCP handshake to {destination_ip}:{destination_port} from port {source_port}")
 
         # コネクションキーを生成（自分のIPとポート）
         connection_key = (self.ip_address, source_port)
         print(f"[DEBUG] Connection key: {connection_key}")
 
+        # 既存のコネクションをチェック
+        if connection_key in self.tcp_connections:
+            print(f"[DEBUG] Connection {connection_key} already exists in state {self.tcp_connections[connection_key]['state']}")
+            if self.tcp_connections[connection_key]['state'] != 'CLOSED':
+                print(f"[DEBUG] Connection already active, not initiating new handshake")
+                return False
+
         # コネクション情報を初期化
-        if connection_key not in self.tcp_connections:
-            print(f"[DEBUG] Initializing new connection for {connection_key}")
-            self.initialize_connection_info(connection_key, destination_ip, destination_port)
-            self.tcp_connections[connection_key]['state'] = 'SYN_SENT'
+        print(f"[DEBUG] Initializing new connection for {connection_key}")
+        self.initialize_connection_info(connection_key, destination_ip, destination_port)
+        self.tcp_connections[connection_key]['state'] = 'SYN_SENT'
 
-            # 初期シーケンス番号を設定
-            initial_sequence_number = 0  # 実際のTCPでは乱数を使用
-            self.tcp_connections[connection_key]['sequence_number'] = initial_sequence_number
-            print(f"[DEBUG] Initial sequence number: {initial_sequence_number}")
+        # 初期シーケンス番号を設定
+        initial_sequence_number = 0  # 実際のTCPでは乱数を使用
+        self.tcp_connections[connection_key]['sequence_number'] = initial_sequence_number
+        print(f"[DEBUG] Initial sequence number: {initial_sequence_number}")
 
-            # SYNパケットを送信
-            print(f"[DEBUG] Sending SYN packet")
-            self.send_control_tcp_packet(
-                destination_ip=destination_ip,
-                destination_port=destination_port,
-                flags="SYN",
-                source_port=source_port,
-                sequence_number=initial_sequence_number
-            )
-            return True
-        else:
-            print(f"[ERROR] Connection {connection_key} already exists")
-            return False
+        # SYNパケットを送信
+        print(f"[DEBUG] Sending SYN packet")
+        self.send_control_tcp_packet(
+            destination_ip=destination_ip,
+            destination_port=destination_port,
+            flags="SYN",
+            source_port=source_port,
+            sequence_number=initial_sequence_number
+        )
+        return True
 
     def send_app_data(self, destination_ip, destination_port, data, protocol="TCP", **kwargs):
         """
