@@ -571,17 +571,17 @@ class Node:
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
         received_end = received_sequence_number + payload_length
 
-        # 受信したパケットが現在のACK番号に続くデータを含む場合
-        if received_sequence_number <= current_ack_number and received_end > current_ack_number:
-            # ACK番号を更新（新しいデータの終端まで）
+        # TCPの累積確認応答の基本動作に従う実装
+        if received_sequence_number == current_ack_number:
+            # 期待していたシーケンス番号のパケットを受信した場合
             self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
-            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end} (continuous data)")
-        elif received_sequence_number == current_ack_number:
-            # 期待していたシーケンス番号のパケットを受信
-            self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
-            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end} (expected sequence)")
-        else:
-            print(f"[DEBUG] Sequence gap detected: current_ack={current_ack_number}, received_seq={received_sequence_number}")
+            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end} (in-order)")
+        elif received_sequence_number > current_ack_number:
+            # 期待より先のシーケンス番号を受信した場合は現在のACKを維持（ギャップ発生）
+            print(f"[DEBUG] Gap detected: expecting {current_ack_number}, received {received_sequence_number}")
+        elif received_sequence_number < current_ack_number:
+            # 既に受信済みのパケットは無視（重複受信）
+            print(f"[DEBUG] Duplicate or old packet: current_ack={current_ack_number}, received_seq={received_sequence_number}")
 
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         acknowledgment_number = sequence_number + 1
