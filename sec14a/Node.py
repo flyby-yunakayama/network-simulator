@@ -800,13 +800,19 @@ class Node:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{destination_port}")
 
-            connection_key = (destination_ip, destination_port)
+            # 送信元ポートを取得
+            source_port = self.select_available_port("TCP")
+
+            # コネクションキーを生成 (自分のIPとポート)
+            connection_key = (self.ip_address, source_port)
+
             if connection_key not in self.tcp_connections:
                 self.initialize_connection_info(
                     connection_key=connection_key,
                     state='SYN_SENT',
                     sequence_number=randint(1, 10000),
                     acknowledgment_number=0,
+                    source_port=source_port,
                     data=b''
                 )
 
