@@ -975,24 +975,32 @@ class Node:
         if acknowledgment_number is None:
             acknowledgment_number = connection_info.get('acknowledgment_number', 0)
 
-        # パケットヘッダを作成
-        header = {
-            'source_ip': self.ip_address,
-            'destination_ip': destination_ip,
-            'protocol': 'TCP',
-            'source_port': source_port,
-            'destination_port': destination_port,
-            'flags': flags,
-            'sequence_number': sequence_number,
-            'acknowledgment_number': acknowledgment_number,
-            'window_size': connection_info.get('window_size', 65535)
-        }
+        # 送信先MACアドレスの取得
+        destination_mac = self.get_mac_address_from_ip(destination_ip)
+        if destination_mac is None:
+            print(f"[DEBUG] No MAC address found for {destination_ip}, sending ARP request")
+            self.send_arp_request(destination_ip)
+            return False
 
-        # パケットを作成して送信
-        packet = Packet(
-            header=header,
-            payload=data
+        # TCPパケットを作成
+        packet = TCPPacket(
+            source_mac=self.mac_address,
+            destination_mac=destination_mac,
+            source_ip=self.ip_address,
+            destination_ip=destination_ip,
+            ttl=64,
+            fragment_flags={},
+            fragment_offset=0,
+            header_size=20,
+            payload_size=len(data),
+            network_event_scheduler=self.network_event_scheduler,
+            source_port=source_port,
+            destination_port=destination_port,
+            sequence_number=sequence_number,
+            acknowledgment_number=acknowledgment_number,
+            flags=flags
         )
+        packet.payload = data
 
         # パケットを送信
         self._send_transport_packet(packet)
@@ -1010,78 +1018,24 @@ class Node:
 
         return True
 
-    def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):
-        if protocol == "UDP":
-            transport_header_size = 8
-        elif protocol == "TCP":
-            transport_header_size = 20
+    def _send_transport_packet(self, packet):
+        """
+        トランスポート層のパケットを送信する。
+        """
+        if isinstance(packet, TCPPacket):
+            self._send_ip_packet_data(packet)
         else:
-            raise ValueError(f"Unknown transport protocol: {protocol}")
+            raise ValueError("Invalid packet type")
 
-        ip_header_size = 20
-        header_size = ip_header_size + transport_header_size
-        self._send_ip_packet_data(destination_ip, destination_mac, data, dscp, header_size, protocol=protocol, **kwargs)
-
-        if protocol == "TCP" and self.network_event_scheduler.tcp_verbose:
-            print(f"Sending TCP packet to {destination_ip}:{kwargs.get('destination_port')} Flags: {kwargs.get('flags')} Seq:{kwargs.get('sequence_number')} Ack:{kwargs.get('acknowledgment_number')}")
-
-    def _send_ip_packet_data(self, destination_ip, destination_mac, data, dscp, header_size, protocol, **kwargs):
-        original_data_id = str(uuid.uuid4())
-        total_size = len(data) if data else 0
-        offset = 0
-
-        while offset < total_size or (offset == 0 and total_size == 0):
-            max_payload_size = self.mtu - header_size
-            payload_size = min(max_payload_size, total_size - offset) if data else 0
-            fragment_data = data[offset:offset + payload_size] if data else b""
-            fragment_offset = offset
-            more_fragments = False if total_size == 0 else offset + payload_size < total_size
-            fragment_flags = {"more_fragments": more_fragments}
-            if more_fragments or payload_size > 0:
-                fragment_flags["original_data_id"] = original_data_id
-
-            if protocol == "UDP":
-                packet = UDPPacket(
-                    source_mac=self.mac_address,
-                    destination_mac=destination_mac,
-                    source_ip=self.ip_address,
-                    destination_ip=destination_ip,
-                    ttl=64,
-                    dscp=dscp,
-                    network_event_scheduler=self.network_event_scheduler,
-                    fragment_flags=fragment_flags,
-                    fragment_offset=fragment_offset,
-                    header_size=header_size,
-                    payload_size=payload_size,
-                    source_port=kwargs.get('source_port'),
-                    destination_port=kwargs.get('destination_port')
-                )
-            elif protocol == "TCP":
-                packet = TCPPacket(
-                    source_mac=self.mac_address,
-                    destination_mac=destination_mac,
-                    source_ip=self.ip_address,
-                    destination_ip=destination_ip,
-                    ttl=64,
-                    dscp=dscp,
-                    network_event_scheduler=self.network_event_scheduler,
-                    fragment_flags=fragment_flags,
-                    fragment_offset=fragment_offset,
-                    header_size=header_size,
-                    payload_size=payload_size,
-                    source_port=kwargs.get('source_port'),
-                    destination_port=kwargs.get('destination_port'),
-                    sequence_number=kwargs.get('sequence_number', 0),
-                    acknowledgment_number=kwargs.get('acknowledgment_number', 0),
-                    flags=kwargs.get('flags', '')
-                )
-
-            packet.payload = fragment_data
+    def _send_ip_packet_data(self, packet):
+        """
+        IPパケットを送信する。
+        """
+        if isinstance(packet, TCPPacket):
+            # パケットをそのまま送信
             self._send_packet(packet)
-
-            if not data:
-                break
-            offset += payload_size
+        else:
+            raise ValueError("Invalid packet type")
 
     def _send_packet(self, packet):
         if self.default_route:
