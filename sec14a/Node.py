@@ -211,8 +211,9 @@ class Node:
             'sequence_number': sequence_number,
             'sequence_number_base': sequence_number,
             'acknowledgment_number': acknowledgment_number,
+            'acknowledgment_number_base': acknowledgment_number,
             'data': data,
-            'last_ack_number': None,
+            'last_ack_number': acknowledgment_number,
             'duplicate_ack_count': 0,
             'cwnd': self.cwnd,
             'ssthresh': self.ssthresh,
@@ -567,34 +568,19 @@ class Node:
 
         print(f"[DEBUG] update_ACK_number connection_key={connection_key}, received_seq={received_sequence_number}, payload_len={payload_length}")
 
-        # 現在のACK番号を取得
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
-
-        # 受信したデータの範囲を確認
+        ack_base = self.tcp_connections[connection_key].get("acknowledgment_number_base", 0)
         received_end = received_sequence_number + payload_length
 
-        # 受信したシーケンス番号が現在のACK番号と一致する場合のみ更新
-        if received_sequence_number == current_ack_number:
+        # 受信シーケンス番号を初期ACK番号からの相対値として扱う
+        relative_seq = received_sequence_number - ack_base
+        relative_current_ack = current_ack_number - ack_base
+        relative_end = received_end - ack_base
+
+        if relative_seq <= relative_current_ack and relative_end > relative_current_ack:
+            # ACK番号を更新（絶対値に戻して保存）
             self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
             print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end}")
-
-            # 順序外パケットの処理
-            out_of_order_packets = self.tcp_connections[connection_key].setdefault('out_of_order_packets', [])
-            while out_of_order_packets and out_of_order_packets[0] == received_end:
-                next_payload_length = out_of_order_packets[1] - out_of_order_packets[0]
-                received_end += next_payload_length
-                self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
-                out_of_order_packets.pop(0)
-                out_of_order_packets.pop(0)  # 長さ情報も削除
-                print(f"[DEBUG] Processed out-of-order packet, new ACK: {received_end}")
-        else:
-            # 順序外パケットを記録
-            out_of_order_packets = self.tcp_connections[connection_key].setdefault('out_of_order_packets', [])
-            if received_sequence_number not in out_of_order_packets:
-                out_of_order_packets.append(received_sequence_number)
-                out_of_order_packets.append(received_end)  # 長さ情報も保存
-                out_of_order_packets.sort()
-                print(f"[DEBUG] Stored out-of-order packet: seq={received_sequence_number}, end={received_end}")
 
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         acknowledgment_number = sequence_number + 1
