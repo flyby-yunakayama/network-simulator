@@ -569,18 +569,19 @@ class Node:
         print(f"[DEBUG] update_ACK_number connection_key={connection_key}, received_seq={received_sequence_number}, payload_len={payload_length}")
 
         current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
-        ack_base = self.tcp_connections[connection_key].get("acknowledgment_number_base", 0)
         received_end = received_sequence_number + payload_length
 
-        # 受信シーケンス番号を初期ACK番号からの相対値として扱う
-        relative_seq = received_sequence_number - ack_base
-        relative_current_ack = current_ack_number - ack_base
-        relative_end = received_end - ack_base
-
-        if relative_seq <= relative_current_ack and relative_end > relative_current_ack:
-            # ACK番号を更新（絶対値に戻して保存）
+        # 受信したパケットが現在のACK番号に続くデータを含む場合
+        if received_sequence_number <= current_ack_number and received_end > current_ack_number:
+            # ACK番号を更新（新しいデータの終端まで）
             self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
-            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end}")
+            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end} (continuous data)")
+        elif received_sequence_number == current_ack_number:
+            # 期待していたシーケンス番号のパケットを受信
+            self.tcp_connections[connection_key]["acknowledgment_number"] = received_end
+            print(f"[DEBUG] Updated ACK number from {current_ack_number} to {received_end} (expected sequence)")
+        else:
+            print(f"[DEBUG] Sequence gap detected: current_ack={current_ack_number}, received_seq={received_sequence_number}")
 
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         acknowledgment_number = sequence_number + 1
@@ -615,15 +616,17 @@ class Node:
             else:
                 self.update_tcp_connection_state(connection_key, "ESTABLISHED")
                 self.tcp_connections[connection_key]["acknowledgment_number"] = sequence_number + 1
+                print(f"[DEBUG] Connection {connection_key} established. Initial ACK number set to {sequence_number + 1}")
         else:
             initial_seq = randint(1,10000)
             self.initialize_connection_info(
                 connection_key,
                 state='ESTABLISHED',
-                sequence_number=initial_seq,  # 本来は事前段階で記憶した初期値を使用
+                sequence_number=initial_seq,
                 acknowledgment_number=sequence_number + 1,
                 data=b''
             )
+            print(f"[DEBUG] New connection {connection_key} established. Initial sequence number: {initial_seq}, Initial ACK number: {sequence_number + 1}")
 
         if 'transfer_info' not in self.tcp_connections[connection_key] or self.tcp_connections[connection_key]['transfer_info'] is None:
             # 長めの有効時間を設定（1時間後まで許可）
