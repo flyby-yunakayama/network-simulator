@@ -161,14 +161,15 @@ class Node:
     def process_TCP_packet(self, packet):
         if self.network_event_scheduler.tcp_verbose:
             print(f"Processing TCP packet from {packet.header['source_ip']}:{packet.header['source_port']} to {packet.header['destination_ip']}:{packet.header['destination_port']}")
+            print(f"TCP flags: {', '.join(flag for flag, value in packet.header.get('flags', {}).items() if value)}")
+            print(f"Sequence number: {packet.header.get('sequence_number', 'N/A')}")
+            print(f"ACK number: {packet.header.get('acknowledgment_number', 'N/A')}")
 
         if packet.header["destination_mac"] == self.mac_address:
             if packet.header["destination_ip"] == self.ip_address:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
                 flags = packet.header.get('flags', '')
-                if self.network_event_scheduler.tcp_verbose:
-                    print(f"TCP flags: {flags}")
 
                 connection_key = (packet.header["source_ip"], packet.header["source_port"])
                 source_port = packet.header["destination_port"]
@@ -208,22 +209,22 @@ class Node:
             else:
                 self.network_event_scheduler.log_packet_info(packet, "dropped", self.node_id)
 
-    def initialize_connection_info(self, connection_key=None, state='CLOSED', sequence_number=0, acknowledgment_number=0, data=b''):
+    def initialize_connection_info(self, connection_key, state, sequence_number, acknowledgment_number, source_port, data=b''):
+        """
+        TCPコネクション情報を初期化する。
+        """
         self.tcp_connections[connection_key] = {
             'state': state,
             'sequence_number': sequence_number,
-            'sequence_number_base': sequence_number,
             'acknowledgment_number': acknowledgment_number,
-            'acknowledgment_number_base': acknowledgment_number,
+            'source_port': source_port,
+            'window_size': 65535,  # 初期ウィンドウサイズ
             'data': data,
-            'last_ack_number': acknowledgment_number,
-            'duplicate_ack_count': 0,
-            'cwnd': self.cwnd,
-            'ssthresh': self.ssthresh,
-            'congestion_state': 'slow_start',
-            'transfer_info': None,
-            'timeout_event_ids': {},            # シーケンス番号ごとのtimeoutイベントID管理
-            'retransmission_event_ids': {}      # シーケンス番号ごとの再送イベントID管理
+            'unacked_packets': {},  # 未確認パケットを保持する辞書
+            'retransmission_count': {},  # 再送回数を保持する辞書
+            'duplicate_ack_count': 0,  # 重複ACKのカウント
+            'last_received_ack': 0,  # 最後に受信したACK番号
+            'transfer_info': {}  # 転送情報を保持する辞書
         }
 
     def transition_to_state(self, connection_key, new_state):
@@ -613,11 +614,13 @@ class Node:
         print(f"[DEBUG] Establishing new connection for {connection_key}")
         print(f"[DEBUG] Received initial sequence number: {sequence_number}")
 
+        source_port = self.get_source_port(connection_key, "TCP")
         self.initialize_connection_info(
             connection_key,
             state='ESTABLISHED',
             sequence_number=1,  # Our initial sequence number
             acknowledgment_number=sequence_number + 1,  # Their sequence number + 1
+            source_port=source_port,
             data=b''
         )
 
