@@ -698,7 +698,7 @@ class Node:
             destination_ip, destination_port = connection
             print(f"宛先IP: {destination_ip}, 宛先ポート: {destination_port}, 状態: {state['state']}")
 
-    def receive_packet(self, packet):
+    def receive_packet(self, packet, received_link=None):
         """
         パケットを受信する。
         """
@@ -706,6 +706,12 @@ class Node:
 
         if packet.destination_mac != self.mac_address and packet.destination_mac != "FF:FF:FF:FF:FF:FF":
             print(f"[DEBUG] Packet dropped: wrong MAC address. Expected {self.mac_address}, got {packet.destination_mac}")
+            return
+
+        # パケットの到着を記録
+        if hasattr(packet, 'arrival_time') and packet.arrival_time == -1:
+            print(f"[DEBUG] Packet marked as lost")
+            self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
             return
 
         if isinstance(packet, TCPPacket):
@@ -1068,10 +1074,13 @@ class Node:
             raise ValueError("Invalid packet type")
 
     def _send_packet(self, packet):
+        print(f"[DEBUG] Sending packet: Type={type(packet).__name__}, Src={packet.source_ip}, Dst={packet.destination_ip}")
         if self.default_route:
+            print(f"[DEBUG] Using default route: {self.default_route}")
             self.default_route.enqueue_packet(packet, self)
         else:
             for link in self.links:
+                print(f"[DEBUG] Attempting to send packet through link {link}")
                 link.enqueue_packet(packet, self)
 
     def set_ip_address(self, new_ip):
