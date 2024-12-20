@@ -39,7 +39,8 @@ class Node:
         self.scheduled_timeouts = {}
         self.pending_tcp_data = {}
         self.arp_table = {}
-        self.waiting_for_arp_reply = {}
+        self.waiting_for_arp_reply = {}  # {ip_address: [packet, packet, ...]}
+        self.pending_packets = {}  # {ip_address: [packet, packet, ...]}
         self.dns_server_ip = dns_server
         self.url_to_ip_mapping = {}
         self.mtu = mtu
@@ -721,22 +722,23 @@ class Node:
     def direct_process_packet(self, packet):
         pass
 
-    def on_arp_reply_received(self, destination_ip, destination_mac):
-        if destination_ip in self.waiting_for_arp_reply:
-            for data, protocol, dscp, kwargs in self.waiting_for_arp_reply[destination_ip]:
-                self._send_transport_packet(protocol, destination_ip, destination_mac, data, dscp, **kwargs)
-            del self.waiting_for_arp_reply[destination_ip]
+    def on_arp_reply_received(self, source_ip, source_mac):
+        if source_ip in self.waiting_for_arp_reply:
+            for packet in self.waiting_for_arp_reply[source_ip]:
+                if isinstance(packet, TCPPacket):
+                    packet.mac_header["destination_mac"] = source_mac
+                    self._send_transport_packet(packet)
+            del self.waiting_for_arp_reply[source_ip]
 
     def send_arp_request(self, ip_address):
         arp_request_packet = ARPPacket(
             source_mac=self.mac_address,
-            destination_mac="FF:FF:FF:FF:FF:FF",
+            destination_mac="ff:ff:ff:ff:ff:ff",  # ブロードキャストアドレス
             source_ip=self.ip_address,
             destination_ip=ip_address,
             operation="request",
             network_event_scheduler=self.network_event_scheduler
         )
-        self.network_event_scheduler.log_packet_info(arp_request_packet, "ARP request", self.node_id)
         self._send_packet(arp_request_packet)
 
     def _send_arp_reply(self, request_packet):
@@ -952,8 +954,6 @@ class Node:
 
         return True
 
-        return True
-
     def send_control_tcp_packet(self, destination_ip, destination_port, flags, source_port=None, data=b'', sequence_number=None, acknowledgment_number=None):
         """
         TCPコントロールパケットを送信する。
@@ -978,6 +978,31 @@ class Node:
         # 送信先MACアドレスの取得
         destination_mac = self.get_mac_address_from_ip(destination_ip)
         if destination_mac is None:
+            # TCPパケットを作成して保存
+            packet = TCPPacket(
+                source_mac=self.mac_address,
+                destination_mac="ff:ff:ff:ff:ff:ff",  # 一時的なブロードキャストアドレス
+                source_ip=self.ip_address,
+                destination_ip=destination_ip,
+                ttl=64,
+                fragment_flags={},
+                fragment_offset=0,
+                header_size=20,
+                payload_size=len(data),
+                network_event_scheduler=self.network_event_scheduler,
+                source_port=source_port,
+                destination_port=destination_port,
+                sequence_number=sequence_number,
+                acknowledgment_number=acknowledgment_number,
+                flags=flags
+            )
+            packet.payload = data
+
+            # パケットを待機リストに追加
+            if destination_ip not in self.waiting_for_arp_reply:
+                self.waiting_for_arp_reply[destination_ip] = []
+            self.waiting_for_arp_reply[destination_ip].append(packet)
+
             print(f"[DEBUG] No MAC address found for {destination_ip}, sending ARP request")
             self.send_arp_request(destination_ip)
             return False
