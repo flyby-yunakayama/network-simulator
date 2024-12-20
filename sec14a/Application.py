@@ -354,7 +354,7 @@ class FTPClient:
         self.server_port = server_port  # サーバポートを保存
         self.state = "CONNECTING"
         self.node.initiate_tcp_handshake(server_ip, server_port)
-        self.app_manager.map_connection_to_app((server_ip, server_port), "FTP")
+        self.app_manager.map_connection_to_app((self.node.ip_address, None), "FTP")
 
     def on_packet_received(self, packet):
         data = packet.payload.decode('utf-8', errors='ignore')
