@@ -530,16 +530,15 @@ class FTPServer:
                 if self.verbose:
                     print(f"[FTPServer] Transfer complete for {connection_key}. Sent 226 response.")
 
-    def send_ftp_response(self, dst_ip, client_port, server_port, response):
+    def send_ftp_response(self, destination_ip, client_port, server_port, response):
         if self.verbose:
             print("[FTPServer] Sending response:", response.strip())
         self.node.send_control_tcp_packet(
-            dst_ip=dst_ip,
-            data=response.encode('utf-8'),
-            dscp=0,
-            source_port=server_port,
+            destination_ip=destination_ip,
             destination_port=client_port,
-            flags="ACK"
+            data=response.encode('utf-8'),
+            flags="ACK",
+            source_port=server_port
         )
 
     def set_traffic_info(self, connection_key):
