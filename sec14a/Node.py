@@ -99,7 +99,7 @@ class Node:
                 if self.application_layer and hasattr(self.application_layer, 'register_ftp_client'):
                     self.application_layer.register_ftp_client(application_instance)
 
-    def select_available_port(self):
+    def select_available_port(self, protocol="TCP"):
         for port in range(1024, 49152):
             if port not in self.used_ports:
                 self.used_ports.add(port)
@@ -107,7 +107,7 @@ class Node:
         raise Exception("No available ports")
 
     def select_random_port(self):
-        return random.randint(1024, 49151)
+        return random.randint(1024, 49152)
 
     def add_to_arp_table(self, ip_address, mac_address):
         self.arp_table[ip_address] = mac_address
