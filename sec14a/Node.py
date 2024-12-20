@@ -1074,7 +1074,13 @@ class Node:
             raise ValueError("Invalid packet type")
 
     def _send_packet(self, packet):
-        print(f"[DEBUG] Sending packet: Type={type(packet).__name__}, Src={packet.source_ip}, Dst={packet.destination_ip}")
+        if isinstance(packet, ARPPacket):
+            print(f"[DEBUG] Sending ARP packet: Type={type(packet).__name__}, "
+                  f"Src={packet.payload.get('source_ip')}, Dst={packet.payload.get('destination_ip')}")
+        else:
+            print(f"[DEBUG] Sending packet: Type={type(packet).__name__}, "
+                  f"Src={packet.source_ip}, Dst={packet.destination_ip}")
+
         if self.default_route:
             print(f"[DEBUG] Using default route: {self.default_route}")
             self.default_route.enqueue_packet(packet, self)
