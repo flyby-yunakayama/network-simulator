@@ -161,7 +161,7 @@ class Node:
     def process_TCP_packet(self, packet):
         if self.network_event_scheduler.tcp_verbose:
             print(f"Processing TCP packet from {packet.header['source_ip']}:{packet.header['source_port']} to {packet.header['destination_ip']}:{packet.header['destination_port']}")
-            print(f"TCP flags: {', '.join(flag for flag, value in packet.header.get('flags', {}).items() if value)}")
+            print(f"TCP flags: {packet.header.get('flags', '')}")
             print(f"Sequence number: {packet.header.get('sequence_number', 'N/A')}")
             print(f"ACK number: {packet.header.get('acknowledgment_number', 'N/A')}")
 
@@ -169,7 +169,7 @@ class Node:
             if packet.header["destination_ip"] == self.ip_address:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
-                flags = packet.header.get('flags', '')
+                flags = packet.header.get('flags', '').split()
 
                 connection_key = (packet.header["source_ip"], packet.header["source_port"])
                 source_port = packet.header["destination_port"]
@@ -954,57 +954,59 @@ class Node:
 
         return True
 
-    def send_control_tcp_packet(self, destination_ip, destination_port, data, flags="ACK", **kwargs):
+    def send_control_tcp_packet(self, destination_ip, destination_port, flags, source_port=None, data=b'', sequence_number=None, acknowledgment_number=None):
         """
-        制御メッセージ(FTPの220,331,230,150,226など)を送信するための関数。
-        Parameters:
-        - destination_ip: 送信先IPアドレス
-        - destination_port: 送信先ポート番号
-        - data: 送信データ
-        - flags: TCPフラグ（デフォルトはACK）
-        - **kwargs: その他のパラメータ
+        TCPコントロールパケットを送信する。
         """
-        connection_key = (destination_ip, destination_port)
+        if self.network_event_scheduler.tcp_verbose:
+            print(f"Sending TCP packet to {destination_ip}:{destination_port} Flags: {flags} Seq:{sequence_number if sequence_number is not None else 'N/A'} Ack:{acknowledgment_number if acknowledgment_number is not None else 'N/A'}")
 
-        # コネクション情報の取得
-        connection_info = self.tcp_connections.get(connection_key)
-        if not connection_info:
-            print(f"[DEBUG] No connection info found for {connection_key}. Cannot send control packet.")
-            return False
+        # コネクションキーを生成（自分のIPとポート）
+        if source_port is None:
+            source_port = self.select_available_port("TCP")
+        connection_key = (self.ip_address, source_port)
 
-        # TCPパケットの送信に必要な引数を準備
-        tcp_args = {
-            'source_port': connection_info['source_port'],
+        # コネクション情報を取得
+        connection_info = self.tcp_connections.get(connection_key, {})
+
+        # シーケンス番号とACK番号を設定
+        if sequence_number is None:
+            sequence_number = connection_info.get('sequence_number', 0)
+        if acknowledgment_number is None:
+            acknowledgment_number = connection_info.get('acknowledgment_number', 0)
+
+        # パケットヘッダを作成
+        header = {
+            'source_ip': self.ip_address,
+            'destination_ip': destination_ip,
+            'protocol': 'TCP',
+            'source_port': source_port,
             'destination_port': destination_port,
-            'sequence_number': connection_info['sequence_number'],
-            'acknowledgment_number': connection_info['acknowledgment_number'],
-            'window_size': connection_info['window_size'],
-            'flags': {flags: True}
+            'flags': flags,
+            'sequence_number': sequence_number,
+            'acknowledgment_number': acknowledgment_number,
+            'window_size': connection_info.get('window_size', 65535)
         }
 
-        # 送信先MACアドレスの取得
-        destination_mac = self.get_mac_address_from_ip(destination_ip)
-        if destination_mac is None:
-            print(f"[DEBUG] No MAC address found for {destination_ip}, sending ARP request")
-            self.send_arp_request(destination_ip)
-            if destination_ip not in self.waiting_for_arp_reply:
-                self.waiting_for_arp_reply[destination_ip] = []
-            self.waiting_for_arp_reply[destination_ip].append((data, "TCP", 0, tcp_args))
-            return False
-
-        # TCPパケット送信
-        self._send_transport_packet(
-            "TCP",
-            destination_ip,
-            destination_mac,
-            data,
-            0,
-            **tcp_args
+        # パケットを作成して送信
+        packet = Packet(
+            header=header,
+            payload=data
         )
 
-        # シーケンス番号を更新（データ長が0でない場合のみ）
-        if len(data) > 0:
-            connection_info['sequence_number'] += len(data)
+        # パケットを送信
+        self._send_transport_packet(packet)
+
+        # 未確認パケットを記録（SYNまたはPSHフラグがある場合）
+        if 'SYN' in flags.split() or 'PSH' in flags.split():
+            if connection_key in self.tcp_connections:
+                self.tcp_connections[connection_key]['unacked_packets'][sequence_number] = {
+                    'packet': packet,
+                    'time': self.network_event_scheduler.current_time,
+                    'retransmission_count': 0
+                }
+                # タイムアウトイベントをスケジュール
+                self.schedule_timeout(connection_key, sequence_number)
 
         return True
 
