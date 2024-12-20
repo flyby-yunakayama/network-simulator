@@ -702,26 +702,42 @@ class Node:
         """
         パケットを受信する。
         """
-        print(f"[DEBUG] Received packet: Type={type(packet).__name__}, Src={packet.source_ip}:{getattr(packet, 'source_port', 'N/A')}, Dst={packet.destination_ip}:{getattr(packet, 'destination_port', 'N/A')}")
-
-        if packet.destination_mac != self.mac_address and packet.destination_mac != "FF:FF:FF:FF:FF:FF":
-            print(f"[DEBUG] Packet dropped: wrong MAC address. Expected {self.mac_address}, got {packet.destination_mac}")
-            return
-
         # パケットの到着を記録
         if hasattr(packet, 'arrival_time') and packet.arrival_time == -1:
             print(f"[DEBUG] Packet marked as lost")
             self.network_event_scheduler.log_packet_info(packet, "lost", self.node_id)
             return
 
-        if isinstance(packet, TCPPacket):
-            print(f"[DEBUG] Processing TCP packet with flags: {packet.flags}")
-            self.process_TCP_packet(packet)
-        elif isinstance(packet, UDPPacket):
-            self.process_UDP_packet(packet)
-        elif isinstance(packet, ARPPacket):
-            print(f"[DEBUG] Processing ARP packet: {packet.arp_type}")
+        # MAC アドレスの検証 (ARP ブロードキャストは除く)
+        if not isinstance(packet, ARPPacket) and packet.destination_mac != self.mac_address:
+            print(f"[DEBUG] Packet dropped: wrong MAC address. Expected {self.mac_address}, got {packet.destination_mac}")
+            return
+
+        # パケットタイプに応じた処理とログ出力
+        if isinstance(packet, ARPPacket):
+            print(f"[DEBUG] Received ARP packet: Type={type(packet).__name__}, "
+                  f"Src={packet.payload.get('source_ip')}, Operation={packet.payload.get('operation')}")
             self.process_ARP_packet(packet)
+            return
+
+        if isinstance(packet, TCPPacket):
+            print(f"[DEBUG] Received TCP packet: Type={type(packet).__name__}, "
+                  f"Src={packet.source_ip}:{packet.source_port}, "
+                  f"Dst={packet.destination_ip}:{packet.destination_port}, "
+                  f"Flags={packet.flags}")
+            self.process_TCP_packet(packet)
+            return
+
+        if isinstance(packet, UDPPacket):
+            print(f"[DEBUG] Received UDP packet: Type={type(packet).__name__}, "
+                  f"Src={packet.source_ip}:{packet.source_port}, "
+                  f"Dst={packet.destination_ip}:{packet.destination_port}")
+            self.process_UDP_packet(packet)
+            return
+
+        # その他のパケットタイプの処理
+        print(f"[DEBUG] Received other packet: Type={type(packet).__name__}")
+        self.process_data_packet(packet)
 
     def process_data_packet(self, packet):
         # フラグメンテーション処理等は省略
