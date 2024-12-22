@@ -273,7 +273,6 @@ class Node:
             print(f"[DEBUG] handle_acknowledgement for {connection_key}, ack_number={ack_number}")
             print(f"[DEBUG] cwnd={conn_info['cwnd']}, ssthresh={conn_info['ssthresh']}")
 
-        print(self.ip_address, self.windows)
         # 1) 未ACKパケット一覧を表示
         if connection_key in self.windows:
             unacked_seqs = sorted(self.windows[connection_key].keys())
@@ -461,6 +460,9 @@ class Node:
                 self.network_event_scheduler.cancel_event(event_id)
 
     def remove_acked_packets_from_window(self, connection_key, ack_number):
+        if connection_key not in self.windows:
+            return
+
         for seq, packet_info in list(self.windows[connection_key].items()):
             if packet_info["expected_ack_number"] <= ack_number:
                 self.cancel_timeout(connection_key, seq)
