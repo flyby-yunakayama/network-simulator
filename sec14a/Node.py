@@ -260,80 +260,71 @@ class Node:
         self.log_congestion_window(connection_key, self.tcp_connections[connection_key]['cwnd'], new_state)
 
     def handle_acknowledgement(self, connection_key, ack_number):
+        """
+        ACKを受信したときの処理。
+        cwndの更新、重複ACKカウント、スロースタート／輻輳回避／fast_recovery への遷移管理など。
+        """
+
         if connection_key not in self.tcp_connections:
-            return  # コネクションが存在しない場合は何もしない
+            return
 
-        if connection_key in self.tcp_connections:
+        conn_info = self.tcp_connections[connection_key]
+        if self.network_event_scheduler.tcp_verbose:
             print(f"[DEBUG] handle_acknowledgement for {connection_key}, ack_number={ack_number}")
-            print(f"[DEBUG] cwnd={self.tcp_connections[connection_key]['cwnd']}, ssthresh={self.tcp_connections[connection_key]['ssthresh']}")
+            print(f"[DEBUG] cwnd={conn_info['cwnd']}, ssthresh={conn_info['ssthresh']}")
 
-        # ウィンドウ内未ACKパケット一覧表示
+        # 1) 未ACKパケット一覧を表示
         if connection_key in self.windows:
             unacked_seqs = sorted(self.windows[connection_key].keys())
             print(f"[DEBUG] Unacked packets for {connection_key}: {unacked_seqs}")
 
-        if connection_key not in self.windows:
-            self.windows[connection_key] = {}  # 必要に応じて初期化
-
-        # ACK番号に一致するパケットをウィンドウから削除
+        # 2) 未ACKリストから ack_number まで進んだパケットを削除
         self.remove_acked_packets_from_window(connection_key, ack_number)
 
-        # 転送情報を取得
-        transfer_info = self.tcp_connections[connection_key].get('transfer_info', None)
-
-        # ここからは転送進捗更新など
+        # 3) 転送情報更新（省略せず）
+        transfer_info = conn_info.get('transfer_info', None)
         if transfer_info and transfer_info['file_size'] > 0:
-            sequence_number_base = self.tcp_connections[connection_key].get("sequence_number_base", 0)
-            bytes_acked = ack_number - sequence_number_base
+            seq_base = conn_info["sequence_number_base"]  # 送信開始シーケンス
+            bytes_acked = ack_number - seq_base
             if bytes_acked > transfer_info['bytes_transferred']:
                 transfer_info['bytes_transferred'] = bytes_acked
                 transfer_info['progress'].append((self.network_event_scheduler.current_time, bytes_acked))
                 if self.network_event_scheduler.tcp_verbose:
                     print(f"Transfer Progress: {bytes_acked}/{transfer_info['file_size']} bytes transferred.")
 
-        # 現在のACK番号と前回のACK番号を取得
-        last_ack = self.tcp_connections[connection_key].get("last_ack_number", 0)
-
-        # ACK番号の判定
+        # 4) 重複ACKか否かを判定
+        last_ack = conn_info.get("last_ack_number", 0)
         is_duplicate_ack = (ack_number == last_ack)
+        conn_info["last_ack_number"] = ack_number
 
-        # 最新のACK番号を設定
-        self.tcp_connections[connection_key]["last_ack_number"] = ack_number
-
-        # fast_recovery中のpartial ACK処理追加
-        state = self.tcp_connections[connection_key]['congestion_state']
-
+        # 5) Congestion Control
+        state = conn_info['congestion_state']
         if state == 'fast_recovery':
+            # fast_recovery中
             seq_to_retransmit = self.find_retransmit_sequence_number(connection_key)
             if seq_to_retransmit is not None:
-                # partial ACK判定
+                # partial ACK (ack_number が前進したが、完全には追いつかない)
                 if ack_number > last_ack and ack_number < self.windows[connection_key][seq_to_retransmit]["expected_ack_number"]:
-                    # partial ACK時はcwndを1減少させ、最小値を保証
-                    self.tcp_connections[connection_key]['cwnd'] = max(
-                        self.tcp_connections[connection_key]['cwnd'] - 1,
-                        self.tcp_connections[connection_key]['ssthresh']
-                    )
-                    # パケット再送
+                    conn_info['cwnd'] = max(conn_info['cwnd'] - 1, conn_info['ssthresh'])
                     self.retransmit_packet(connection_key, seq_to_retransmit)
                     self.schedule_send_next_chunk(connection_key)
                     return
                 else:
-                    # partial ACKでない or 全ACK済みならfast_recovery終了
-                    self.tcp_connections[connection_key]['cwnd'] = self.tcp_connections[connection_key]['ssthresh']
+                    # partial でも全ACKでもない => fast_recovery終了
+                    conn_info['cwnd'] = conn_info['ssthresh']
                     self.transition_to_state(connection_key, 'congestion_avoidance')
                     self.schedule_send_next_chunk(connection_key)
                     return
 
-        # 通常ACK処理（fast_recoveryでない場合）
+        # fast_recovery でない通常ACK処理
         if is_duplicate_ack:
-            # 重複ACKとしてカウント
-            self.tcp_connections[connection_key]["duplicate_ack_count"] += 1
-            if self.tcp_connections[connection_key]["duplicate_ack_count"] >= 3:
+            conn_info["duplicate_ack_count"] += 1
+            if conn_info["duplicate_ack_count"] >= 3:
                 self.fast_retransmit(connection_key)
                 self.schedule_send_next_chunk(connection_key)
         else:
-            # 新しいACKとして処理
-            self.tcp_connections[connection_key]["duplicate_ack_count"] = 0
+            # 新しいACK
+            conn_info["duplicate_ack_count"] = 0
             self.adjust_congestion_window(connection_key)
             self.schedule_send_next_chunk(connection_key)
 
@@ -561,71 +552,54 @@ class Node:
 
     def update_ACK_number(self, connection_key, received_sequence_number, payload_length):
         """
-        連続して受信済みのシーケンス領域に対してのみACKを前進させる。
-        受信シーケンスが欠落している場合はout_of_order_packetsに格納し、
-        すでに届いているシーケンス番号と併せて連続が埋まったらACKを前進する。
-
-        connection_key: (src_ip, src_port)
-        received_sequence_number: 今回受信したデータの開始シーケンス番号
-        payload_length: 今回受信したデータのサイズ
+        受信側のシーケンス管理。
+        連続的に受信した範囲だけACKを前進させる。
         """
+
         if connection_key not in self.tcp_connections:
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Connection key {connection_key} not found for updating ACK number.")
-            return  # コネクション情報が存在しない場合は処理をスキップ
+                print(f"[update_ACK_number] Connection {connection_key} not found.")
+            return
 
-        print(f"[DEBUG] update_ACK_number connection_key={connection_key}, "
-            f"received_seq={received_sequence_number}, payload_len={payload_length}")
+        conn_info = self.tcp_connections[connection_key]
+        current_ack_number = conn_info["acknowledgment_number"]
 
-        old_ack = self.tcp_connections[connection_key]["acknowledgment_number"]
-        print(f"[DEBUG] Before update: ack_number={old_ack}")
+        # 今回受信したシーケンス範囲
+        start_seq = received_sequence_number
+        end_seq = received_sequence_number + payload_length  # 受信した末尾(非含む)
+        
+        # 既に受信済みのシーケンス番号集合を更新
+        received_seq_set = conn_info.setdefault("received_sequence_numbers", set())
+        for seq in range(start_seq, end_seq):
+            received_seq_set.add(seq)
 
-        # 受信したシーケンス番号範囲をセットに格納
-        received_sequence_numbers = self.tcp_connections[connection_key].setdefault('received_sequence_numbers', set())
-        for seq in range(received_sequence_number, received_sequence_number + payload_length):
-            received_sequence_numbers.add(seq)
+        # out_of_order管理リスト
+        # （もし抜けがあれば、今後そこが埋まるまでACKは進まず、重複ACKになる）
+        out_of_order = conn_info.setdefault("out_of_order_packets", [])
 
-        # out_of_orderパケット(あるいは断片)管理用リスト
-        out_of_order_packets = self.tcp_connections[connection_key].setdefault('out_of_order_packets', [])
+        # 連続して埋まっているシーケンス番号を確認
+        next_expected = current_ack_number
+        while next_expected in received_seq_set:
+            next_expected += 1
 
-        # 現在のACK番号（= 次に受信を期待するシーケンス番号）
-        current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
+        if next_expected > current_ack_number:
+            # ACK を進める
+            conn_info["acknowledgment_number"] = next_expected
 
-        # 今回の受信範囲が「今まさに期待している番号より前」なら無視（重複データ）か、
-        # 期待より先なら一部を out_of_order として格納し、連続が埋まればACK前進を試みる。
-        #
-        # ただし、本コードでは既に arrived な範囲もreceived_sequence_numbersに入っているため、
-        # ここで欠落が埋まったかどうかをまとめてチェックし、「連続する範囲だけACKを前進」する。
-
-        # 1. 連続的に受信済み（= received_sequence_numbers に含まれている）部分をACK前進
-        next_expected_seq = current_ack_number
-        while next_expected_seq in received_sequence_numbers:
-            next_expected_seq += 1
-
-        # 連続領域が増えていればACKを更新
-        if next_expected_seq != current_ack_number:
-            self.tcp_connections[connection_key]["acknowledgment_number"] = next_expected_seq
-
-            # out_of_order_packets リストから、今回さらに埋まったシーケンス分を除外
-            # （すでに受信済みの範囲と比較して欠落があったら並べて管理する想定）
-            while out_of_order_packets and out_of_order_packets[0] <= next_expected_seq:
-                out_of_order_packets.pop(0)
-
-            self.tcp_connections[connection_key]['out_of_order_packets'] = out_of_order_packets
+            # out_of_order も next_expected を下回るものは削除
+            while out_of_order and out_of_order[0] < next_expected:
+                out_of_order.pop(0)
 
             if self.network_event_scheduler.tcp_verbose:
-                print(f"Updated ACK number to {next_expected_seq} for connection {connection_key}.")
+                print(f"[update_ACK_number] Updated ACK to {next_expected} for {connection_key}")
         else:
-            # 部分的に欠落している場合などは、ACKは前進しない
-            # 今回の受信範囲の終端 (received_sequence_number + payload_length) は
-            # out_of_order_packets に突っ込んでおく
-            end_of_data = received_sequence_number + payload_length
-            if end_of_data not in out_of_order_packets:
-                out_of_order_packets.append(end_of_data)
-                out_of_order_packets.sort()
-
-        new_ack = self.tcp_connections[connection_key]["acknowledgment_number"]
-        print(f"[DEBUG] After update: ack_number={new_ack}")
+            # もし今回の end_seq が既存のACKより先にあるならout_of_order登録
+            if end_seq > current_ack_number:
+                if end_seq not in out_of_order:
+                    out_of_order.append(end_seq)
+                    out_of_order.sort()
+            if self.network_event_scheduler.tcp_verbose:
+                print(f"[update_ACK_number] No ACK update; out_of_order={out_of_order}")
 
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         acknowledgment_number = sequence_number + 1
