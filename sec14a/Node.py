@@ -560,47 +560,68 @@ class Node:
         return False
 
     def update_ACK_number(self, connection_key, received_sequence_number, payload_length):
+        """
+        連続して受信済みのシーケンス領域に対してのみACKを前進させる。
+        受信シーケンスが欠落している場合はout_of_order_packetsに格納し、
+        すでに届いているシーケンス番号と併せて連続が埋まったらACKを前進する。
+
+        connection_key: (src_ip, src_port)
+        received_sequence_number: 今回受信したデータの開始シーケンス番号
+        payload_length: 今回受信したデータのサイズ
+        """
         if connection_key not in self.tcp_connections:
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Connection key {connection_key} not found for updating ACK number.")
             return  # コネクション情報が存在しない場合は処理をスキップ
 
-        print(f"[DEBUG] update_ACK_number connection_key={connection_key}, received_seq={received_sequence_number}, payload_len={payload_length}")
+        print(f"[DEBUG] update_ACK_number connection_key={connection_key}, "
+            f"received_seq={received_sequence_number}, payload_len={payload_length}")
+
         old_ack = self.tcp_connections[connection_key]["acknowledgment_number"]
         print(f"[DEBUG] Before update: ack_number={old_ack}")
 
-        # 現在のACK番号を取得
-        current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
-
-        # 受信したシーケンス番号をセットに追加
+        # 受信したシーケンス番号範囲をセットに格納
         received_sequence_numbers = self.tcp_connections[connection_key].setdefault('received_sequence_numbers', set())
         for seq in range(received_sequence_number, received_sequence_number + payload_length):
             received_sequence_numbers.add(seq)
 
-        # 連続していない番号をリストに記憶
+        # out_of_orderパケット(あるいは断片)管理用リスト
         out_of_order_packets = self.tcp_connections[connection_key].setdefault('out_of_order_packets', [])
 
-        # 期待する次のシーケンス番号を見つける
+        # 現在のACK番号（= 次に受信を期待するシーケンス番号）
+        current_ack_number = self.tcp_connections[connection_key]["acknowledgment_number"]
+
+        # 今回の受信範囲が「今まさに期待している番号より前」なら無視（重複データ）か、
+        # 期待より先なら一部を out_of_order として格納し、連続が埋まればACK前進を試みる。
+        #
+        # ただし、本コードでは既に arrived な範囲もreceived_sequence_numbersに入っているため、
+        # ここで欠落が埋まったかどうかをまとめてチェックし、「連続する範囲だけACKを前進」する。
+
+        # 1. 連続的に受信済み（= received_sequence_numbers に含まれている）部分をACK前進
         next_expected_seq = current_ack_number
         while next_expected_seq in received_sequence_numbers:
             next_expected_seq += 1
 
-        # 受信したシーケンス番号が連続している場合のみACK番号を更新
+        # 連続領域が増えていればACKを更新
         if next_expected_seq != current_ack_number:
             self.tcp_connections[connection_key]["acknowledgment_number"] = next_expected_seq
 
-            # リストから連続するシーケンス番号を削除
-            while out_of_order_packets and out_of_order_packets[0] == next_expected_seq:
-                next_expected_seq += 1
+            # out_of_order_packets リストから、今回さらに埋まったシーケンス分を除外
+            # （すでに受信済みの範囲と比較して欠落があったら並べて管理する想定）
+            while out_of_order_packets and out_of_order_packets[0] <= next_expected_seq:
                 out_of_order_packets.pop(0)
 
             self.tcp_connections[connection_key]['out_of_order_packets'] = out_of_order_packets
+
             if self.network_event_scheduler.tcp_verbose:
                 print(f"Updated ACK number to {next_expected_seq} for connection {connection_key}.")
         else:
-            # 受け取っていないパケットが存在する場合、現在のACK番号をそのまま使用
-            if received_sequence_number + payload_length not in out_of_order_packets:
-                out_of_order_packets.append(received_sequence_number + payload_length)
+            # 部分的に欠落している場合などは、ACKは前進しない
+            # 今回の受信範囲の終端 (received_sequence_number + payload_length) は
+            # out_of_order_packets に突っ込んでおく
+            end_of_data = received_sequence_number + payload_length
+            if end_of_data not in out_of_order_packets:
+                out_of_order_packets.append(end_of_data)
                 out_of_order_packets.sort()
 
         new_ack = self.tcp_connections[connection_key]["acknowledgment_number"]
