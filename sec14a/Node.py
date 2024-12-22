@@ -273,6 +273,7 @@ class Node:
             print(f"[DEBUG] handle_acknowledgement for {connection_key}, ack_number={ack_number}")
             print(f"[DEBUG] cwnd={conn_info['cwnd']}, ssthresh={conn_info['ssthresh']}")
 
+        print(self.ip_address, self.windows)
         # 1) 未ACKパケット一覧を表示
         if connection_key in self.windows:
             unacked_seqs = sorted(self.windows[connection_key].keys())
