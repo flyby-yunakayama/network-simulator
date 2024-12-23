@@ -230,7 +230,6 @@ class DhcpClient:
             source_port=68,
             destination_port=67
         )
-        print("DHCP Discover sent")
         self.node.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node.node_id)
         self.state = "DISCOVER_SENT"
 
