@@ -287,6 +287,7 @@ class Node:
         if transfer_info and transfer_info['file_size'] > 0:
             seq_base = conn_info["sequence_number_base"]  # 送信開始シーケンス
             bytes_acked = ack_number - seq_base
+            print(f"[DEBUG] Bytes acked: {bytes_acked}")
             if bytes_acked > transfer_info['bytes_transferred']:
                 transfer_info['bytes_transferred'] = bytes_acked
                 transfer_info['progress'].append((self.network_event_scheduler.current_time, bytes_acked))
