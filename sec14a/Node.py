@@ -522,7 +522,7 @@ class Node:
                 self.transition_to_state(connection_key, 'congestion_avoidance')
 
         elif state == 'congestion_avoidance':
-            increment = max(1, int(1 / cwnd))
+            increment = 1.0 / cwnd
             new_cwnd = min(cwnd + increment, self.MAX_CWND)
             self.tcp_connections[connection_key]['cwnd'] = new_cwnd
             self.log_congestion_window(connection_key, new_cwnd, 'congestion_avoidance')
@@ -626,7 +626,7 @@ class Node:
 
         destination_ip = connection_key[0]
         dscp = dscp
-        self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
+        self.send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
 
         self.tcp_connections[connection_key]["sequence_number"] += 1
 
@@ -677,26 +677,10 @@ class Node:
             destination_ip = connection_key[0]
             dscp = dscp
 
-            self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
+            self.send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
         else:
             if self.network_event_scheduler.tcp_verbose:
                 print("Error: Connection key not found in tcp_connections.")
-
-    def _send_control_tcp_packet(self, destination_ip, data, dscp, **kwargs):
-        """
-        TCP制御パケット(SYN, SYN-ACK, ACKなど)送信用の共通処理。
-        ARP解決を含め、send_app_data相当の処理を内包することも可能。
-        """
-        destination_mac = self.get_mac_address_from_ip(destination_ip)
-        if destination_mac is None:
-            # ARP未解決なら待機
-            self.send_arp_request(destination_ip)
-            if destination_ip not in self.waiting_for_arp_reply:
-                self.waiting_for_arp_reply[destination_ip] = []
-            self.waiting_for_arp_reply[destination_ip].append((data, "TCP", dscp, kwargs))
-            return
-
-        self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
 
     def terminate_TCP_connection(self, connection_key):
         # TCP接続を終了する処理
@@ -849,8 +833,8 @@ class Node:
                 "destination_port": destination_port
             }
 
-            # _send_control_tcp_packetを呼んでSYNパケットを送信（ARP未解決時は待機）
-            sent = self._send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
+            # send_control_tcp_packetを呼んでSYNパケットを送信（ARP未解決時は待機）
+            sent = self.send_control_tcp_packet(destination_ip, b"", dscp, **control_packet_kwargs)
             # パケットが実際に送信（_send_transport_packet呼び出し）された場合のみシーケンス番号をインクリメント
             if sent:
                 self.tcp_connections[connection_key]["sequence_number"] += 1
@@ -1051,14 +1035,28 @@ class Node:
             }))
             return
 
-        # ファイル転送ロジック(update_data_after_send)は呼ばず、
-        # 直接_transport_packetでパケット送信
         self._send_transport_packet("TCP", dst_ip, destination_mac, data, dscp,
                                     source_port=source_port,
                                     destination_port=destination_port,
                                     sequence_number=seq_num,
                                     acknowledgment_number=ack_num,
                                     flags=flags)
+
+    def _send_control_tcp_packet(self, destination_ip, data, dscp, **kwargs):
+        """
+        TCP制御パケット(SYN, SYN-ACK, ACKなど)送信用の共通処理。
+        ARP解決を含め、send_app_data相当の処理を内包することも可能。
+        """
+        destination_mac = self.get_mac_address_from_ip(destination_ip)
+        if destination_mac is None:
+            # ARP未解決なら待機
+            self.send_arp_request(destination_ip)
+            if destination_ip not in self.waiting_for_arp_reply:
+                self.waiting_for_arp_reply[destination_ip] = []
+            self.waiting_for_arp_reply[destination_ip].append((data, "TCP", dscp, kwargs))
+            return
+
+        self._send_transport_packet("TCP", destination_ip, destination_mac, data, dscp, **kwargs)
 
     def _send_transport_packet(self, protocol, destination_ip, destination_mac, data, dscp, **kwargs):
         if protocol == "UDP":
