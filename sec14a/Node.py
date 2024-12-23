@@ -812,9 +812,7 @@ class Node:
                 print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{destination_port}")
 
             connection_key = (destination_ip, destination_port)
-            print(f"Connection key: {connection_key}")
             if connection_key not in self.tcp_connections:
-                print(f"Initializing connection info for {connection_key}")
                 self.initialize_connection_info(
                     connection_key=connection_key,
                     state='SYN_SENT',
@@ -822,13 +820,10 @@ class Node:
                     acknowledgment_number=0,
                     data=b''
                 )
-            print(f"Connection info: {self.tcp_connections[connection_key]}")
 
             # app_typeをapplication_layerから取得する（なければNone）
             app_type = self.application_layer.connection_app_map.get(connection_key, None)
             source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
-            print(f"Source port: {source_port}")
-            print(self.tcp_connections[connection_key])
 
             control_packet_kwargs = {
                 "flags": "SYN",
@@ -987,7 +982,7 @@ class Node:
                 app = self.application_layer
                 app.update_data_after_send(connection_key, len(chunk))
 
-    def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags="ACK"):
+    def send_control_tcp_packet(self, dst_ip, data, dscp=0, source_port=None, destination_port=None, flags="ACK", sequence_number=0, acknowledgment_number=0):
         """
         制御メッセージ(FTPの220,331,230,150,226など)を送信するための関数。
         file_sizeやtransfer_doneなどファイル転送特有のロジックは排除するが、
@@ -1004,7 +999,7 @@ class Node:
         # app_type（FTPサーバやクライアントなど）を取得
         app_type = self.application_layer.connection_app_map.get(connection_key, None)
 
-        # TCPの場合、ソースポートが未指定なら割り当てる
+        # ソースポートが未指定なら割り当てる
         if source_port is None:
             source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
 
@@ -1017,15 +1012,6 @@ class Node:
             # まだコネクション情報がない場合は適当に初期化する。
             # ここではシーケンス番号やACK番号を0で初期化する。
             self.initialize_connection_info(connection_key=connection_key, state='ESTABLISHED', sequence_number=0, acknowledgment_number=0, data=b'')
-
-        # tcp_connectionsからシーケンス番号等を取得
-        seq_num = self.tcp_connections[connection_key]['sequence_number']
-        ack_num = self.tcp_connections[connection_key]['acknowledgment_number']
-
-        # データ送信後にシーケンス番号を進める
-        # control packetは単発のメッセージなので、送信後にseq_numを増やすだけでOK
-        # アプリ側でACKがくるまでは特に大きく管理しなくてもよい
-        self.tcp_connections[connection_key]['sequence_number'] = seq_num + len(data)
 
         # 宛先MACアドレスをARPで取得または待機
         destination_mac = self.get_mac_address_from_ip(dst_ip)
@@ -1043,8 +1029,8 @@ class Node:
         self._send_transport_packet("TCP", dst_ip, destination_mac, data, dscp,
                                     source_port=source_port,
                                     destination_port=destination_port,
-                                    sequence_number=seq_num,
-                                    acknowledgment_number=ack_num,
+                                    sequence_number=sequence_number,
+                                    acknowledgment_number=acknowledgment_number,
                                     flags=flags)
 
     def _send_control_tcp_packet(self, destination_ip, data, dscp, **kwargs):
