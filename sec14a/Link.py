@@ -1,6 +1,7 @@
 import heapq
 import random
 from collections import defaultdict
+from sec14a.Node import Node
 from sec14a.Switch import Switch
 from sec14a.Router import Router
 from sec14a.Packet import Packet, TCPPacket, UDPPacket
