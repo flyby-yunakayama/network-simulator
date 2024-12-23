@@ -143,12 +143,7 @@ class ApplicationManager:
     def check_dns_resolution(self):
         self.dns_client.check_pending_queries()
 
-r_ip,
-            query_domain=domain,
-            query_type="A",
-            network_event_scheduler=self.node.network_event_scheduler
-        )
-        # UDPでDNSサーバへクエリ送信
+
 class DnsClient:
     def __init__(self, node):
         self.node = node
@@ -170,7 +165,12 @@ class DnsClient:
             source_mac=self.node.mac_address,
             destination_mac="FF:FF:FF:FF:FF:FF",
             source_ip=self.node.ip_address,
-            destination_ip=self.node.dns_serve
+            destination_ip=self.node.dns_server_ip,
+            query_domain=domain,
+            query_type="A",
+            network_event_scheduler=self.node.network_event_scheduler
+        )
+        # UDPでDNSサーバへクエリ送信
         self.node.send_app_data(
             self.node.dns_server_ip,
             dns_query_packet.to_bytes(),
