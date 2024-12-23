@@ -41,7 +41,6 @@ class Node:
         self.arp_table = {}
         self.waiting_for_arp_reply = {}
         self.dns_server_ip = dns_server
-        self.url_to_ip_mapping = {}
         self.mtu = mtu
         self.fragmented_packets = {}
         self.default_route = default_route
@@ -124,8 +123,10 @@ class Node:
         pass
 
     def add_dns_record(self, domain_name, ip_address):
-        self.url_to_ip_mapping[domain_name] = ip_address
-        print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
+        """Forward DNS record to application layer's DNS client."""
+        if self.application_layer and self.application_layer.dns_client:
+            self.application_layer.dns_client.url_to_ip_mapping[domain_name] = ip_address
+            print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
 
     def process_ARP_packet(self, packet):
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
@@ -1144,14 +1145,22 @@ class Node:
         print(f"Node {self.node_id} has been assigned the DNS server IP address {dns_ip}.")
 
     def resolve_destination_ip(self, destination_url):
-        return self.url_to_ip_mapping.get(destination_url, None)
+        """Forward DNS resolution to application layer's DNS client."""
+        if self.application_layer and self.application_layer.dns_client:
+            return self.application_layer.dns_client.url_to_ip_mapping.get(destination_url, None)
+        return None
 
     def print_url_to_ip_mapping(self):
+        """Print DNS mappings from application layer's DNS client."""
         print("URL to IP Mapping:")
-        if not self.url_to_ip_mapping:
+        if not self.application_layer or not self.application_layer.dns_client:
+            print("  No DNS client available.")
+            return
+        mappings = self.application_layer.dns_client.url_to_ip_mapping
+        if not mappings:
             print("  No entries found.")
             return
-        for url, ip_address in self.url_to_ip_mapping.items():
+        for url, ip_address in mappings.items():
             print(f"  {url}: {ip_address}")
 
     def __str__(self):
