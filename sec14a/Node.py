@@ -607,9 +607,7 @@ class Node:
     def send_TCP_SYN_ACK(self, connection_key, source_port, sequence_number, dscp):
         acknowledgment_number = sequence_number + 1
 
-        print(f"Sending SYN-ACK to {connection_key} with sequence number {sequence_number} and acknowledgment number {acknowledgment_number}")
         if connection_key not in self.tcp_connections:
-            print(f"Connection key {connection_key} not found in tcp_connections. Initializing connection info.")
             self.initialize_connection_info(
                 connection_key=connection_key,
                 state='SYN_RECEIVED',
@@ -618,7 +616,6 @@ class Node:
                 data=None
             )
 
-        print(f"Connection info: {self.tcp_connections[connection_key]}")
         control_packet_kwargs = {
             "flags": "SYN,ACK",
             "sequence_number": self.tcp_connections[connection_key]["sequence_number"],
@@ -626,7 +623,6 @@ class Node:
             "source_port": source_port,
             "destination_port": connection_key[1]
         }
-        print(f"Control packet kwargs: {control_packet_kwargs}")
 
         destination_ip = connection_key[0]
         dscp = dscp
@@ -816,7 +812,9 @@ class Node:
                 print(f"Initiating TCP handshake: Sending SYN to {destination_ip}:{destination_port}")
 
             connection_key = (destination_ip, destination_port)
+            print(f"Connection key: {connection_key}")
             if connection_key not in self.tcp_connections:
+                print(f"Initializing connection info for {connection_key}")
                 self.initialize_connection_info(
                     connection_key=connection_key,
                     state='SYN_SENT',
@@ -824,10 +822,13 @@ class Node:
                     acknowledgment_number=0,
                     data=b''
                 )
+            print(f"Connection info: {self.tcp_connections[connection_key]}")
 
             # app_typeをapplication_layerから取得する（なければNone）
             app_type = self.application_layer.connection_app_map.get(connection_key, None)
             source_port = self.get_source_port(connection_key, "TCP", app_type=app_type)
+            print(f"Source port: {source_port}")
+            print(self.tcp_connections[connection_key])
 
             control_packet_kwargs = {
                 "flags": "SYN",
