@@ -142,19 +142,6 @@ class DNSPacket(Packet):
         # DNSクエリまたはレスポンスの詳細情報を格納するためのプレースホルダ
         self.dns_data = {}
 
-    def to_bytes(self):
-        """Convert DNS packet to bytes for transmission."""
-        # In our simulation, we serialize the packet data as JSON string
-        # and encode it to bytes to maintain consistency with packet handling
-        import json
-        packet_data = {
-            "header": self.header,
-            "query_domain": self.query_domain,
-            "query_type": self.query_type,
-            "dns_data": self.dns_data
-        }
-        return json.dumps(packet_data).encode('utf-8')
-
     def __str__(self):
         source_mac = self.mac_header.get("source_mac", "不明")
         destination_mac = self.mac_header.get("destination_mac", "不明")
