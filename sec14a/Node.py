@@ -281,8 +281,9 @@ class Node:
         # 2) 未ACKリストから ack_number まで進んだパケットを削除
         self.remove_acked_packets_from_window(connection_key, ack_number)
 
-        # 3) 転送情報更新（省略せず）
+        # 3) 転送情報更新
         transfer_info = conn_info.get('transfer_info', None)
+        print(f"[DEBUG] Transfer info: {transfer_info}")
         if transfer_info and transfer_info['file_size'] > 0:
             seq_base = conn_info["sequence_number_base"]  # 送信開始シーケンス
             bytes_acked = ack_number - seq_base
