@@ -146,10 +146,23 @@ class Node:
                 return
 
     def process_UDP_packet(self, packet):
-        if packet.header["destination_mac"] == self.mac_address:
-            if packet.header["destination_ip"] == self.ip_address:
+        # Accept packets addressed to this node or broadcast packets
+        if packet.header["destination_mac"] in [self.mac_address, "FF:FF:FF:FF:FF:FF"]:
+            if packet.header["destination_ip"] in [self.ip_address, "255.255.255.255/32"]:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
+
+                # Handle DHCP packets specially
+                if isinstance(packet, DHCPPacket):
+                    if self.application_layer and hasattr(self.application_layer, 'on_dhcp_packet_received'):
+                        self.application_layer.on_dhcp_packet_received(packet)
+                    return
+
+                # Handle DNS packets specially
+                if isinstance(packet, DNSPacket):
+                    if self.application_layer and hasattr(self.application_layer, 'on_dns_packet_received'):
+                        self.application_layer.on_dns_packet_received(packet)
+                    return
 
                 if self.application_layer and hasattr(self.application_layer, 'on_packet_received'):
                     self.application_layer.on_packet_received(packet)

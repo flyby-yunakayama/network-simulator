@@ -132,22 +132,26 @@ class DHCPServer(Server):
             self.used_ips.add(ip)
 
     def receive_packet(self, packet, received_link):
-        super().receive_packet(packet, received_link)  # Serverクラスの共通処理を利用
-
-        if packet.header["destination_mac"] == "FF:FF:FF:FF:FF:FF" and packet.header["destination_ip"] == "255.255.255.255/32":
-            if isinstance(packet, DHCPPacket):
-                if packet.message_type == "DISCOVER":
-                    self.handle_dhcp_discover(packet)
-                elif packet.message_type == "REQUEST":
-                    self.handle_dhcp_request(packet)
-                else:
-                    pass
+        # For DHCP packets, we need to accept broadcast packets
+        if isinstance(packet, DHCPPacket):
+            self.network_event_scheduler.log_packet_info(packet, "DHCP packet received", self.node_id)
+            packet.set_arrived(self.network_event_scheduler.current_time)
+            
+            if packet.message_type == "DISCOVER":
+                self.handle_dhcp_discover(packet)
+            elif packet.message_type == "REQUEST":
+                self.handle_dhcp_request(packet)
+            return
+            
+        # For non-DHCP packets, use normal server packet handling
+        super().receive_packet(packet, received_link)
 
     def handle_dhcp_discover(self, discover_packet):
         # DHCP DISCOVERメッセージの処理
         # 利用可能なIPアドレスを割り当て、DHCPOfferPacketを生成して送信
         if self.ip_pool:
             assigned_ip = self.get_available_ip()
+            print(f"DHCP Server {self.node_id} offering IP {assigned_ip} to client {discover_packet.header['source_mac']}")
             # DHCP Offerメッセージの送信
             offer_packet = self.create_dhcp_offer_packet(discover_packet, assigned_ip)
             self.network_event_scheduler.log_packet_info(offer_packet, "DHCP Offer", self.node_id)
@@ -165,10 +169,15 @@ class DHCPServer(Server):
             source_mac=self.mac_address,
             destination_mac=discover_packet.header["source_mac"],
             source_ip=self.ip_address,
-            destination_ip=offered_ip,
+            destination_ip="255.255.255.255/32",  # Use broadcast for DHCP offer
             message_type="OFFER",
             network_event_scheduler=self.network_event_scheduler
         )
+        # Set DHCP-specific data
+        dhcp_offer_packet.dhcp_data = {
+            "offered_ip": offered_ip,
+            "dns_server_ip": self.dns_server_ip
+        }
         dhcp_offer_packet.dhcp_data = {"offered_ip": offered_ip}
         return dhcp_offer_packet
 
