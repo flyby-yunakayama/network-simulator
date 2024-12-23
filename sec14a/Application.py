@@ -518,7 +518,6 @@ class FTPServer:
 
     def update_data_after_send(self, connection_key, bytes_sent):
         ti = self.node.tcp_connections[connection_key]['transfer_info']
-        ti['bytes_transferred'] += bytes_sent
         self.check_transfer_complete(connection_key, *connection_key, 21)
 
     def check_transfer_complete(self, connection_key, client_ip, client_port, server_port):
