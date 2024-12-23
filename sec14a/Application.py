@@ -8,7 +8,8 @@ class ApplicationManager:
 
         # DNS, DHCPクライアントを内部で生成
         self.dns_client = DnsClient(node)
-        self.dhcp_client = DhcpClient(node)
+        # DHCPクライアントは必要に応じて登録
+        self.dhcp_client = None
 
         # 管理するアプリケーションインスタンス
         self.ftp_client = None
@@ -26,6 +27,13 @@ class ApplicationManager:
 
     def register_udp_app(self, udp_app):
         self.udp_app = udp_app
+
+    def register_dhcp_client(self):
+        """Register a DHCP client for this node and schedule discover if needed."""
+        self.dhcp_client = DhcpClient(self.node)
+        # Schedule DHCP discover if using dynamic IP
+        if self.node.is_network_address(self.node.ip_address):
+            self.dhcp_client.schedule_dhcp_discover()
 
     def map_connection_to_app(self, connection_key, app_type):
         self.connection_app_map[connection_key] = app_type
@@ -234,21 +242,28 @@ class DhcpClient:
         self.state = "DISCOVER_SENT"
 
     def on_dhcp_packet_received(self, packet):
+        """Handle incoming DHCP packets based on current state."""
+        # Log packet arrival
+        self.node.network_event_scheduler.log_packet_info(packet, "arrived", self.node.node_id)
+        packet.set_arrived(self.node.network_event_scheduler.current_time)
+
         if packet.message_type == "OFFER" and self.state == "DISCOVER_SENT":
+            # Log DHCP Offer
+            self.node.network_event_scheduler.log_packet_info(packet, "DHCP Offer received", self.node.node_id)
             offered_ip = packet.dhcp_data.get("offered_ip")
             if offered_ip:
                 self.send_dhcp_request(offered_ip)
                 self.state = "REQUEST_SENT"
 
         elif packet.message_type == "ACK" and self.state == "REQUEST_SENT":
+            # Log DHCP ACK
+            self.node.network_event_scheduler.log_packet_info(packet, "DHCP ACK received", self.node.node_id)
             assigned_ip = packet.dhcp_data.get("assigned_ip")
             dns_server_ip = packet.dhcp_data.get("dns_server_ip")
             if assigned_ip:
                 self.node.set_ip_address(assigned_ip)
-                print(f"Assigned IP: {assigned_ip}")
             if dns_server_ip:
                 self.node.set_dns_server_ip(dns_server_ip)
-                print(f"Assigned DNS server: {dns_server_ip}")
             self.state = "BOUND"
 
     def send_dhcp_request(self, requested_ip):
