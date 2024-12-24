@@ -1147,14 +1147,12 @@ class Node:
     def set_ip_address(self, new_ip):
         """Set the node's IP address and update network event scheduler."""
         self.ip_address = new_ip
-        print(f"Node {self.node_id} has been assigned the IP address {new_ip}.")
         # Update the node's IP in the network event scheduler's visualization
         self.network_event_scheduler.add_node(self.node_id, f'Node {self.node_id}\n{self.mac_address}', ip_addresses=[new_ip])
 
     def set_dns_server_ip(self, dns_ip):
         """Set the node's DNS server IP address."""
         self.dns_server_ip = dns_ip
-        print(f"Node {self.node_id} has been assigned the DNS server IP address {dns_ip}.")
 
     def resolve_destination_ip(self, destination_url):
         """Forward DNS resolution to application layer's DNS client."""
