@@ -683,60 +683,142 @@ class FTPServer:
 
 class HTTPClient:
     def __init__(self, node, server_url=None, verbose=False):
-        self.node = node
-        self.app_manager = node.application_layer
-        self.server_url = server_url
-        self.verbose = verbose
-        self.state = "NOT_CONNECTED"
-        self.file_to_retrieve = None
-        self.response_data = {}
+        """
+        HTTPClientクラスのコンストラクタ。
         
-    def connect(self, server_ip, server_port=80):
+        Parameters:
+        - node: ネットワークノードのインスタンス。
+        - server_url: 接続するHTTPサーバのURL（オプション）。
+        - verbose: 詳細なログを表示するかどうかのフラグ。
+        """
+        self.node = node  # ネットワークノードを保存
+        self.app_manager = node.application_layer  # アプリケーションレイヤーのマネージャを取得
+        self.server_url = server_url  # サーバURLを保存
+        self.verbose = verbose  # 詳細表示のフラグを保存
+        self.state = "NOT_CONNECTED"  # 初期状態を「未接続」に設定
+        self.file_to_retrieve = None  # 取得するファイル名を初期化
+        self.response_data = {}  # 受信したレスポンスデータを保存する辞書を初期化
+        
+    def connect(self, server_ip=None, server_url=None, server_port=80):
+        """
+        HTTPサーバへの接続を開始します。server_ipが指定されていない場合はserver_urlを解決します。
+        
+        Parameters:
+        - server_ip: HTTPサーバのIPアドレス（オプション）。
+        - server_port: HTTPサーバのポート番号（デフォルトは80）。
+        - server_url: 接続するHTTPサーバのURL（オプション）。
+        """
+        # server_ipが指定されていれば、直接接続を試みる
+        if server_ip:
+            self._initiate_connection(server_ip, server_port)
+        # server_urlが指定されていれば、DNS解決を行ってから接続を試みる
+        elif server_url:
+            self.server_url = server_url  # サーバURLを保存
+            if self.verbose:
+                print("[HTTPClient] サーバURLからIPを解決しています:", server_url)
+            
+            def on_resolved(ip):
+                if ip:
+                    if self.verbose:
+                        print("[HTTPClient] 解決されたIP:", ip)
+                    self._initiate_connection(ip, server_port)
+                else:
+                    if self.verbose:
+                        print("[HTTPClient] サーバURLの解決に失敗しました:", server_url)
+            
+            # ApplicationManagerを通じてサーバURLを解決
+            resolved_ip = self.app_manager.resolve_destination_url(server_url, callback=on_resolved)
+            if resolved_ip is not None:
+                # すでに解決済みの場合は即座に接続を開始
+                on_resolved(resolved_ip)
+        else:
+            if self.verbose:
+                print("[HTTPClient] 接続情報が不足しています。server_ipまたはserver_urlを指定してください。")
+
+    def _initiate_connection(self, server_ip, server_port):
+        """
+        指定されたIPとポートに対して接続を開始します。
+        
+        Parameters:
+        - server_ip: HTTPサーバのIPアドレス。
+        - server_port: HTTPサーバのポート番号。
+        """
         if self.verbose:
-            print("[HTTPClient] Requesting TCP connect to", server_ip, server_port)
-        self.server_ip = server_ip
-        self.server_port = server_port
-        self.state = "CONNECTING"
-        self.node.initiate_tcp_handshake(server_ip, server_port)
-        self.app_manager.map_connection_to_app((server_ip, server_port), "HTTP")
+            print("[HTTPClient] TCP接続を要求しています:", server_ip, server_port)
+        self.server_ip = server_ip  # サーバのIPアドレスを保存
+        self.server_port = server_port  # サーバのポート番号を保存
+        self.state = "CONNECTING"  # 状態を「接続中」に変更
+        self.node.initiate_tcp_handshake(server_ip, server_port)  # TCPハンドシェイクを開始
+        self.app_manager.map_connection_to_app((server_ip, server_port), "HTTP")  # 接続をHTTPアプリケーションにマッピング
         
     def get_file(self, filename):
-        self.file_to_retrieve = filename
+        """
+        指定されたファイルを取得するリクエストを送信します。
+        
+        Parameters:
+        - filename: 取得するファイルの名前。
+        """
+        self.file_to_retrieve = filename  # 取得するファイル名を保存
         if self.state == "CONNECTED":
+            # 既に接続が確立されている場合は即座にGETリクエストを送信
             self.send_http_request(f"GET /{filename} HTTP/1.0\r\n\r\n")
         elif self.verbose:
-            print("[HTTPClient] Will retrieve file after connection:", filename)
+            # 接続がまだ確立されていない場合は、接続後にファイルを取得することをログに記録
+            print("[HTTPClient] 接続後にファイルを取得します:", filename)
             
     def send_http_request(self, request):
+        """
+        HTTPリクエストをサーバに送信します。
+        
+        Parameters:
+        - request: 送信するHTTPリクエストの文字列。
+        """
         if self.verbose:
-            print("[HTTPClient] Sending request:", request.strip())
+            print("[HTTPClient] 送信リクエスト:", request.strip())
+        # サーバIPとポートを指定してデータを送信
         self.node.send_app_data(
-            self.server_ip,
-            request.encode('utf-8'),
-            protocol="TCP",
-            destination_port=self.server_port
+            self.server_ip,  # サーバのIPアドレス
+            request.encode('utf-8'),  # リクエストをバイト列にエンコード
+            protocol="TCP",  # プロトコルをTCPに指定
+            destination_port=self.server_port  # 送信先ポートを指定
         )
         
     def on_connection_established(self, connection_key):
-        self.state = "CONNECTED"
+        """
+        TCP接続が確立したときに呼び出されるハンドラ。
+        
+        Parameters:
+        - connection_key: 接続を一意に識別するキー（クライアントIPとクライアントポートのタプル）。
+        """
+        self.state = "CONNECTED"  # 状態を「接続済み」に変更
         if self.verbose:
-            print("[HTTPClient] Connection established.")
+            print("[HTTPClient] 接続が確立しました。")
         if self.file_to_retrieve:
+            # 取得するファイルが指定されていれば、ファイル取得リクエストを送信
             self.get_file(self.file_to_retrieve)
             
     def on_packet_received(self, packet):
-        data = packet.payload.decode('utf-8', errors='ignore')
+        """
+        パケットを受信したときに呼び出されるハンドラ。
+        
+        Parameters:
+        - packet: 受信したパケットのオブジェクト。
+        """
+        data = packet.payload.decode('utf-8', errors='ignore')  # パケットのペイロードをデコード
         if self.verbose:
-            print("[HTTPClient] Received:", data.strip())
+            print("[HTTPClient] 受信データ:", data.strip())
             
-        # Simple HTTP response parsing
+        # シンプルなHTTPレスポンスの解析
         if data.startswith("HTTP/1.0 200 OK"):
+            # サーバからの200 OKレスポンスを受信した場合
             if self.verbose:
-                print("[HTTPClient] File retrieved successfully")
+                print("[HTTPClient] ファイルの取得に成功しました")
+            # ここでファイルデータを処理することも可能
         elif data.startswith("HTTP/1.0 404"):
+            # サーバからの404 Not Foundレスポンスを受信した場合
             if self.verbose:
-                print("[HTTPClient] File not found")
-
+                print("[HTTPClient] ファイルが見つかりませんでした")
+            # 追加のエラーハンドリングが可能
 
 class HTTPServer:
     def __init__(self, node, shared_files, verbose=False):

@@ -93,9 +93,19 @@ class Node:
             if class_name == "FTPServer":
                 if self.application_layer and hasattr(self.application_layer, 'register_ftp_server'):
                     self.application_layer.register_ftp_server(application_instance)
+
             elif class_name == "FTPClient":
                 if self.application_layer and hasattr(self.application_layer, 'register_ftp_client'):
                     self.application_layer.register_ftp_client(application_instance)
+                    
+            elif class_name == "HTTPServer":
+                if self.application_layer and hasattr(self.application_layer, 'register_http_server'):
+                    self.application_layer.register_http_server(application_instance)
+
+            elif class_name == "HTTPClient":
+                if self.application_layer and hasattr(self.application_layer, 'register_http_client'):
+                    self.application_layer.register_http_client(application_instance)
+
 
     def select_available_port(self):
         for port in range(1024, 49152):
