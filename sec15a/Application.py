@@ -1131,6 +1131,15 @@ class HTTPSClient(HTTPClient):
         # HTTPClientのconnectで TCP接続開始 (DNS解決含む)
         super().connect(server_ip=server_ip, server_url=server_url, server_port=server_port)
 
+    def _initiate_connection(self, server_ip, server_port):
+        if self.verbose:
+            print("[HTTPSClient] TCP接続を要求しています:", server_ip, server_port)
+        self.server_ip = server_ip
+        self.server_port = server_port
+        self.state = "CONNECTING"
+        self.node.initiate_tcp_handshake(server_ip, server_port)
+        self.app_manager.map_connection_to_app((server_ip, server_port), "HTTPS")
+
     def on_connection_established(self, connection_key):
         """
         TCP接続が確立したタイミングで呼ばれる。
