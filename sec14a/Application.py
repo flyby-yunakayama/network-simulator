@@ -8,7 +8,8 @@ class ApplicationManager:
 
         # DNS, DHCPクライアントを内部で生成
         self.dns_client = DnsClient(node)
-        self.dhcp_client = DhcpClient(node)
+        # DHCPクライアントは必要に応じて登録
+        self.dhcp_client = None
 
         # 管理するアプリケーションインスタンス
         self.ftp_client = None
@@ -26,6 +27,13 @@ class ApplicationManager:
 
     def register_udp_app(self, udp_app):
         self.udp_app = udp_app
+
+    def register_dhcp_client(self):
+        """Register a DHCP client for this node and schedule discover if needed."""
+        self.dhcp_client = DhcpClient(self.node)
+        # Schedule DHCP discover if using dynamic IP
+        if self.node.is_network_address(self.node.ip_address):
+            self.dhcp_client.schedule_dhcp_discover()
 
     def map_connection_to_app(self, connection_key, app_type):
         self.connection_app_map[connection_key] = app_type
@@ -151,7 +159,8 @@ class DnsClient:
         self.pending_queries = {}
 
     def resolve_domain(self, domain, callback=None):
-        # すでに解決済みかチェック
+        """Send a DNS query for the given domain."""
+        # Check if already resolved
         if domain in self.url_to_ip_mapping:
             if callback:
                 callback(self.url_to_ip_mapping[domain])
@@ -160,25 +169,20 @@ class DnsClient:
             print("No DNS server IP set. Cannot resolve domain.")
             return
 
-        # DNSクエリパケット作成
+        print(f"Node {self.node.node_id} sending DNS query for {domain}")
+        # Create DNS query packet
         dns_query_packet = DNSPacket(
             source_mac=self.node.mac_address,
-            destination_mac="FF:FF:FF:FF:FF:FF",
+            destination_mac="FF:FF:FF:FF:FF:FF",  # Broadcast
             source_ip=self.node.ip_address,
             destination_ip=self.node.dns_server_ip,
             query_domain=domain,
             query_type="A",
             network_event_scheduler=self.node.network_event_scheduler
         )
-        # UDPでDNSサーバへクエリ送信
-        self.node.send_app_data(
-            self.node.dns_server_ip,
-            dns_query_packet.to_bytes(),
-            protocol="UDP",
-            source_port=53,
-            destination_port=53
-        )
         self.pending_queries[domain] = callback
+        # Send DNS query directly using UDP
+        self.node._send_packet(dns_query_packet)
 
     def on_dns_packet_received(self, packet):
         if packet.query_domain and "resolved_ip" in packet.dns_data:
@@ -201,6 +205,9 @@ class DhcpClient:
         self.node = node
         self.state = "INIT"
         self.requested_ip = None
+        self.retries = 0
+        self.max_retries = 3
+        self.retry_timeout = 2.0  # seconds
 
     def schedule_dhcp_discover(self):
         """
@@ -214,6 +221,9 @@ class DhcpClient:
         )
 
     def send_dhcp_discover(self):
+        """Send DHCP discover packet and schedule retry if needed."""
+        print(f"Node {self.node.node_id} sending DHCP DISCOVER (attempt {self.retries + 1}/{self.max_retries})")
+        
         # DHCP Discover
         dhcp_discover_packet = DHCPPacket(
             source_mac=self.node.mac_address,
@@ -223,35 +233,59 @@ class DhcpClient:
             message_type="DISCOVER",
             network_event_scheduler=self.node.network_event_scheduler
         )
-        self.node.send_app_data(
-            "255.255.255.255",
-            dhcp_discover_packet.to_bytes(),
-            protocol="UDP",
-            source_port=68,
-            destination_port=67
-        )
+        
+        # Use _send_packet directly for broadcast packets
+        self.node._send_packet(dhcp_discover_packet)
         self.node.network_event_scheduler.log_packet_info(dhcp_discover_packet, "DHCP Discover sent", self.node.node_id)
         self.state = "DISCOVER_SENT"
+        
+        # Schedule retry if we haven't exceeded max retries
+        if self.retries < self.max_retries:
+            self.node.network_event_scheduler.schedule_event(
+                self.node.network_event_scheduler.current_time + self.retry_timeout,
+                self.retry_discover
+            )
+            
+    def retry_discover(self):
+        """Retry DHCP discover if still in DISCOVER_SENT state."""
+        if self.state == "DISCOVER_SENT":
+            self.retries += 1
+            if self.retries < self.max_retries:
+                self.send_dhcp_discover()
+            else:
+                print(f"Node {self.node.node_id} failed to get DHCP response after {self.max_retries} attempts")
 
     def on_dhcp_packet_received(self, packet):
+        """Handle incoming DHCP packets based on current state."""
+        # Log packet arrival
+        self.node.network_event_scheduler.log_packet_info(packet, "arrived", self.node.node_id)
+        packet.set_arrived(self.node.network_event_scheduler.current_time)
+
         if packet.message_type == "OFFER" and self.state == "DISCOVER_SENT":
+            # Log DHCP Offer
+            self.node.network_event_scheduler.log_packet_info(packet, "DHCP Offer received", self.node.node_id)
             offered_ip = packet.dhcp_data.get("offered_ip")
             if offered_ip:
                 self.send_dhcp_request(offered_ip)
                 self.state = "REQUEST_SENT"
 
         elif packet.message_type == "ACK" and self.state == "REQUEST_SENT":
+            # Log DHCP ACK
+            self.node.network_event_scheduler.log_packet_info(packet, "DHCP ACK received", self.node.node_id)
             assigned_ip = packet.dhcp_data.get("assigned_ip")
             dns_server_ip = packet.dhcp_data.get("dns_server_ip")
             if assigned_ip:
                 self.node.set_ip_address(assigned_ip)
-                print(f"Assigned IP: {assigned_ip}")
+                print(f"Node {self.node.node_id} has been assigned the IP address {assigned_ip}.")
             if dns_server_ip:
                 self.node.set_dns_server_ip(dns_server_ip)
-                print(f"Assigned DNS server: {dns_server_ip}")
+                print(f"Node {self.node.node_id} has been assigned the DNS server IP address {dns_server_ip}.")
             self.state = "BOUND"
 
     def send_dhcp_request(self, requested_ip):
+        """Send DHCP request packet and schedule retry if needed."""
+        print(f"Node {self.node.node_id} sending DHCP REQUEST for IP {requested_ip}")
+        
         dhcp_request_packet = DHCPPacket(
             source_mac=self.node.mac_address,
             destination_mac="FF:FF:FF:FF:FF:FF",
@@ -261,19 +295,30 @@ class DhcpClient:
             network_event_scheduler=self.node.network_event_scheduler
         )
         dhcp_request_packet.dhcp_data = {"requested_ip": requested_ip}
-
-        self.node.send_app_data(
-            "255.255.255.255",
-            dhcp_request_packet.to_bytes(),
-            protocol="UDP",
-            source_port=68,
-            destination_port=67
-        )
+        
+        # Use _send_packet directly for broadcast packets
+        self.node._send_packet(dhcp_request_packet)
         self.node.network_event_scheduler.log_packet_info(
             dhcp_request_packet, 
             "DHCP Request sent", 
             self.node.node_id
         )
+        self.state = "REQUEST_SENT"
+        
+        # Schedule retry
+        self.node.network_event_scheduler.schedule_event(
+            self.node.network_event_scheduler.current_time + self.retry_timeout,
+            lambda: self.retry_request(requested_ip)
+        )
+        
+    def retry_request(self, requested_ip):
+        """Retry DHCP request if still in REQUEST_SENT state."""
+        if self.state == "REQUEST_SENT":
+            self.retries += 1
+            if self.retries < self.max_retries:
+                self.send_dhcp_request(requested_ip)
+            else:
+                print(f"Node {self.node.node_id} failed to get DHCP ACK after {self.max_retries} attempts")
 
 class UDPApp:
     def __init__(self, node, protocol="UDP"):

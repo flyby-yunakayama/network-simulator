@@ -41,7 +41,6 @@ class Node:
         self.arp_table = {}
         self.waiting_for_arp_reply = {}
         self.dns_server_ip = dns_server
-        self.url_to_ip_mapping = {}
         self.mtu = mtu
         self.fragmented_packets = {}
         self.default_route = default_route
@@ -52,11 +51,10 @@ class Node:
         # ApplicationManagerをセット
         self.application_layer = ApplicationManager(self)
 
-        # IPがネットワークアドレスであればDHCP開始をスケジュール
+        # IPがネットワークアドレスであればDHCPクライアントを登録し、DHCP開始をスケジュール
         if self.is_network_address(self.ip_address):
-            # DHCPクライアントはapplication_layer.dhcp_clientにある前提
-            if self.application_layer and self.application_layer.dhcp_client:
-                self.application_layer.dhcp_client.schedule_dhcp_discover()
+            if self.application_layer:
+                self.application_layer.register_dhcp_client()
 
     def is_valid_mac_address(self, mac_address):
         mac_format = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
@@ -124,8 +122,10 @@ class Node:
         pass
 
     def add_dns_record(self, domain_name, ip_address):
-        self.url_to_ip_mapping[domain_name] = ip_address
-        print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
+        """Forward DNS record to application layer's DNS client."""
+        if self.application_layer and self.application_layer.dns_client:
+            self.application_layer.dns_client.url_to_ip_mapping[domain_name] = ip_address
+            print(f"{self.node_id} DNS record added: {domain_name} -> {ip_address}")
 
     def process_ARP_packet(self, packet):
         self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
@@ -146,10 +146,23 @@ class Node:
                 return
 
     def process_UDP_packet(self, packet):
-        if packet.header["destination_mac"] == self.mac_address:
-            if packet.header["destination_ip"] == self.ip_address:
+        # Accept packets addressed to this node or broadcast packets
+        if packet.header["destination_mac"] in [self.mac_address, "FF:FF:FF:FF:FF:FF"]:
+            if packet.header["destination_ip"] in [self.ip_address, "255.255.255.255/32"]:
                 self.network_event_scheduler.log_packet_info(packet, "arrived", self.node_id)
                 packet.set_arrived(self.network_event_scheduler.current_time)
+
+                # Handle DHCP packets specially
+                if isinstance(packet, DHCPPacket):
+                    if self.application_layer and hasattr(self.application_layer, 'on_dhcp_packet_received'):
+                        self.application_layer.on_dhcp_packet_received(packet)
+                    return
+
+                # Handle DNS packets specially
+                if isinstance(packet, DNSPacket):
+                    if self.application_layer and hasattr(self.application_layer, 'on_dns_packet_received'):
+                        self.application_layer.on_dns_packet_received(packet)
+                    return
 
                 if self.application_layer and hasattr(self.application_layer, 'on_packet_received'):
                     self.application_layer.on_packet_received(packet)
@@ -1132,20 +1145,34 @@ class Node:
                 link.enqueue_packet(packet, self)
 
     def set_ip_address(self, new_ip):
+        """Set the node's IP address and update network event scheduler."""
         self.ip_address = new_ip
+        print(f"Node {self.node_id} has been assigned the IP address {new_ip}.")
+        # Update the node's IP in the network event scheduler's visualization
+        self.network_event_scheduler.add_node(self.node_id, f'Node {self.node_id}\n{self.mac_address}', ip_addresses=[new_ip])
 
     def set_dns_server_ip(self, dns_ip):
+        """Set the node's DNS server IP address."""
         self.dns_server_ip = dns_ip
+        print(f"Node {self.node_id} has been assigned the DNS server IP address {dns_ip}.")
 
     def resolve_destination_ip(self, destination_url):
-        return self.url_to_ip_mapping.get(destination_url, None)
+        """Forward DNS resolution to application layer's DNS client."""
+        if self.application_layer and self.application_layer.dns_client:
+            return self.application_layer.dns_client.url_to_ip_mapping.get(destination_url, None)
+        return None
 
     def print_url_to_ip_mapping(self):
+        """Print DNS mappings from application layer's DNS client."""
         print("URL to IP Mapping:")
-        if not self.url_to_ip_mapping:
+        if not self.application_layer or not self.application_layer.dns_client:
+            print("  No DNS client available.")
+            return
+        mappings = self.application_layer.dns_client.url_to_ip_mapping
+        if not mappings:
             print("  No entries found.")
             return
-        for url, ip_address in self.url_to_ip_mapping.items():
+        for url, ip_address in mappings.items():
             print(f"  {url}: {ip_address}")
 
     def __str__(self):
