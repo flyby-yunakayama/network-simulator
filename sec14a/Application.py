@@ -391,7 +391,7 @@ class FTPClient:
         self.file_to_retrieve = None  # 取得するファイル名を初期化
         self.outgoing_data = {}  # 送信データを保存する辞書を初期化
 
-    def connect(self, server_ip=None, server_url=None, server_port=21, server_url=None):
+    def connect(self, server_ip=None, server_url=None, server_port=21):
         """
         FTPサーバへの接続を開始します。server_ipが指定されていない場合はserver_urlを解決します。
         
