@@ -40,19 +40,15 @@ shared_files = {
     "large.dat": b"X" * 10000  # 10KB file for testing
 }
 http_server = HTTPServer(node2, shared_files, verbose=True)
-node2.application_layer.register_http_server(http_server)
+node2.register_application(80, "HTTP", http_server)  # HTTPサーバをApplicationManagerに登録
 
 # HTTPクライアントの設定
 http_client = HTTPClient(node1, verbose=True)
-node1.application_layer.register_http_client(http_client)
+node1.register_application(0, "HTTP", http_client)  # HTTPクライアントをApplicationManagerに登録
 
 def start_http_download():
-    # DNSで名前解決してからHTTP GETを実行
-    def on_dns_resolved(resolved_ip):
-        http_client.connect(resolved_ip)
-        http_client.get_file("index.html")
-    
-    node1.application_layer.resolve_destination_url("www.example.com", callback=on_dns_resolved)
+    http_client.connect(server_url="www.example.com")
+    http_client.get_file("index.html")
 
 # HTTPダウンロードを2秒後に開始
 nes.schedule_event(2.0, start_http_download)
