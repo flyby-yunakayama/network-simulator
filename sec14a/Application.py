@@ -384,48 +384,98 @@ class UDPApp:
 
 class FTPClient:
     def __init__(self, node, server_url=None, verbose=False):
-        self.node = node
-        self.app_manager = node.application_layer
-        self.server_url = server_url
-        self.verbose = verbose
-        self.state = "NOT_CONNECTED"
-        self.file_to_retrieve = None
-        self.outgoing_data = {}
+        self.node = node  # ネットワークノードを保存
+        self.app_manager = node.application_layer  # アプリケーションレイヤーのマネージャを取得
+        self.server_url = server_url  # サーバURLを保存
+        self.verbose = verbose  # 詳細表示のフラグを保存
+        self.state = "NOT_CONNECTED"  # 初期状態を「未接続」に設定
+        self.file_to_retrieve = None  # 取得するファイル名を初期化
+        self.outgoing_data = {}  # 送信データを保存する辞書を初期化
 
-    def connect(self, server_ip, server_port=21):
+    def connect(self, server_ip=None, server_port=21, server_url=None):
+        """
+        FTPサーバへの接続を開始します。server_ipが指定されていない場合はserver_urlを解決します。
+        
+        Parameters:
+        - server_ip: FTPサーバのIPアドレス（オプション）。
+        - server_port: FTPサーバのポート番号（デフォルトは21）。
+        - server_url: 接続するFTPサーバのURL（オプション）。
+        """
+        # server_ipが指定されていれば、直接接続を試みる
+        if server_ip:
+            self._initiate_connection(server_ip, server_port)
+        # server_urlが指定されていれば、DNS解決を行ってから接続を試みる
+        elif server_url:
+            self.server_url = server_url  # サーバURLを保存
+            if self.verbose:
+                print("[FTPClient] サーバURLからIPを解決しています:", server_url)
+            
+            def on_resolved(ip):
+                if ip:
+                    if self.verbose:
+                        print("[FTPClient] 解決されたIP:", ip)
+                    self._initiate_connection(ip, server_port)
+                else:
+                    if self.verbose:
+                        print("[FTPClient] サーバURLの解決に失敗しました:", server_url)
+            
+            # ApplicationManagerを通じてサーバURLを解決
+            resolved_ip = self.app_manager.resolve_destination_url(server_url, callback=on_resolved)
+            if resolved_ip is not None:
+                # すでに解決済みの場合は即座に接続を開始
+                on_resolved(resolved_ip)
+        else:
+            if self.verbose:
+                print("[FTPClient] 接続情報が不足しています。server_ipまたはserver_urlを指定してください。")
+
+    def _initiate_connection(self, server_ip, server_port):
+        """
+        指定されたIPとポートに対して接続を開始します。
+        
+        Parameters:
+        - server_ip: FTPサーバのIPアドレス。
+        - server_port: FTPサーバのポート番号。
+        """
         if self.verbose:
-            print("[FTPClient] Requesting TCP connect to ", server_ip, server_port)
-        self.server_ip = server_ip  # サーバIPを保存
-        self.server_port = server_port  # サーバポートを保存
-        self.state = "CONNECTING"
-        self.node.initiate_tcp_handshake(server_ip, server_port)
-        self.app_manager.map_connection_to_app((server_ip, server_port), "FTP")
+            print("[FTPClient] TCP接続を要求しています:", server_ip, server_port)
+        self.server_ip = server_ip  # サーバのIPアドレスを保存
+        self.server_port = server_port  # サーバのポート番号を保存
+        self.state = "CONNECTING"  # 状態を「接続中」に変更
+        self.node.initiate_tcp_handshake(server_ip, server_port)  # TCPハンドシェイクを開始
+        self.app_manager.map_connection_to_app((server_ip, server_port), "FTP")  # 接続をFTPアプリケーションにマッピング
 
     def on_packet_received(self, packet):
-        data = packet.payload.decode('utf-8', errors='ignore')
+        """
+        パケットを受信したときに呼び出されるハンドラ。
+        
+        Parameters:
+        - packet: 受信したパケットのオブジェクト。
+        """
+        data = packet.payload.decode('utf-8', errors='ignore')  # パケットのペイロードをデコード
         if self.verbose:
-            print("[FTPClient] Received: ", data.strip())
+            print("[FTPClient] 受信データ:", data.strip())
 
-        # FTPの基本的な流れ:
-        # 1. 接続成立後、サーバから220応答が来る
-        # 2. クライアントはUSERコマンド送信
-        # 3. サーバが331応答ならPASSコマンド送信
-        # 4. サーバが230応答ならログイン成功
-        # 5. ファイル取得(RETR)コマンドなどを送る
+        # FTPの基本的なやり取りの流れに基づいて処理を行う
         if data.startswith("220"):
-            self.state = "LOGGED_OUT"
-            self.send_ftp_command("USER anonymous\r\n")
+            # サーバからの220応答（サービス準備完了）
+            self.state = "LOGGED_OUT"  # 状態を「ログアウト済み」に変更
+            self.send_ftp_command("USER anonymous\r\n")  # ユーザー名を送信
         elif data.startswith("331"):
-            self.send_ftp_command("PASS anonymous@\r\n")
+            # サーバからの331応答（パスワードが必要）
+            self.send_ftp_command("PASS anonymous@\r\n")  # パスワードを送信
         elif data.startswith("230"):
-            self.state = "LOGGED_IN"
+            # サーバからの230応答（ログイン成功）
+            self.state = "LOGGED_IN"  # 状態を「ログイン済み」に変更
             if self.file_to_retrieve:
+                # 取得したいファイルが指定されていればRETRコマンドを送信
                 self.send_ftp_command(f"RETR {self.file_to_retrieve}\r\n")
         elif data.startswith("150"):
-            # ファイル転送開始時にtraffic_infoをセットするなどの処理をここで行う
+            # サーバからの150応答（ファイル転送開始）
+            # ファイル転送の開始に伴う処理をここで追加可能
             pass
         elif data.startswith("226"):
-            # 転送完了
+            # サーバからの226応答（転送完了）
+            # ファイル転送完了後の処理をここで追加可能
             pass
 
     def on_connection_established(self, connection_key):
@@ -434,14 +484,20 @@ class FTPClient:
             print("[FTPClient] Connection established. Waiting for server greeting (220)...")
 
     def send_ftp_command(self, command):
+        """
+        FTPコマンドをサーバに送信します。
+        
+        Parameters:
+        - command: 送信するFTPコマンドの文字列。
+        """
         if self.verbose:
-            print("[FTPClient] Sending command:", command.strip())
-        # server_portを使ってsend_app_dataに渡す
+            print("[FTPClient] 送信コマンド:", command.strip())
+        # サーバIPとポートを指定してデータを送信
         self.node.send_app_data(
-            self.server_ip,
-            command.encode('utf-8'),
-            protocol="TCP",
-            destination_port=self.server_port
+            self.server_ip,  # サーバのIPアドレス
+            command.encode('utf-8'),  # コマンドをバイト列にエンコード
+            protocol="TCP",  # プロトコルをTCPに指定
+            destination_port=self.server_port  # 送信先ポートを指定
         )
 
     def retrieve_file(self, filename):
