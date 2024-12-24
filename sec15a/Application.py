@@ -16,6 +16,8 @@ class ApplicationManager:
         self.ftp_server = None
         self.http_client = None
         self.http_server = None
+        self.https_client = None
+        self.https_server = None
         self.udp_app = None
 
         # connection_keyやプロトコルに応じてアプリを特定するマップ
@@ -79,7 +81,12 @@ class ApplicationManager:
             self.http_client.on_packet_received(packet)
         elif app_type == "HTTPSERVER" and self.http_server:
             self.http_server.on_packet_received(packet)
-        elif app_type == None and (self.ftp_server or self.http_server):  # マッピングがない場合はサーバとして扱う
+        elif app_type == "HTTPSSERVER" and self.https_server:
+            self.https_server.on_packet_received(packet)
+        elif app_type == None and (self.ftp_server or self.http_server or self.https_server):  # マッピングがない場合はサーバとして扱う
+            if packet.header.get("destination_port") == 443 and self.https_server:
+                self.connection_app_map[(packet.header.get("source_ip"), packet.header.get("source_port"))] = "HTTPSSERVER"
+                self.https_server.on_packet_received(packet)
             if packet.header.get("destination_port") == 80 and self.http_server:
                 self.connection_app_map[(packet.header.get("source_ip"), packet.header.get("source_port"))] = "HTTPSERVER"
                 self.http_server.on_packet_received(packet)
@@ -104,7 +111,12 @@ class ApplicationManager:
             self.http_client.on_connection_established(connection_key)
         elif app_type == "HTTPSERVER" and self.http_server:
             self.http_server.on_connection_established(connection_key)
+        elif app_type == "HTTPSSERVER" and self.https_server:
+            self.https_server.on_connection_established(connection_key)
         elif app_type == None:  # マッピングがない場合はサーバとして扱う
+            if connection_key[1] == 443 and self.https_server:  # ポート443はHTTPSサーバ
+                self.connection_app_map[connection_key] = "HTTPSSERVER"
+                self.https_server.on_connection_established(connection_key)
             if connection_key[1] == 80 and self.http_server:  # ポート80はHTTPサーバ
                 self.connection_app_map[connection_key] = "HTTPSERVER"
                 self.http_server.on_connection_established(connection_key)
