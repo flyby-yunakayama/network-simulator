@@ -35,7 +35,7 @@ class Node:
         self.tcp_state = {}
         self.max_attempts = 10
         self.windows = {}
-        self.timeout_interval = 2
+        self.timeout_interval = 0.1  # Adjusted to be closer to actual RTT (0.02s)
         self.scheduled_timeouts = {}
         self.pending_tcp_data = {}
         self.arp_table = {}
