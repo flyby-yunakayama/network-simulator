@@ -1092,153 +1092,264 @@ class TLSServer:
         self.node.send_app_data(dst_ip, data, protocol="TCP", destination_port=dst_port)
 
 
-class HTTPSClient:
+class HTTPSClient(HTTPClient):
     """
-    TLSClient + HTTP クライアント処理を合体させた簡易 HTTPS クライアント。
-    - TCP接続後に TLS ハンドシェイク (ClientHello → ...) を実施。
-    - ハンドシェイク完了したら、暗号化された HTTPリクエストを送信・レスポンスを受信。
+    HTTPClientを継承し、TLSハンドシェイクを挟んで暗号化通信する簡易HTTPSクライアント。
+
+    - 既存のHTTPClientのconnect(...)を活かしつつ、
+      TCP接続確立後にTLSハンドシェイクを行う。
+    - ハンドシェイク完了後はHTTPリクエスト/レスポンスを暗号化(ENC(...))してやり取り。
     """
 
     def __init__(self, node, server_url=None, verbose=False):
-        self.node = node
-        self.app_manager = node.application_layer
-        self.server_url = server_url
-        self.verbose = verbose
-        self.state = "NOT_CONNECTED"
-        self.file_to_retrieve = None
+        super().__init__(node, server_url=server_url, verbose=verbose)
+        # TLSハンドシェイク用の状態管理
+        self.tls_state = "NOT_STARTED"  # "NOT_STARTED", "AWAIT_SERVERHELLO", "AWAIT_KEYEXCHANGE", "AWAIT_FINISHED", "ESTABLISHED"
+        self.shared_key = None
 
-        # TLSClient を内包
-        self.tls = TLSClient(node, verbose=verbose)
-
-        # 実際に接続するサーバ情報
-        self.server_ip = None
-        self.server_port = 443
-
-    def connect(self, server_ip=None, server_port=443):
+    def connect(self, server_ip=None, server_url=None, server_port=443):
         """
-        HTTPSサーバへ TCP接続し、確立後にTLSハンドシェイクを開始する。
+        HTTPSサーバへの接続を開始。
+        - ポート443をデフォルトに指定
+        - 以降はHTTPClientのconnectを利用し、TCPハンドシェイク。
+          -> on_connection_establishedでTLSハンドシェイクを実施
         """
         if self.verbose:
-            print("[HTTPSClient] Connecting to", server_ip, server_port)
-        self.server_ip = server_ip
-        self.server_port = server_port
-        self.state = "CONNECTING"
-        # TCPハンドシェイク開始
-        self.node.initiate_tcp_handshake(server_ip, server_port)
-        # ApplicationManagerにHTTPSアプリとしてマッピング
-        self.app_manager.map_connection_to_app((server_ip, server_port), "HTTPS")
+            print(f"[HTTPSClient] connect called with IP={server_ip}, URL={server_url}, port={server_port}")
+        # HTTPClientのconnectで TCP接続開始 (DNS解決含む)
+        super().connect(server_ip=server_ip, server_url=server_url, server_port=server_port)
 
     def on_connection_established(self, connection_key):
+        """
+        TCP接続が確立したタイミングで呼ばれる。
+        通常のHTTPClientの処理 + TLSハンドシェイク開始
+        """
         if self.verbose:
             print("[HTTPSClient] TCP connection established. Starting TLS handshake (ClientHello).")
-        self.state = "HANDSHAKING"
-        # TLSClient のハンドシェイクをスタート
-        self.tls.start_tls_handshake(connection_key)
+        self.tls_state = "AWAIT_SERVERHELLO"
+
+        # ClientHelloを送信 (平文)
+        self._send_plain(connection_key, b"ClientHello")
+
+        # ここで通常のHTTPClientの後処理（state=CONNECTED, file_to_retrieveの取得等）を呼ぶ
+        # ただしTLSハンドシェイク完了前に平文HTTP送信するのはおかしいので、
+        # on_packet_receivedでTLSハンドシェイクが完了した後に get_file(...) が動く流れ。
+        # もし、それでも早期にHTTP処理したいならsuper()を先に呼ぶ。
+        # → このサンプルでは TLS完了前にHTTP送信しないようにする
+        # super().on_connection_established(connection_key)
+        # したがってHTTPClientの state="CONNECTED" は少し後ろにずらします。
 
     def on_packet_received(self, packet):
         """
-        Node -> ApplicationManager -> ここへ通知される。
-        TLSのハンドシェイク or 暗号化HTTP を処理。
+        TCPパケット受信時に呼ばれる。
+        1) ハンドシェイク中は平文メッセージを受信し解析
+        2) ハンドシェイク完了後は ENC(...) データを復号してHTTPレスポンス扱い
         """
-        self.tls.on_tls_packet_received(packet)  # まずは TLSClient 側で handshake や ENC(...) 処理
+        if self.tls_state != "ESTABLISHED":
+            self._handle_tls_handshake(packet)
+        else:
+            # ハンドシェイク完了後の暗号化HTTPレスポンスを復号して解析
+            self._handle_encrypted_http(packet)
 
-        # TLSClient の state が ESTABLISHED になれば HTTPS送信が可能になる
-        if self.tls.state == "ESTABLISHED" and self.state == "HANDSHAKING":
+    def _handle_tls_handshake(self, packet):
+        """
+        TLSハンドシェイク用メッセージ（ClientHello, ServerHello, KeyExchange, Finished）を処理。
+        """
+        data_str = packet.payload.decode('utf-8', errors='ignore')
+        if self.verbose:
+            print(f"[HTTPSClient] (TLS handshake) Received: {data_str}")
+
+        if self.tls_state == "AWAIT_SERVERHELLO" and data_str.startswith("ServerHello"):
             if self.verbose:
-                print("[HTTPSClient] TLS handshake complete. Now sending HTTP requests over TLS.")
-            self.state = "CONNECTED"
-            # もしあらかじめ self.file_to_retrieve が設定されていれば、ここでリクエスト送信
-            if self.file_to_retrieve:
-                self._send_https_get_request(self.file_to_retrieve)
+                print("[HTTPSClient] Got ServerHello. Next: sending ClientKeyExchange.")
+            self.tls_state = "AWAIT_KEYEXCHANGE"
+            # クライアントキー交換(擬似)を平文送信
+            self._send_plain((packet.header["source_ip"], packet.header["source_port"]), b"ClientKeyExchange")
 
-    def get_file(self, filename):
-        """
-        GET /filename を送信。
-        TLSハンドシェイクが完了していなければ完了後に送信。
-        """
-        self.file_to_retrieve = filename
-        if self.state == "CONNECTED":
-            self._send_https_get_request(filename)
+        elif self.tls_state == "AWAIT_KEYEXCHANGE" and data_str.startswith("ServerKeyExchange"):
+            # サーバが ServerKeyExchange を返してきた -> 共有鍵確立
+            if self.verbose:
+                print("[HTTPSClient] Got ServerKeyExchange. Setting shared_key.")
+            self.shared_key = "dummy_shared_key"
+            self.tls_state = "AWAIT_FINISHED"
+            if self.verbose:
+                print("[HTTPSClient] Sending ClientFinished.")
+            self._send_plain((packet.header["source_ip"], packet.header["source_port"]), b"ClientFinished")
+
+        elif self.tls_state == "AWAIT_FINISHED" and data_str.startswith("ServerFinished"):
+            # ハンドシェイク完了
+            if self.verbose:
+                print("[HTTPSClient] Received ServerFinished. TLS established!")
+            self.tls_state = "ESTABLISHED"
+
+            # ここでHTTPClientの通常処理の on_connection_established 相当を呼ぶ
+            # => state="CONNECTED" にして、get_file(...) を送るなど
+            super().on_connection_established((packet.header["source_ip"], packet.header["source_port"]))
+
         else:
             if self.verbose:
-                print(f"[HTTPSClient] Will send GET request after TLS handshake. (filename={filename})")
+                print("[HTTPSClient] Unexpected TLS handshake message or sequence.")
 
-    def _send_https_get_request(self, filename):
+    def _handle_encrypted_http(self, packet):
         """
-        TLS暗号化した HTTP GET を送る。
+        ハンドシェイク完了後に受信した暗号化HTTPレスポンス ENC(...) を復号して、
+        HTTPClientの通常のHTTPパースに渡す。
         """
-        if self.tls.state != "ESTABLISHED":
+        payload = packet.payload
+        if not (payload.startswith(b"ENC(") and payload.endswith(b")")):
             if self.verbose:
-                print("[HTTPSClient] Error: TLS is not established yet.")
+                print("[HTTPSClient] Warning: Received data not in ENC(...) form. Possibly malformed.")
             return
+        # ENC(...) を外す
+        decrypted = payload[4:-1]  # ENC(...) の中身
+        # これを HTTPClient の on_packet_received と同じ流れで扱うため、
+        # ダミーのパケットを構築し、super().on_packet_received(...) に渡す
+        class DummyPacket:
+            def __init__(self, pl):
+                self.payload = pl
+                header = {
+                    "source_ip": packet.header["source_ip"],
+                    "source_port": packet.header["source_port"],
+                    "destination_ip": packet.header["destination_ip"],
+                    "destination_port": packet.header["destination_port"],
+                }
+                self.header = header
+        dummy = DummyPacket(decrypted)
+        super().on_packet_received(dummy)
 
-        request_str = f"GET /{filename} HTTP/1.1\r\nHost: example.com\r\n\r\n"
-        if self.verbose:
-            print(f"[HTTPSClient] Sending HTTPS GET request: {request_str.strip()}")
-        self.tls.send_encrypted((self.server_ip, self.server_port), request_str.encode('utf-8'))
+    def _send_plain(self, connection_key, message: bytes):
+        """
+        ハンドシェイク中の平文メッセージ送信。
+        """
+        dst_ip, dst_port = connection_key
+        self.node.send_app_data(dst_ip, message, protocol="TCP", destination_port=dst_port)
+
+    def send_http_request(self, request):
+        """
+        オーバーライド: ハンドシェイク完了後は暗号化して送る。
+        """
+        if self.tls_state != "ESTABLISHED":
+            if self.verbose:
+                print("[HTTPSClient] Attempted to send HTTP request but TLS is not established yet.")
+            return
+        # 暗号化して送る
+        enc_data = b"ENC(" + request.encode('utf-8') + b")"
+        self.node.send_app_data(self.server_ip, enc_data, protocol="TCP", destination_port=self.server_port)
+
+    # get_file などは継承元のままでもよいが、
+    # 送信が暗号化されたものになるようにするには send_http_request のオーバーライドを使う必要がある。
+    # もしget_fileのロジック内で send_http_requestが呼ばれているのであれば大丈夫。
 
 
-class HTTPSServer:
+class HTTPSServer(HTTPServer):
     """
-    TLSサーバ + HTTPサーバ処理を合体させた簡易 HTTPS サーバ。
-    - 接続後に accept_tls_handshake を呼んで Hello/KeyExchange を済ませる。
-    - データは ENC(...) で来るので、復号後にHTTPパースし、レスポンスを暗号化して送る。
+    HTTPServerを継承し、TLSハンドシェイク後に暗号化されたHTTPを処理する簡易HTTPSサーバ。
+
+    - TCP接続後に accept_tls_handshake を行い、ServerHello等を送る。
+    - ハンドシェイクが終わるまでは 平文で ClientHello 等を受信し、KeyExchange等を返す。
+    - ハンドシェイクが完了すると ENC(...) 形式でHTTPリクエストを受け取り、復号後にHTTPServerの処理へ渡す。
     """
 
     def __init__(self, node, shared_files, verbose=False):
-        self.node = node
-        self.app_manager = node.application_layer
-        self.verbose = verbose
-        self.shared_files = shared_files
-
-        # TLSServerを内包
-        self.tls = TLSServer(node, verbose=verbose)
-        self.state = "READY"
+        super().__init__(node, shared_files, verbose=verbose)
+        self.tls_state = "NOT_STARTED"
+        self.shared_key = None
 
     def on_connection_established(self, connection_key):
+        """
+        TCP接続が確立したら TLSハンドシェイク開始 (ServerHelloを送る)。
+        """
         if self.verbose:
-            print("[HTTPSServer] TCP connected. Starting TLS handshake (ServerHello).")
-        # TCP確立後に accept_tls_handshake
-        self.tls.accept_tls_handshake(connection_key)
-        self.state = "HANDSHAKING"
+            print("[HTTPSServer] TCP connected. Sending ServerHello.")
+        self.tls_state = "AWAIT_CLIENTKEYEXCHANGE"
+        # ServerHelloを平文で送信
+        self._send_plain(connection_key, b"ServerHello")
+
+        # HTTPServerの既存処理はまだ実行しない（READYのまま）。
+        # super().on_connection_established(connection_key) を呼ぶタイミングを TLS確立後にずらす。
 
     def on_packet_received(self, packet):
         """
-        Node -> ApplicationManager -> ここへ通知。
-        ハンドシェイクか ENC(...) データかを区別して処理。
+        TCPパケット受信時の処理。
+        1) TLSハンドシェイク中なら平文解析
+        2) ハンドシェイク完了後なら ENC(...) データを復号してHTTP処理
         """
-        old_state = self.tls.state
-        self.tls.on_tls_packet_received(packet)  # ハンドシェイク or ENC(...) 解析
+        if self.tls_state != "ESTABLISHED":
+            self._handle_tls_handshake(packet)
+        else:
+            # ENC(...) で暗号化されたHTTPリクエストを復号してHTTPServerに渡す
+            self._handle_encrypted_http(packet)
 
-        if old_state != "ESTABLISHED" and self.tls.state == "ESTABLISHED":
-            # ハンドシェイク完了
+    def _handle_tls_handshake(self, packet):
+        data_str = packet.payload.decode('utf-8', errors='ignore')
+        if self.verbose:
+            print(f"[HTTPSServer] (TLS handshake) Received: {data_str}")
+
+        if self.tls_state == "AWAIT_CLIENTKEYEXCHANGE" and data_str.startswith("ClientKeyExchange"):
+            # クライアントがキー交換情報を送ってきた
             if self.verbose:
-                print("[HTTPSServer] TLS handshake established. Now can handle HTTPS requests.")
-            self.state = "READY"
+                print("[HTTPSServer] Got ClientKeyExchange. Sending ServerKeyExchange.")
+            self.shared_key = "dummy_shared_key"
+            self.tls_state = "AWAIT_CLIENTFINISHED"
+            self._send_plain((packet.header["source_ip"], packet.header["source_port"]), b"ServerKeyExchange")
+
+        elif self.tls_state == "AWAIT_CLIENTFINISHED" and data_str.startswith("ClientFinished"):
+            # クライアントが Finished 送ってきた => サーバも Finished を返す
+            if self.verbose:
+                print("[HTTPSServer] Received ClientFinished. Sending ServerFinished. TLS established!")
+            self.tls_state = "ESTABLISHED"
+            self._send_plain((packet.header["source_ip"], packet.header["source_port"]), b"ServerFinished")
+
+            # ここでようやくHTTPServerの通常 on_connection_established を呼ぶ
+            super().on_connection_established((packet.header["source_ip"], packet.header["source_port"]))
+
+        else:
+            if self.verbose:
+                print("[HTTPSServer] Unexpected handshake message or sequence.")
+
+    def _handle_encrypted_http(self, packet):
+        payload = packet.payload
+        if not (payload.startswith(b"ENC(") and payload.endswith(b")")):
+            if self.verbose:
+                print("[HTTPSServer] Warning: not ENC(...) data.")
             return
 
-        # すでにハンドシェイク完了済みの場合は、暗号化された HTTPリクエストを含む可能性がある
-        if self.tls.state == "ESTABLISHED":
-            self._check_for_http_request(packet)
+        decrypted = payload[4:-1]
+        # HTTPServerのロジックに渡すには、on_packet_received相当を呼ぶ必要がある
+        class DummyPacket:
+            def __init__(self, pl):
+                self.payload = pl
+                header = {
+                    "source_ip": packet.header["source_ip"],
+                    "source_port": packet.header["source_port"],
+                    "destination_ip": packet.header["destination_ip"],
+                    "destination_port": packet.header["destination_port"],
+                }
+                self.header = header
+        dummy = DummyPacket(decrypted)
+        # HTTPServerのon_packet_receivedを呼ぶ
+        super().on_packet_received(dummy)
 
-    def _check_for_http_request(self, packet):
+    def _send_plain(self, connection_key, message: bytes):
         """
-        受信ペイロード (packet.payload) は ENC(...) を外した後 TLS内でログ済み。
-        ただし、本物のHTTPパースをするには TLSServer側で直に decrypted をもらう仕組みが必要。
-        ここでは簡易実装。
+        ハンドシェイク中の平文メッセージ送信用。
         """
-        # ここでは TLSServer::_handle_encrypted_data の中でログ出力しかしていないため、
-        # もし本当にHTTPを解釈したいなら、TLSServer から "decryptedデータ" を戻してもらう仕組みを作る必要がある。
-        # あるいは、HTTPSServer が packet.payload を直接取り出し、ENC(...) 解除する仕組みにしてもよい。
-        pass
+        dst_ip, dst_port = connection_key
+        self.node.send_app_data(dst_ip, message, protocol="TCP", destination_port=dst_port)
 
-    def send_http_response(self, connection_key, response_bytes):
+    def send_http_response(self, client_ip, client_port, server_port, response):
         """
-        HTTPレスポンスを暗号化して送る。
+        HTTPServerのsend_http_responseをオーバーライドし、暗号化して送る。
         """
-        if self.tls.state != "ESTABLISHED":
+        if self.tls_state != "ESTABLISHED":
             if self.verbose:
-                print("[HTTPSServer] Error: TLS not established, cannot send response.")
+                print("[HTTPSServer] Attempted to send HTTP response but TLS not established.")
             return
-        self.tls.send_encrypted(connection_key, response_bytes)
-
+        enc_data = b"ENC(" + response.encode('utf-8') + b")"
+        self.node.send_app_data(
+            client_ip,
+            enc_data,
+            protocol="TCP",
+            source_port=server_port,
+            destination_port=client_port
+        )
