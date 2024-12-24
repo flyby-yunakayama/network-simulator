@@ -177,7 +177,6 @@ class Link:
 
                 if getattr(packet, 'send_time', None) is None and isinstance(from_node, Node):
                     packet.send_time = self.network_event_scheduler.current_time
-                    print(f"[LINK] {from_node.node_id} sent packet to {next_node.node_id} at {packet.send_time:.6f}")
                 self.network_event_scheduler.log_packet_info(packet, "sent", from_node.node_id)
 
                 self.network_event_scheduler.schedule_event(
