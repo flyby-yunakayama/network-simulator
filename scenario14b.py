@@ -17,11 +17,11 @@ dns1 = DNSServer(node_id="dns1", ip_address="192.168.1.200/24", network_event_sc
 dhcp1 = DHCPServer(node_id="dhcp1", ip_address="192.168.1.250/24", dns_server_ip="192.168.1.200/24", start_cidr="192.168.1.0/24", network_event_scheduler=nes)
 
 # リンクの設定
-link1 = Link(node1, switch1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link2 = Link(switch1, router1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link3 = Link(dns1, switch1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link4 = Link(dhcp1, switch1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link5 = Link(node2, router1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link1 = Link(node1, switch1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link2 = Link(switch1, router1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link3 = Link(dns1, switch1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link4 = Link(dhcp1, switch1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link5 = Link(node2, router1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
 
 # ネットワークのトポロジを描画
 nes.draw()
@@ -40,11 +40,11 @@ shared_files = {
     "large.dat": b"X" * 10000  # 10KB file for testing
 }
 http_server = HTTPServer(node2, shared_files, verbose=True)
-node2.register_application(80, "HTTP", http_server)  # HTTPサーバをApplicationManagerに登録
+node2.register_application(80, "TCP", http_server)  # HTTPサーバをApplicationManagerに登録
 
 # HTTPクライアントの設定
 http_client = HTTPClient(node1, verbose=True)
-node1.register_application(0, "HTTP", http_client)  # HTTPクライアントをApplicationManagerに登録
+node1.register_application(0, "TCP", http_client)  # HTTPクライアントをApplicationManagerに登録
 
 def start_http_download():
     http_client.connect(server_url="www.example.com")

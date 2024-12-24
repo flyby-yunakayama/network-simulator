@@ -1,3 +1,9 @@
+import sys
+
+!git clone https://github.com/flyby-yunakayama/network-simulator.git
+sys.path.insert(0,'/content/network-simulator')
+%cd network-simulator
+
 from sec14a.NetworkEventScheduler import NetworkEventScheduler
 from sec14a.Node import Node
 from sec14a.Switch import Switch
@@ -17,11 +23,11 @@ dns1 = DNSServer(node_id="dns1", ip_address="192.168.1.200/24", network_event_sc
 dhcp1 = DHCPServer(node_id="dhcp1", ip_address="192.168.1.250/24", dns_server_ip="192.168.1.200/24", start_cidr="192.168.1.0/24", network_event_scheduler=nes)
 
 # リンクの設定
-link1 = Link(node1, switch1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link2 = Link(switch1, router1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link3 = Link(dns1, switch1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link4 = Link(dhcp1, switch1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
-link5 = Link(node2, router1, bandwidth=100000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link1 = Link(node1, switch1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link2 = Link(switch1, router1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link3 = Link(dns1, switch1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link4 = Link(dhcp1, switch1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
+link5 = Link(node2, router1, bandwidth=1000000, delay=0.01, loss_rate=0.0, network_event_scheduler=nes)
 
 # ネットワークのトポロジを描画
 nes.draw()
