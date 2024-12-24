@@ -383,16 +383,15 @@ class UDPApp:
 
 
 class FTPClient:
-    def __init__(self, node, server_url=None, verbose=False):
+    def __init__(self, node, verbose=False):
         self.node = node  # ネットワークノードを保存
         self.app_manager = node.application_layer  # アプリケーションレイヤーのマネージャを取得
-        self.server_url = server_url  # サーバURLを保存
         self.verbose = verbose  # 詳細表示のフラグを保存
         self.state = "NOT_CONNECTED"  # 初期状態を「未接続」に設定
         self.file_to_retrieve = None  # 取得するファイル名を初期化
         self.outgoing_data = {}  # 送信データを保存する辞書を初期化
 
-    def connect(self, server_ip=None, server_port=21, server_url=None):
+    def connect(self, server_ip=None, server_url=None, server_port=21, server_url=None):
         """
         FTPサーバへの接続を開始します。server_ipが指定されていない場合はserver_urlを解決します。
         
