@@ -165,16 +165,6 @@ class DHCPPacket(Packet):
         # DHCPメッセージの詳細情報を格納するためのプレースホルダ
         self.dhcp_data = {}
 
-    def to_bytes(self):
-        # 本来はDHCPメッセージをバイナリ表現に変換する必要がありますが、
-        # ここではシンプルに文字列化してencodeします。
-        # message_typeやdhcp_dataを含めた簡易的な表現とします。
-
-        # 例: "DHCP:DISCOVER|requested_ip=..." のような文字列
-        dhcp_str = f"DHCP:{self.message_type}"
-        for k, v in self.dhcp_data.items():
-            dhcp_str += f"|{k}={v}"
-        return dhcp_str.encode('utf-8')
     
     def __str__(self):
         source_mac = self.mac_header.get("source_mac", "不明")
