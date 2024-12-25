@@ -3,9 +3,8 @@ import random
 from sec15a.Packet import DNSPacket, DHCPPacket, TCPPacket, UDPPacket
 
 class ApplicationManager:
-    def __init__(self, node, verbose=False):
+    def __init__(self, node):
         self.node = node
-        self.verbose = verbose
 
         # DNS, DHCPクライアントを内部で生成
         self.dns_client = DnsClient(node)
@@ -82,33 +81,11 @@ class ApplicationManager:
             self.http_client.on_packet_received(packet)
         elif app_type == "HTTPSERVER" and self.http_server:
             self.http_server.on_packet_received(packet)
-        elif app_type == "HTTPS":
-            # HTTPSの場合、クライアントとサーバの両方で処理する可能性がある
-            if self.verbose:
-                print(f"[ApplicationManager] Routing HTTPS packet from {packet.header.get('source_ip')}:{packet.header.get('source_port')} to {packet.header.get('destination_ip')}:{packet.header.get('destination_port')}")
-                print(f"[ApplicationManager] Payload: {packet.payload[:50]}")
-
-            # サーバ宛のパケット (ポート443) はサーバで処理
-            if packet.header.get("destination_port") == 443 and self.https_server:
-                if self.verbose:
-                    print("[ApplicationManager] Forwarding to HTTPS server")
-                self.https_server.on_packet_received(packet)
-            # クライアントからのパケットはクライアントで処理
-            elif self.https_client:
-                if self.verbose:
-                    print("[ApplicationManager] Forwarding to HTTPS client")
-                self.https_client.on_packet_received(packet)
+        elif app_type == "HTTPSSERVER" and self.https_server:
+            self.https_server.on_packet_received(packet)
         elif app_type == None and (self.ftp_server or self.http_server or self.https_server):  # マッピングがない場合はサーバとして扱う
             if packet.header.get("destination_port") == 443 and self.https_server:
-                if self.verbose:
-                    print(f"[ApplicationManager] New HTTPS connection from {packet.header.get('source_ip')}:{packet.header.get('source_port')}")
-                # Map both client and server connections for HTTPS
-                client_key = (packet.header.get("source_ip"), packet.header.get("source_port"))
-                server_key = (packet.header.get("destination_ip"), packet.header.get("destination_port"))
-                self.connection_app_map[client_key] = "HTTPS"
-                self.connection_app_map[server_key] = "HTTPS"
-                if self.verbose:
-                    print(f"[ApplicationManager] Mapped HTTPS connections: {client_key} and {server_key}")
+                self.connection_app_map[(packet.header.get("source_ip"), packet.header.get("source_port"))] = "HTTPSSERVER"
                 self.https_server.on_packet_received(packet)
             if packet.header.get("destination_port") == 80 and self.http_server:
                 self.connection_app_map[(packet.header.get("source_ip"), packet.header.get("source_port"))] = "HTTPSERVER"
@@ -134,21 +111,11 @@ class ApplicationManager:
             self.http_client.on_connection_established(connection_key)
         elif app_type == "HTTPSERVER" and self.http_server:
             self.http_server.on_connection_established(connection_key)
-        elif app_type == "HTTPS":
-            # HTTPSの場合、クライアントとサーバの両方に通知
-            if connection_key[1] == 443 and self.https_server:
-                self.https_server.on_connection_established(connection_key)
-            if self.https_client:
-                self.https_client.on_connection_established(connection_key)
+        elif app_type == "HTTPSSERVER" and self.https_server:
+            self.https_server.on_connection_established(connection_key)
         elif app_type == None:  # マッピングがない場合はサーバとして扱う
             if connection_key[1] == 443 and self.https_server:  # ポート443はHTTPSサーバ
-                # Map both client and server connections for HTTPS
-                client_key = connection_key
-                server_key = (connection_key[0], 443)  # Server's connection key
-                self.connection_app_map[client_key] = "HTTPS"
-                self.connection_app_map[server_key] = "HTTPS"
-                if self.verbose:
-                    print(f"[ApplicationManager] Connection established - Mapped HTTPS connections: {client_key} and {server_key}")
+                self.connection_app_map[connection_key] = "HTTPSSERVER"
                 self.https_server.on_connection_established(connection_key)
             if connection_key[1] == 80 and self.http_server:  # ポート80はHTTPサーバ
                 self.connection_app_map[connection_key] = "HTTPSERVER"
@@ -962,22 +929,14 @@ class TLSClient:
     def start_handshake(self, connection_key):
         """
         TCPコネクションが確立した直後に呼ばれ、TLSのClientHelloを送る。
-        FTPの実装を参考に、状態チェックとエラー処理を追加。
         """
-        current_state = self.get_state(connection_key)
-        if current_state != "IDLE":
-            if self.verbose:
-                print(f"[TLSClient] Warning: Handshake already started (state: {current_state})")
-            return
-
         if self.verbose:
-            print(f"[TLSClient] Starting TLS handshake for {connection_key}")
+            print(f"[TLSClient] start_handshake: Sending ClientHello for {connection_key}")
 
         self.handshake_state[connection_key] = "WAIT_SERVER_HELLO"
         self.shared_keys[connection_key] = None
 
-        if self.verbose:
-            print(f"[TLSClient] Sending ClientHello...")
+        # シンプルに文字列 "ClientHello" を送る
         self._send_tls_message(connection_key, b"ClientHello")
 
     def on_packet_received(self, packet):
@@ -1009,55 +968,37 @@ class TLSClient:
     def _handle_handshake_message(self, connection_key, data):
         """
         ハンドシェイク中のメッセージを処理。
-        FTPの実装を参考に、エラー処理とリトライを追加。
         """
         state = self.get_state(connection_key)
-        if self.verbose:
-            print(f"[TLSClient] Processing handshake message in state {state}: {data[:50]}")
 
         if state == "WAIT_SERVER_HELLO":
             if data.startswith(b"ServerHello"):
                 if self.verbose:
                     print(f"[TLSClient] Received ServerHello from {connection_key}")
-                # 次はキー交換要求を送る
+                # 次はキー交換要求を送る（省略OK）
                 self.handshake_state[connection_key] = "WAIT_SERVER_FINISHED"
                 self._send_tls_message(connection_key, b"ClientKeyExchange")
-                if self.verbose:
-                    print(f"[TLSClient] Sent ClientKeyExchange, waiting for ServerFinished")
             else:
                 if self.verbose:
-                    print(f"[TLSClient] Error: Expected ServerHello but received: {data}")
-                # FTPのように、エラー時は再送信を試みる
-                if self.verbose:
-                    print(f"[TLSClient] Retrying ClientHello...")
-                self._send_tls_message(connection_key, b"ClientHello")
+                    print(f"[TLSClient] Unexpected handshake message. Received: {data}")
+                # 異常とみなしても良い
 
         elif state == "WAIT_SERVER_FINISHED":
             if data.startswith(b"ServerFinished"):
-                if self.verbose:
-                    print(f"[TLSClient] Received ServerFinished from {connection_key}")
-                # Send ClientFinished and complete handshake
-                self._send_tls_message(connection_key, b"ClientFinished")
+                # ハンドシェイク完了
                 self.handshake_state[connection_key] = "ESTABLISHED"
                 self.shared_keys[connection_key] = b"MySharedKey"  # ダミー
                 if self.verbose:
-                    print(f"[TLSClient] Sent ClientFinished")
-                    print(f"[TLSClient] TLS Handshake successfully completed for {connection_key}")
+                    print(f"[TLSClient] TLS Handshake finished for {connection_key}")
             else:
                 if self.verbose:
-                    print(f"[TLSClient] Error: Expected ServerFinished but received: {data}")
-                # キー交換メッセージを再送
-                if self.verbose:
-                    print(f"[TLSClient] Retrying ClientKeyExchange...")
-                self._send_tls_message(connection_key, b"ClientKeyExchange")
+                    print(f"[TLSClient] Unexpected handshake message. Received: {data}")
 
     def _send_tls_message(self, connection_key, msg: bytes):
         """
         TCP送信。実際には node.send_app_data() を呼ぶだけ。
         """
         dst_ip, dst_port = connection_key
-        if self.verbose:
-            print(f"[TLSClient] Sending message to {dst_ip}:{dst_port}: {msg}")
         # 送信
         self.node.send_app_data(
             dst_ip,
@@ -1108,19 +1049,11 @@ class TLSServer:
         """
         TCP接続確立直後に呼ばれる想定。
         サーバは ClientHello を待つ。
-        FTPServerを参考に、状態チェックとエラー処理を追加。
         """
-        current_state = self.get_state(connection_key)
-        if current_state != "IDLE":
-            if self.verbose:
-                print(f"[TLSServer] Warning: Handshake already started (state: {current_state})")
-            return
-
         self.handshake_state[connection_key] = "WAIT_CLIENT_HELLO"
         self.shared_keys[connection_key] = None
         if self.verbose:
             print(f"[TLSServer] Ready to accept TLS handshake from {connection_key}")
-            print(f"[TLSServer] Waiting for ClientHello...")
 
     def on_packet_received(self, packet):
         """
@@ -1137,20 +1070,8 @@ class TLSServer:
         src_port = packet.header["source_port"]
         connection_key = (src_ip, src_port)
 
-        if self.verbose:
-            print(f"[TLSServer] Received packet from {src_ip}:{src_port}: {data}")
-
         state = self.get_state(connection_key)
-        if self.verbose:
-            print(f"[TLSServer] Current state for {connection_key}: {state}")
-
-        # If we receive ClientHello in IDLE state, initialize handshake
-        if state == "IDLE" and data.startswith(b"ClientHello"):
-            if self.verbose:
-                print(f"[TLSServer] Received ClientHello in IDLE state, initializing handshake")
-            self.accept_handshake(connection_key)
-            self._handle_handshake_message(connection_key, data)
-        elif state.startswith("WAIT"):
+        if state.startswith("WAIT"):
             self._handle_handshake_message(connection_key, data)
         else:
             if self.is_established(connection_key):
@@ -1159,93 +1080,43 @@ class TLSServer:
                     print(f"[TLSServer] Received encrypted data in established state: {data[:50]} ...")
 
     def _handle_handshake_message(self, connection_key, data):
-        """
-        FTPServerを参考に、ハンドシェイクメッセージの処理を改善。
-        エラー処理とリトライロジックを追加。
-        """
         state = self.get_state(connection_key)
-        if self.verbose:
-            print(f"[TLSServer] Processing handshake message in state {state}")
-            print(f"[TLSServer] Message data: {data[:50]}")
-            print(f"[TLSServer] Connection key: {connection_key}")
-            print(f"[TLSServer] Handshake states: {self.handshake_state}")
 
         if state == "WAIT_CLIENT_HELLO":
             if data.startswith(b"ClientHello"):
                 if self.verbose:
                     print(f"[TLSServer] Received ClientHello from {connection_key}")
                 self.handshake_state[connection_key] = "WAIT_CLIENT_KEYEXCHANGE"
-                if self.verbose:
-                    print(f"[TLSServer] Sending ServerHello...")
                 self._send_tls_message(connection_key, b"ServerHello")
             else:
                 if self.verbose:
-                    print(f"[TLSServer] Error: Expected ClientHello but received: {data}")
-                # 状態を維持し、クライアントの再送を待つ
-                if self.verbose:
-                    print(f"[TLSServer] Maintaining WAIT_CLIENT_HELLO state...")
+                    print(f"[TLSServer] Unexpected handshake message. Received: {data}")
 
         elif state == "WAIT_CLIENT_KEYEXCHANGE":
             if data.startswith(b"ClientKeyExchange"):
                 if self.verbose:
                     print(f"[TLSServer] Received ClientKeyExchange from {connection_key}")
-                self.handshake_state[connection_key] = "WAIT_CLIENT_FINISHED"
-                self.shared_keys[connection_key] = b"MySharedKey"
-                if self.verbose:
-                    print(f"[TLSServer] Sending ServerFinished...")
-                # ServerFinished を送信し、ClientFinished を待つ
-                self._send_tls_message(connection_key, b"ServerFinished")
-            else:
-                if self.verbose:
-                    print(f"[TLSServer] Error: Expected ClientKeyExchange but received: {data}")
-                # ServerHelloを再送してクライアントを正しい状態に戻す
-                if self.verbose:
-                    print(f"[TLSServer] Retrying ServerHello...")
-                self.handshake_state[connection_key] = "WAIT_CLIENT_KEYEXCHANGE"
-                self._send_tls_message(connection_key, b"ServerHello")
-
-        elif state == "WAIT_CLIENT_FINISHED":
-            if data.startswith(b"ClientFinished"):
-                if self.verbose:
-                    print(f"[TLSServer] Received ClientFinished from {connection_key}")
                 self.handshake_state[connection_key] = "ESTABLISHED"
+                self.shared_keys[connection_key] = b"MySharedKey"
+                # ServerFinished を返して完了
+                self._send_tls_message(connection_key, b"ServerFinished")
                 if self.verbose:
-                    print(f"[TLSServer] TLS handshake successfully completed with {connection_key}")
+                    print(f"[TLSServer] TLS Handshake finished for {connection_key}")
             else:
                 if self.verbose:
-                    print(f"[TLSServer] Error: Expected ClientFinished but received: {data}")
-                # ServerFinishedを再送してClientFinishedを促す
-                if self.verbose:
-                    print(f"[TLSServer] Retrying ServerFinished...")
-                self._send_tls_message(connection_key, b"ServerFinished")
+                    print(f"[TLSServer] Unexpected handshake message. Received: {data}")
 
     def _send_tls_message(self, connection_key, msg: bytes):
         """
         TCP送信 (node.send_app_data) を行う。
-        FTPServerを参考に、送信処理を改善。
         """
         dst_ip, dst_port = connection_key
-        if self.verbose:
-            print(f"[TLSServer] Preparing to send message to {dst_ip}:{dst_port}")
-            print(f"[TLSServer] Message content: {msg}")
-            print(f"[TLSServer] Current connection state: {self.get_state(connection_key)}")
-
-        try:
-            self.node.send_app_data(
-                dst_ip,
-                msg,
-                protocol="TCP",
-                destination_port=dst_port
-            )
-            if self.verbose:
-                print(f"[TLSServer] Successfully sent message to {dst_ip}:{dst_port}")
-        except Exception as e:
-            if self.verbose:
-                print(f"[TLSServer] Error sending message: {str(e)}")
-            # Try to recover by maintaining current state
-            if self.verbose:
-                print(f"[TLSServer] Maintaining current state: {self.get_state(connection_key)}")
-            return
+        self.node.send_app_data(
+            dst_ip,
+            msg,
+            protocol="TCP",
+            destination_port=dst_port
+        )
 
     def encrypt(self, connection_key, plaintext: bytes) -> bytes:
         if not self.is_established(connection_key):
@@ -1283,7 +1154,7 @@ class HTTPSClient(HTTPClient):
         self.server_port = server_port
         self.state = "CONNECTING"
         self.node.initiate_tcp_handshake(server_ip, server_port)
-        # ここで "HTTPS" としてマッピング (クライアントとして登録)
+        # ここで "HTTPS" としてマッピング
         self.app_manager.map_connection_to_app((server_ip, server_port), "HTTPS")
 
     def on_connection_established(self, connection_key):
@@ -1304,9 +1175,11 @@ class HTTPSClient(HTTPClient):
         # ただしサンプルでは省略し、手動でon_packet_receivedの中などでチェックする
 
     def on_packet_received(self, packet):
+        # TLSClientにまず処理してもらう
         self.tls_client.on_packet_received(packet)
 
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        # TLSハンドシェイク完了を検知
         if self.tls_client.is_established(connection_key):
             # もしまだHTTPリクエストを送っていなければ、ここで自動送信する例
             if self.file_to_retrieve and self.state == "CONNECTED":
@@ -1317,29 +1190,13 @@ class HTTPSClient(HTTPClient):
 
             # 受け取ったpayloadを復号
             decrypted = self.tls_client.decrypt(connection_key, packet.payload)
-            if self.verbose:
-                print(f"[HTTPSClient] Decrypted data: {decrypted[:50]}")
-
             if decrypted.startswith(b"HTTP/1.0 200 OK"):
                 if self.verbose:
-                    print("[HTTPSClient] (TLS) ファイルの取得に成功しました: ", decrypted.decode('utf-8', errors='ignore'))
-                # ファイル取得成功後、必要に応じて次のリクエストを送信
-                if hasattr(self, 'file_to_retrieve') and self.file_to_retrieve:
-                    if self.verbose:
-                        print("[HTTPSClient] Processing successful response, ready for next request")
+                    print("[HTTPSClient] (TLS) ファイルの取得に成功しました:", decrypted.decode('utf-8', errors='ignore'))
             elif decrypted.startswith(b"HTTP/1.0 404"):
                 if self.verbose:
-                    print("[HTTPSClient] (TLS) ファイルが見つかりません: ", decrypted.decode('utf-8', errors='ignore'))
-            # ... 他のHTTPレスポンス解析など
-        else:
-            if self.verbose:
-                print(f"[HTTPSClient] Waiting for TLS handshake completion (current state: {tls_state})")
-            # If we have a pending file request and handshake just completed, send it
-            if tls_state == "ESTABLISHED" and hasattr(self, 'file_to_retrieve') and self.file_to_retrieve:
-                if self.verbose:
-                    print(f"[HTTPSClient] TLS handshake completed, sending pending request for {self.file_to_retrieve}")
-                request = f"GET /{self.file_to_retrieve} HTTP/1.0\r\n\r\n"
-                self.send_https_request(request)
+                    print("[HTTPSClient] (TLS) ファイルが見つかりません:", decrypted.decode('utf-8', errors='ignore'))
+            # 他のHTTPレスポンス解析も必要なら追加
 
     def send_https_request(self, request: str):
         """
@@ -1390,38 +1247,21 @@ class HTTPSServer(HTTPServer):
         """
         親クラス(HTTPServer)のon_connection_establishedをオーバーライド。
         TCP接続時に TLSハンドシェイクを受け付ける。
-        FTPServerを参考に、初期化処理を改善。
         """
         if self.verbose:
-            print(f"[HTTPSServer] TCP connection accepted from {connection_key}")
-            print("[HTTPSServer] Initializing TLS handshake...")
-
-        # Reset TLS server state for this connection
-        if connection_key in self.tls_server.handshake_state:
-            if self.verbose:
-                print(f"[HTTPSServer] Resetting existing TLS state for {connection_key}")
-            del self.tls_server.handshake_state[connection_key]
-            if connection_key in self.tls_server.shared_keys:
-                del self.tls_server.shared_keys[connection_key]
-
+            print("[HTTPSServer] TCP接続を受け付けました。TLSハンドシェイクを開始します。")
         # 親の処理(一応実行。状態を "READY" にセットするなど)
         super().on_connection_established(connection_key)
 
         # TLSサーバ側の accept_handshake 呼び出し
-        if self.verbose:
-            print(f"[HTTPSServer] Calling TLS server accept_handshake for {connection_key}")
         self.tls_server.accept_handshake(connection_key)
-        
-        if self.verbose:
-            print(f"[HTTPSServer] TLS state after initialization: {self.tls_server.get_state(connection_key)}")
 
     def on_packet_received(self, packet):
+        # まずはTLSサーバ側に渡してハンドシェイク or 復号
         self.tls_server.on_packet_received(packet)
 
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if not self.tls_server.is_established(connection_key):
-            # ハンドシェイク中ならまだHTTPメッセージは処理しない
-            if self.verbose:
-                print(f"[HTTPSServer] TLS handshake in progress, state: {self.tls_server.get_state(connection_key)}")
             # ハンドシェイク未完了なら何もしない
             if self.verbose:
                 print("[HTTPSServer] TLS handshake in progress, state:", self.tls_server.get_state(connection_key))
