@@ -986,6 +986,12 @@ class TLSClient:
         ハンドシェイク or 通常データを振り分ける。
         """
         data = packet.payload
+        if not data:
+            # **追加：空ペイロードはACK等とみなし無視する**
+            if self.verbose:
+                print("[TLSClient] Received empty payload (likely ACK). Ignoring.")
+            return
+        
         src_ip = packet.header["source_ip"]
         src_port = packet.header["source_port"]
         connection_key = (src_ip, src_port)
@@ -1121,6 +1127,12 @@ class TLSServer:
         HTTPSサーバ(=HTTPServer継承)から呼ばれ、TLSハンドシェイク中のメッセージかどうかを判別する。
         """
         data = packet.payload
+        if not data:
+            # **追加：空ペイロードはACK等とみなし無視する**
+            if self.verbose:
+                print("[TLSServer] Received empty payload (likely ACK). Ignoring.")
+            return
+
         src_ip = packet.header["source_ip"]
         src_port = packet.header["source_port"]
         connection_key = (src_ip, src_port)
@@ -1292,26 +1304,18 @@ class HTTPSClient(HTTPClient):
         # ただしサンプルでは省略し、手動でon_packet_receivedの中などでチェックする
 
     def on_packet_received(self, packet):
-        """
-        Node -> AppManager -> ここ という流れで呼ばれる。
-        まずTLSClientに処理を委譲し、ハンドシェイク or 復号化する。
-        """
-        if self.verbose:
-            print(f"[HTTPSClient] Received packet from {packet.header['source_ip']}:{packet.header['source_port']}")
-            print(f"[HTTPSClient] Payload: {packet.payload[:50]}")
-
-        # TLSClient側でハンドシェイク処理 or 復号を行う
         self.tls_client.on_packet_received(packet)
 
-        # ハンドシェイク状態をチェック
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        tls_state = self.tls_client.get_state(connection_key)
-        
-        if self.verbose:
-            print(f"[HTTPSClient] Current TLS state: {tls_state}")
-
         if self.tls_client.is_established(connection_key):
-            # すでにハンドシェイク完了 → HTTPメッセージとして処理（暗号化済みデータを復号して取り出す）
+            # もしまだHTTPリクエストを送っていなければ、ここで自動送信する例
+            if self.file_to_retrieve and self.state == "CONNECTED":
+                # send_https_request で暗号化して送る
+                request = f"GET /{self.file_to_retrieve} HTTP/1.0\r\n\r\n"
+                self.send_https_request(request)
+                # 状態を "REQUEST_SENT" とかにしてもOK
+
+            # 受け取ったpayloadを復号
             decrypted = self.tls_client.decrypt(connection_key, packet.payload)
             if self.verbose:
                 print(f"[HTTPSClient] Decrypted data: {decrypted[:50]}")
@@ -1356,21 +1360,19 @@ class HTTPSClient(HTTPClient):
         self.node.send_app_data(dst_ip, enc_data, protocol="TCP", destination_port=dst_port)
 
     def get_file(self, filename):
-        """
-        HTTPClient風のファイル取得API。実際にはsend_https_requestを呼ぶ。
-        """
         self.file_to_retrieve = filename
+        # 親クラス(HTTPClient)の仕組み: connect() → on_connection_established() → ...
         if self.state == "CONNECTED" and self._https_connection_key:
-            # すでにTCP接続は確立。TLSが完了していればすぐ送信
+            # すでにTLS完了ならすぐ送信
             if self.tls_client.is_established(self._https_connection_key):
-                request = f"GET /{filename} HTTP/1.0\r\n\r\n"
-                self.send_https_request(request)
+                req = f"GET /{filename} HTTP/1.0\r\n\r\n"
+                self.send_https_request(req)
             else:
                 if self.verbose:
                     print("[HTTPSClient] TLS未完了のため、get_fileは保留します。")
         else:
             if self.verbose:
-                print("[HTTPSClient] TCP接続がまだないため、接続後に自動送信するか再度呼んでください。")
+                print("[HTTPSClient] TCP接続がまだなので、接続後に自動送信を試みます。")
 
 
 class HTTPSServer(HTTPServer):
@@ -1414,36 +1416,23 @@ class HTTPSServer(HTTPServer):
             print(f"[HTTPSServer] TLS state after initialization: {self.tls_server.get_state(connection_key)}")
 
     def on_packet_received(self, packet):
-        """
-        暗号化されたデータかもしれないので、まず TLSServer に渡してハンドシェイク or 復号を進める。
-        もしハンドシェイク完了済なら、HTTPリクエストを取り出して処理する。
-        """
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
-        if self.verbose:
-            print(f"[HTTPSServer] Received packet from {connection_key}")
-            print(f"[HTTPSServer] Payload: {packet.payload[:50]}")
-            print(f"[HTTPSServer] Current TLS state: {self.tls_server.get_state(connection_key)}")
-
-        # Forward to TLS server for handshake or decryption
-        if self.verbose:
-            print("[HTTPSServer] Forwarding packet to TLS server")
         self.tls_server.on_packet_received(packet)
 
         if not self.tls_server.is_established(connection_key):
             # ハンドシェイク中ならまだHTTPメッセージは処理しない
             if self.verbose:
                 print(f"[HTTPSServer] TLS handshake in progress, state: {self.tls_server.get_state(connection_key)}")
+            # ハンドシェイク未完了なら何もしない
+            if self.verbose:
+                print("[HTTPSServer] TLS handshake in progress, state:", self.tls_server.get_state(connection_key))
             return
 
-        # ハンドシェイク済 → HTTPS本体として暗号化データを復号してHTTP処理
+        # ハンドシェイク完了 → HTTPS本体
         decrypted = self.tls_server.decrypt(connection_key, packet.payload)
-        if self.verbose:
-            print(f"[HTTPSServer] (TLS) Decrypted msg: {decrypted[:50]} ...")
+        if self.verbose and decrypted:
+            print(f"[HTTPSServer] (TLS) Decrypted HTTP request: {decrypted[:60]} ...")
 
-        # ここでHTTPServerの仕組みを使ってHTTPリクエストを処理する流れ
-        # ただし、もともとのHTTPServer.on_packet_receivedは 'packet.payload.decode' を実行しているので、
-        # 今回は"decrypted"を詰め直した擬似パケットを作ってスーパークラスへ渡す、という方法をとる。
-
+        # 従来のHTTPServerと同じように、擬似パケットを作ってsuper()に渡す
         fake_packet = self._create_fake_http_packet(packet, decrypted)
         super().on_packet_received(fake_packet)
 
