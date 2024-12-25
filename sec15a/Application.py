@@ -1147,7 +1147,10 @@ class TLSServer:
         """
         state = self.get_state(connection_key)
         if self.verbose:
-            print(f"[TLSServer] Processing handshake message in state {state}: {data[:50]}")
+            print(f"[TLSServer] Processing handshake message in state {state}")
+            print(f"[TLSServer] Message data: {data[:50]}")
+            print(f"[TLSServer] Connection key: {connection_key}")
+            print(f"[TLSServer] Handshake states: {self.handshake_state}")
 
         if state == "WAIT_CLIENT_HELLO":
             if data.startswith(b"ClientHello"):
@@ -1201,16 +1204,30 @@ class TLSServer:
     def _send_tls_message(self, connection_key, msg: bytes):
         """
         TCP送信 (node.send_app_data) を行う。
+        FTPServerを参考に、送信処理を改善。
         """
         dst_ip, dst_port = connection_key
         if self.verbose:
-            print(f"[TLSServer] Sending message to {dst_ip}:{dst_port}: {msg}")
-        self.node.send_app_data(
-            dst_ip,
-            msg,
-            protocol="TCP",
-            destination_port=dst_port
-        )
+            print(f"[TLSServer] Preparing to send message to {dst_ip}:{dst_port}")
+            print(f"[TLSServer] Message content: {msg}")
+            print(f"[TLSServer] Current connection state: {self.get_state(connection_key)}")
+
+        try:
+            self.node.send_app_data(
+                dst_ip,
+                msg,
+                protocol="TCP",
+                destination_port=dst_port
+            )
+            if self.verbose:
+                print(f"[TLSServer] Successfully sent message to {dst_ip}:{dst_port}")
+        except Exception as e:
+            if self.verbose:
+                print(f"[TLSServer] Error sending message: {str(e)}")
+            # Try to recover by maintaining current state
+            if self.verbose:
+                print(f"[TLSServer] Maintaining current state: {self.get_state(connection_key)}")
+            return
 
     def encrypt(self, connection_key, plaintext: bytes) -> bytes:
         if not self.is_established(connection_key):
@@ -1357,11 +1374,21 @@ class HTTPSServer(HTTPServer):
         暗号化されたデータかもしれないので、まず TLSServer に渡してハンドシェイク or 復号を進める。
         もしハンドシェイク完了済なら、HTTPリクエストを取り出して処理する。
         """
+        connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        if self.verbose:
+            print(f"[HTTPSServer] Received packet from {connection_key}")
+            print(f"[HTTPSServer] Payload: {packet.payload[:50]}")
+            print(f"[HTTPSServer] Current TLS state: {self.tls_server.get_state(connection_key)}")
+
+        # Forward to TLS server for handshake or decryption
+        if self.verbose:
+            print("[HTTPSServer] Forwarding packet to TLS server")
         self.tls_server.on_packet_received(packet)
 
-        connection_key = (packet.header["source_ip"], packet.header["source_port"])
         if not self.tls_server.is_established(connection_key):
             # ハンドシェイク中ならまだHTTPメッセージは処理しない
+            if self.verbose:
+                print(f"[HTTPSServer] TLS handshake in progress, state: {self.tls_server.get_state(connection_key)}")
             return
 
         # ハンドシェイク済 → HTTPS本体として暗号化データを復号してHTTP処理
