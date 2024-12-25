@@ -1132,7 +1132,13 @@ class TLSServer:
         if self.verbose:
             print(f"[TLSServer] Current state for {connection_key}: {state}")
 
-        if state.startswith("WAIT"):
+        # If we receive ClientHello in IDLE state, initialize handshake
+        if state == "IDLE" and data.startswith(b"ClientHello"):
+            if self.verbose:
+                print(f"[TLSServer] Received ClientHello in IDLE state, initializing handshake")
+            self.accept_handshake(connection_key)
+            self._handle_handshake_message(connection_key, data)
+        elif state.startswith("WAIT"):
             self._handle_handshake_message(connection_key, data)
         else:
             if self.is_established(connection_key):
@@ -1290,24 +1296,46 @@ class HTTPSClient(HTTPClient):
         Node -> AppManager -> ここ という流れで呼ばれる。
         まずTLSClientに処理を委譲し、ハンドシェイク or 復号化する。
         """
+        if self.verbose:
+            print(f"[HTTPSClient] Received packet from {packet.header['source_ip']}:{packet.header['source_port']}")
+            print(f"[HTTPSClient] Payload: {packet.payload[:50]}")
+
         # TLSClient側でハンドシェイク処理 or 復号を行う
         self.tls_client.on_packet_received(packet)
 
         # ハンドシェイク状態をチェック
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
+        tls_state = self.tls_client.get_state(connection_key)
+        
+        if self.verbose:
+            print(f"[HTTPSClient] Current TLS state: {tls_state}")
+
         if self.tls_client.is_established(connection_key):
             # すでにハンドシェイク完了 → HTTPメッセージとして処理（暗号化済みデータを復号して取り出す）
             decrypted = self.tls_client.decrypt(connection_key, packet.payload)
+            if self.verbose:
+                print(f"[HTTPSClient] Decrypted data: {decrypted[:50]}")
+
             if decrypted.startswith(b"HTTP/1.0 200 OK"):
                 if self.verbose:
                     print("[HTTPSClient] (TLS) ファイルの取得に成功しました: ", decrypted.decode('utf-8', errors='ignore'))
+                # ファイル取得成功後、必要に応じて次のリクエストを送信
+                if hasattr(self, 'file_to_retrieve') and self.file_to_retrieve:
+                    if self.verbose:
+                        print("[HTTPSClient] Processing successful response, ready for next request")
             elif decrypted.startswith(b"HTTP/1.0 404"):
                 if self.verbose:
                     print("[HTTPSClient] (TLS) ファイルが見つかりません: ", decrypted.decode('utf-8', errors='ignore'))
             # ... 他のHTTPレスポンス解析など
         else:
-            # ハンドシェイク中のログは既にTLSClient側で出している
-            pass
+            if self.verbose:
+                print(f"[HTTPSClient] Waiting for TLS handshake completion (current state: {tls_state})")
+            # If we have a pending file request and handshake just completed, send it
+            if tls_state == "ESTABLISHED" and hasattr(self, 'file_to_retrieve') and self.file_to_retrieve:
+                if self.verbose:
+                    print(f"[HTTPSClient] TLS handshake completed, sending pending request for {self.file_to_retrieve}")
+                request = f"GET /{self.file_to_retrieve} HTTP/1.0\r\n\r\n"
+                self.send_https_request(request)
 
     def send_https_request(self, request: str):
         """
@@ -1360,14 +1388,30 @@ class HTTPSServer(HTTPServer):
         """
         親クラス(HTTPServer)のon_connection_establishedをオーバーライド。
         TCP接続時に TLSハンドシェイクを受け付ける。
+        FTPServerを参考に、初期化処理を改善。
         """
         if self.verbose:
-            print("[HTTPSServer] TCP接続を受け付けました。TLSハンドシェイクを開始します。")
+            print(f"[HTTPSServer] TCP connection accepted from {connection_key}")
+            print("[HTTPSServer] Initializing TLS handshake...")
+
+        # Reset TLS server state for this connection
+        if connection_key in self.tls_server.handshake_state:
+            if self.verbose:
+                print(f"[HTTPSServer] Resetting existing TLS state for {connection_key}")
+            del self.tls_server.handshake_state[connection_key]
+            if connection_key in self.tls_server.shared_keys:
+                del self.tls_server.shared_keys[connection_key]
+
         # 親の処理(一応実行。状態を "READY" にセットするなど)
         super().on_connection_established(connection_key)
 
         # TLSサーバ側の accept_handshake 呼び出し
+        if self.verbose:
+            print(f"[HTTPSServer] Calling TLS server accept_handshake for {connection_key}")
         self.tls_server.accept_handshake(connection_key)
+        
+        if self.verbose:
+            print(f"[HTTPSServer] TLS state after initialization: {self.tls_server.get_state(connection_key)}")
 
     def on_packet_received(self, packet):
         """
