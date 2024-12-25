@@ -102,7 +102,13 @@ class ApplicationManager:
             if packet.header.get("destination_port") == 443 and self.https_server:
                 if self.verbose:
                     print(f"[ApplicationManager] New HTTPS connection from {packet.header.get('source_ip')}:{packet.header.get('source_port')}")
-                self.connection_app_map[(packet.header.get("source_ip"), packet.header.get("source_port"))] = "HTTPS"
+                # Map both client and server connections for HTTPS
+                client_key = (packet.header.get("source_ip"), packet.header.get("source_port"))
+                server_key = (packet.header.get("destination_ip"), packet.header.get("destination_port"))
+                self.connection_app_map[client_key] = "HTTPS"
+                self.connection_app_map[server_key] = "HTTPS"
+                if self.verbose:
+                    print(f"[ApplicationManager] Mapped HTTPS connections: {client_key} and {server_key}")
                 self.https_server.on_packet_received(packet)
             if packet.header.get("destination_port") == 80 and self.http_server:
                 self.connection_app_map[(packet.header.get("source_ip"), packet.header.get("source_port"))] = "HTTPSERVER"
@@ -136,7 +142,13 @@ class ApplicationManager:
                 self.https_client.on_connection_established(connection_key)
         elif app_type == None:  # マッピングがない場合はサーバとして扱う
             if connection_key[1] == 443 and self.https_server:  # ポート443はHTTPSサーバ
-                self.connection_app_map[connection_key] = "HTTPS"
+                # Map both client and server connections for HTTPS
+                client_key = connection_key
+                server_key = (connection_key[0], 443)  # Server's connection key
+                self.connection_app_map[client_key] = "HTTPS"
+                self.connection_app_map[server_key] = "HTTPS"
+                if self.verbose:
+                    print(f"[ApplicationManager] Connection established - Mapped HTTPS connections: {client_key} and {server_key}")
                 self.https_server.on_connection_established(connection_key)
             if connection_key[1] == 80 and self.http_server:  # ポート80はHTTPサーバ
                 self.connection_app_map[connection_key] = "HTTPSERVER"
