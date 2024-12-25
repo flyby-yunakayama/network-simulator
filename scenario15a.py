@@ -1,9 +1,3 @@
-import sys
-
-!git clone https://github.com/flyby-yunakayama/network-simulator.git
-sys.path.insert(0,'/content/network-simulator')
-%cd network-simulator
-
 from sec15a.NetworkEventScheduler import NetworkEventScheduler
 from sec15a.Node import Node
 from sec15a.Switch import Switch
