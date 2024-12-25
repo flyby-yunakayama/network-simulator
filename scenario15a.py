@@ -6,7 +6,7 @@ from sec15a.Server import DNSServer, DHCPServer
 from sec15a.Link import Link
 from sec15a.Application import DnsClient, DhcpClient, UDPApp, FTPClient, FTPServer, HTTPSClient, HTTPSServer
 
-nes = NetworkEventScheduler(seed=7, log_enabled=True, verbose=False, tcp_verbose=True, link_verbose=False)
+nes = NetworkEventScheduler(seed=7, log_enabled=True, verbose=True, tcp_verbose=True, link_verbose=False)
 
 # ノードとルータの設定
 node1 = Node(node_id="n1", ip_address="192.168.1.0/24", network_event_scheduler=nes)  # DHCP利用
