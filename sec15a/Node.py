@@ -1150,6 +1150,7 @@ class Node:
                 )
 
             packet.payload = fragment_data
+            print(packet)
             self._send_packet(packet)
 
             if not data:
