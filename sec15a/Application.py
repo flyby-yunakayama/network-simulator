@@ -1000,6 +1000,7 @@ class TLSClient:
         """
         dst_ip, dst_port = connection_key
         # 送信
+        print(f"[TLSClient] Sending TLS message to {connection_key}: {msg}")
         self.node.send_app_data(
             dst_ip,
             msg,
