@@ -1100,6 +1100,7 @@ class Node:
         original_data_id = str(uuid.uuid4())
         total_size = len(data) if data else 0
         offset = 0
+        print(data)
 
         while offset < total_size or (offset == 0 and total_size == 0):
             max_payload_size = self.mtu - header_size
