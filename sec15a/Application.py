@@ -81,6 +81,8 @@ class ApplicationManager:
             self.http_client.on_packet_received(packet)
         elif app_type == "HTTPSERVER" and self.http_server:
             self.http_server.on_packet_received(packet)
+        elif app_type == "HTTPS" and self.https_client:
+            self.https_client.on_packet_received(packet)
         elif app_type == "HTTPSSERVER" and self.https_server:
             self.https_server.on_packet_received(packet)
         elif app_type == None and (self.ftp_server or self.http_server or self.https_server):  # マッピングがない場合はサーバとして扱う
@@ -115,11 +117,15 @@ class ApplicationManager:
             self.http_server.on_connection_established(connection_key)
         elif app_type == "HTTPSSERVER" and self.https_server:
             self.https_server.on_connection_established(connection_key)
-        elif app_type == None:  # マッピングがない場合はサーバとして扱う
-            if connection_key[1] == 443 and self.https_server:  # ポート443はHTTPSサーバ
-                self.connection_app_map[connection_key] = "HTTPSSERVER"
-                self.https_server.on_connection_established(connection_key)
-            if connection_key[1] == 80 and self.http_server:  # ポート80はHTTPサーバ
+        elif app_type == None:  # マッピングがない場合はポートに基づいて判断
+            if connection_key[1] == 443:  # ポート443の場合
+                if self.https_client:  # クライアントとして登録されている場合
+                    self.connection_app_map[connection_key] = "HTTPS"
+                    self.https_client.on_connection_established(connection_key)
+                elif self.https_server:  # サーバとして登録されている場合
+                    self.connection_app_map[connection_key] = "HTTPSSERVER"
+                    self.https_server.on_connection_established(connection_key)
+            elif connection_key[1] == 80 and self.http_server:  # ポート80はHTTPサーバ
                 self.connection_app_map[connection_key] = "HTTPSERVER"
                 self.http_server.on_connection_established(connection_key)
             elif self.ftp_server:  # それ以外はFTPサーバ
@@ -1167,9 +1173,14 @@ class HTTPSClient(HTTPClient):
         self.server_ip = server_ip
         self.server_port = server_port
         self.state = "CONNECTING"
-        self.node.initiate_tcp_handshake(server_ip, server_port)
-        # ここで "HTTPS" としてマッピング
-        self.app_manager.map_connection_to_app((server_ip, server_port), "HTTPS")
+        
+        # TCPハンドシェイク開始
+        ephemeral_port = self.node.initiate_tcp_handshake(server_ip, server_port)
+
+        # クライアント側の接続情報でマッピング (my_ip, ephemeral_port)
+        if self.verbose:
+            print(f"[HTTPSClient] Mapping HTTPS connection {self.node.ip_address}:{ephemeral_port} -> {server_ip}:{server_port}")
+        self.app_manager.map_connection_to_app((self.node.ip_address, ephemeral_port), "HTTPS")
 
     def on_connection_established(self, connection_key):
         """
