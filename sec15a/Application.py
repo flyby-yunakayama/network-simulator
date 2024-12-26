@@ -1122,6 +1122,9 @@ class TLSServer:
         TCP送信 (node.send_app_data) を行う。
         """
         dst_ip, dst_port = connection_key
+        if self.verbose:
+            print(f"[TLSServer] Sending TLS message {msg[:30]}... to {dst_ip}:{dst_port}")
+            print(f"[TLSServer] Current handshake state for {connection_key}: {self.get_state(connection_key)}")
         self.node.send_app_data(
             dst_ip,
             msg,
