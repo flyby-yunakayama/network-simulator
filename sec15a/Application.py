@@ -1270,6 +1270,7 @@ class HTTPSServer(HTTPServer):
     def __init__(self, node, shared_files, verbose=False):
         super().__init__(node, shared_files, verbose=verbose)
         self.tls_server = TLSServer(node, verbose=verbose)
+        self.https_outgoing_data = {}  # Store outgoing data for HTTPS connections
 
     def on_connection_established(self, connection_key):
         """
@@ -1295,6 +1296,40 @@ class HTTPSServer(HTTPServer):
                 print("[HTTPSServer] TLS handshake in progress, state:", self.tls_server.get_state(connection_key))
             return
 
+        # ACKを受信した場合、次のチャンクがあれば送信
+        if not packet.payload and connection_key in self.https_outgoing_data:
+            if self.verbose:
+                print("[HTTPSServer] Received ACK. Checking for next chunk...")
+            
+            # 転送情報を取得
+            transfer_info = self.node.tcp_connections[connection_key]['transfer_info']
+            if not transfer_info['transfer_done']:
+                chunk = self.get_data_chunk(connection_key, 1024)  # MTUサイズを考慮
+                if chunk:
+                    # TLS暗号化
+                    enc_data = self.tls_server.encrypt(connection_key, chunk)
+                    self.node.send_app_data(
+                        packet.header["source_ip"],
+                        enc_data,
+                        protocol="TCP",
+                        source_port=packet.header["destination_port"],
+                        destination_port=packet.header["source_port"]
+                    )
+                    # 送信済みデータを更新
+                    chunk_size = len(chunk)
+                    self.update_data_after_send(connection_key, chunk_size)
+                    transfer_info['bytes_transferred'] += chunk_size
+                    
+                    if self.verbose:
+                        print(f"[HTTPSServer] Sent next chunk: {chunk_size} bytes, total: {transfer_info['bytes_transferred']}/{transfer_info['file_size']}")
+                    
+                    # 転送完了チェック
+                    if len(self.https_outgoing_data[connection_key]) == 0:
+                        transfer_info['transfer_done'] = True
+                        if self.verbose:
+                            print("[HTTPSServer] Transfer complete")
+            return
+
         # ハンドシェイク完了 → HTTPS本体
         decrypted = self.tls_server.decrypt(connection_key, packet.payload)
         if self.verbose and decrypted:
@@ -1303,6 +1338,23 @@ class HTTPSServer(HTTPServer):
         # 従来のHTTPServerと同じように、擬似パケットを作ってsuper()に渡す
         fake_packet = self._create_fake_http_packet(packet, decrypted)
         super().on_packet_received(fake_packet)
+
+    def get_data_chunk(self, connection_key, payload_size):
+        """
+        Get a chunk of data to send for a given connection.
+        Similar to FTPServer's implementation.
+        """
+        data = self.https_outgoing_data.get(connection_key, b'')
+        chunk = data[:payload_size]
+        return chunk
+
+    def update_data_after_send(self, connection_key, sent_bytes):
+        """
+        Update the remaining data after sending a chunk.
+        Similar to FTPServer's implementation.
+        """
+        data = self.https_outgoing_data.get(connection_key, b'')
+        self.https_outgoing_data[connection_key] = data[sent_bytes:]
 
     def _create_fake_http_packet(self, original_packet, new_payload):
         """
@@ -1316,6 +1368,7 @@ class HTTPSServer(HTTPServer):
     def send_http_response(self, client_ip, client_port, server_port, response):
         """
         親クラスの send_http_response をオーバーライドし、暗号化して送信する。
+        大きなレスポンスは分割して送信する。
         """
         connection_key = (client_ip, client_port)
         if not self.tls_server.is_established(connection_key):
@@ -1323,16 +1376,35 @@ class HTTPSServer(HTTPServer):
             super().send_http_response(client_ip, client_port, server_port, response)
             return
 
-        # TLS暗号化
-        enc_data = self.tls_server.encrypt(connection_key, response.encode('utf-8'))
-        self.node.send_app_data(
-            client_ip,
-            enc_data,
-            protocol="TCP",
-            source_port=server_port,
-            destination_port=client_port
-        )
-        if self.verbose:
-            print("[HTTPSServer] (TLS) Sending encrypted response:", response.strip())
+        # レスポンスをバイト列に変換
+        response_bytes = response.encode('utf-8')
+        
+        # 転送情報を初期化
+        self.node.tcp_connections[connection_key]['transfer_info'] = {
+            'file_size': len(response_bytes),
+            'bytes_transferred': 0,
+            'transfer_done': False
+        }
+        
+        # 送信データを保存
+        self.https_outgoing_data[connection_key] = response_bytes
+
+        # 最初のチャンクを送信
+        chunk = self.get_data_chunk(connection_key, 1024)  # MTUサイズを考慮
+        if chunk:
+            # TLS暗号化
+            enc_data = self.tls_server.encrypt(connection_key, chunk)
+            self.node.send_app_data(
+                client_ip,
+                enc_data,
+                protocol="TCP",
+                source_port=server_port,
+                destination_port=client_port
+            )
+            # 送信済みデータを更新
+            self.update_data_after_send(connection_key, len(chunk))
+            
+            if self.verbose:
+                print(f"[HTTPSServer] (TLS) Sending encrypted response chunk: {len(chunk)} bytes")
 
 
