@@ -57,6 +57,7 @@ class TCPPacket(Packet):
             "acknowledgment_number": acknowledgment_number,
             "flags": flags
         }
+        self.payload = data
 
     @property
     def header(self):
@@ -70,6 +71,7 @@ class UDPPacket(Packet):
             "source_port": source_port,
             "destination_port": destination_port
         }
+        self.payload = data
 
     @property
     def header(self):

@@ -69,7 +69,7 @@ class Packet:
         return f'パケット(送信元MAC: {source_mac}, 宛先MAC: {destination_mac}, 送信元IP: {self.ip_header["source_ip"]}, 宛先IP: {self.ip_header["destination_ip"]}, TTL: {self.ip_header["ttl"]}, フラグメントフラグ: {self.ip_header["fragment_flags"]}, フラグメントオフセット: {self.ip_header["fragment_offset"]}, ペイロード: {self.payload})'
 
 class TCPPacket(Packet):
-    def __init__(self, source_port, destination_port, sequence_number, acknowledgment_number, flags, **kwargs):
+    def __init__(self, source_port, destination_port, sequence_number, acknowledgment_number, flags,  data=b"", **kwargs):
         super().__init__(**kwargs)
         self.tcp_header = {
             "source_port": source_port,
@@ -78,6 +78,7 @@ class TCPPacket(Packet):
             "acknowledgment_number": acknowledgment_number,
             "flags": flags
         }
+        self.payload = data
 
     @property
     def header(self):
@@ -85,12 +86,13 @@ class TCPPacket(Packet):
         return {**self.mac_header, **self.ip_header, **self.tcp_header}
 
 class UDPPacket(Packet):
-    def __init__(self, source_port, destination_port, **kwargs):
+    def __init__(self, source_port, destination_port,  data=b"", **kwargs):
         super().__init__(**kwargs)
         self.udp_header = {
             "source_port": source_port,
             "destination_port": destination_port
         }
+        self.payload = data
 
     @property
     def header(self):
