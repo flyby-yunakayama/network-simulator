@@ -975,21 +975,17 @@ class TLSClient:
 
         if state == "WAIT_SERVER_HELLO":
             if data.startswith(b"ServerHello"):
-                if self.verbose:
-                    print(f"[TLSClient] Received ServerHello from {connection_key}")
-                # 次はキー交換要求を送る（省略OK）
-                self.handshake_state[connection_key] = "WAIT_SERVER_FINISHED"
+                ...
+                # 次はサーバからのFinishを待ちつつ、
+                # ClientKeyExchangeを先に送る
                 self._send_tls_message(connection_key, b"ClientKeyExchange")
-            else:
-                if self.verbose:
-                    print(f"[TLSClient] Unexpected handshake message. Received: {data}")
-                # 異常とみなしても良い
+                self.handshake_state[connection_key] = "WAIT_SERVER_FINISHED"
 
         elif state == "WAIT_SERVER_FINISHED":
             if data.startswith(b"ServerFinished"):
-                # ハンドシェイク完了
+                # ここでClientFinishedを送る
+                self._send_tls_message(connection_key, b"ClientFinished")
                 self.handshake_state[connection_key] = "ESTABLISHED"
-                self.shared_keys[connection_key] = b"MySharedKey"  # ダミー
                 if self.verbose:
                     print(f"[TLSClient] TLS Handshake finished for {connection_key}")
             else:
@@ -1086,22 +1082,23 @@ class TLSServer:
 
         if state == "WAIT_CLIENT_HELLO":
             if data.startswith(b"ClientHello"):
-                if self.verbose:
-                    print(f"[TLSServer] Received ClientHello from {connection_key}")
+                ...
                 self.handshake_state[connection_key] = "WAIT_CLIENT_KEYEXCHANGE"
                 self._send_tls_message(connection_key, b"ServerHello")
-            else:
-                if self.verbose:
-                    print(f"[TLSServer] Unexpected handshake message. Received: {data}")
 
         elif state == "WAIT_CLIENT_KEYEXCHANGE":
             if data.startswith(b"ClientKeyExchange"):
-                if self.verbose:
-                    print(f"[TLSServer] Received ClientKeyExchange from {connection_key}")
+                # ServerFinished を送る
+                self._send_tls_message(connection_key, b"ServerFinished")
+                # 次の状態は WAIT_CLIENT_FINISHED
+                self.handshake_state[connection_key] = "WAIT_CLIENT_FINISHED"
+
+        elif state == "WAIT_CLIENT_FINISHED":
+            # ClientFinished が来るのを待つ
+            if data.startswith(b"ClientFinished"):
+                # ハンドシェイク完了
                 self.handshake_state[connection_key] = "ESTABLISHED"
                 self.shared_keys[connection_key] = b"MySharedKey"
-                # ServerFinished を返して完了
-                self._send_tls_message(connection_key, b"ServerFinished")
                 if self.verbose:
                     print(f"[TLSServer] TLS Handshake finished for {connection_key}")
             else:
