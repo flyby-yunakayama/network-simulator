@@ -109,6 +109,8 @@ class ApplicationManager:
             self.ftp_server.on_connection_established(connection_key)
         elif app_type == "HTTP" and self.http_client:
             self.http_client.on_connection_established(connection_key)
+        elif app_type == "HTTPS" and self.https_client:
+            self.https_client.on_connection_established(connection_key)
         elif app_type == "HTTPSERVER" and self.http_server:
             self.http_server.on_connection_established(connection_key)
         elif app_type == "HTTPSSERVER" and self.https_server:
@@ -1000,7 +1002,6 @@ class TLSClient:
         """
         dst_ip, dst_port = connection_key
         # 送信
-        print(f"[TLSClient] Sending TLS message to {connection_key}: {msg}")
         self.node.send_app_data(
             dst_ip,
             msg,
