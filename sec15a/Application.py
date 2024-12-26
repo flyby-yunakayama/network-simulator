@@ -945,11 +945,6 @@ class TLSClient:
         ハンドシェイク or 通常データを振り分ける。
         """
         data = packet.payload
-        if not data:
-            # **追加：空ペイロードはACK等とみなし無視する**
-            if self.verbose:
-                print("[TLSClient] Received empty payload (likely ACK). Ignoring.")
-            return
         
         src_ip = packet.header["source_ip"]
         src_port = packet.header["source_port"]
@@ -1060,11 +1055,6 @@ class TLSServer:
         HTTPSサーバ(=HTTPServer継承)から呼ばれ、TLSハンドシェイク中のメッセージかどうかを判別する。
         """
         data = packet.payload
-        if not data:
-            # **追加：空ペイロードはACK等とみなし無視する**
-            if self.verbose:
-                print("[TLSServer] Received empty payload (likely ACK). Ignoring.")
-            return
 
         src_ip = packet.header["source_ip"]
         src_port = packet.header["source_port"]
