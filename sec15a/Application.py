@@ -981,9 +981,9 @@ class TLSClient:
 
         if state == "WAIT_SERVER_HELLO":
             if data.startswith(b"ServerHello"):
-                ...
-                # 次はサーバからのFinishを待ちつつ、
-                # ClientKeyExchangeを先に送る
+                if self.verbose:
+                    print(f"[TLSClient] Received ServerHello from {connection_key}")
+                # 次はキー交換要求を送る
                 self._send_tls_message(connection_key, b"ClientKeyExchange")
                 self.handshake_state[connection_key] = "WAIT_SERVER_FINISHED"
 
