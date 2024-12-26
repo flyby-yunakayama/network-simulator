@@ -1060,8 +1060,6 @@ class TLSServer:
         HTTPSサーバ(=HTTPServer継承)から呼ばれ、TLSハンドシェイク中のメッセージかどうかを判別する。
         """
         data = packet.payload
-        print(packet)
-        print(packet.payload)
         if not data:
             # **追加：空ペイロードはACK等とみなし無視する**
             if self.verbose:
