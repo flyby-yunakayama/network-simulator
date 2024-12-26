@@ -1165,6 +1165,10 @@ class HTTPSClient(HTTPClient):
         super().__init__(node, server_url=server_url, verbose=verbose)
         self.tls_client = TLSClient(node, verbose=verbose)  # 内部でTLSClientを生成
         self._https_connection_key = None  # TCP接続のキー (ip, port)
+        self.request_sent = False  # リクエスト送信済みフラグ
+        self.bytes_received = 0  # 受信済みバイト数
+        self.content_length = None  # Content-Length
+        self.transfer_done = False  # 転送完了フラグ
 
     def _initiate_connection(self, server_ip, server_port):
         """
@@ -1192,6 +1196,10 @@ class HTTPSClient(HTTPClient):
         """
         self.state = "CONNECTED"
         self._https_connection_key = connection_key
+        self.request_sent = False  # 接続確立時にリクエスト送信フラグをリセット
+        self.bytes_received = 0  # 受信バイト数をリセット
+        self.content_length = None  # Content-Lengthをリセット
+        self.transfer_done = False  # 転送完了フラグをリセット
         if self.verbose:
             print("[HTTPSClient] TCP接続が確立しました。TLSハンドシェイクを開始します。")
 
@@ -1209,22 +1217,58 @@ class HTTPSClient(HTTPClient):
         connection_key = (packet.header["source_ip"], packet.header["source_port"])
         # TLSハンドシェイク完了を検知
         if self.tls_client.is_established(connection_key):
-            # もしまだHTTPリクエストを送っていなければ、ここで自動送信する例
-            if self.file_to_retrieve and self.state == "CONNECTED":
+            # もしまだHTTPリクエストを送っていなければ、ここで自動送信する
+            if self.file_to_retrieve and self.state == "CONNECTED" and not self.request_sent:
                 # send_https_request で暗号化して送る
                 request = f"GET /{self.file_to_retrieve} HTTP/1.0\r\n\r\n"
                 self.send_https_request(request)
-                # 状態を "REQUEST_SENT" とかにしてもOK
+                self.request_sent = True
+                if self.verbose:
+                    print("[HTTPSClient] HTTPSリクエストを送信しました。")
 
             # 受け取ったpayloadを復号
             decrypted = self.tls_client.decrypt(connection_key, packet.payload)
-            if decrypted.startswith(b"HTTP/1.0 200 OK"):
-                if self.verbose:
-                    print("[HTTPSClient] (TLS) ファイルの取得に成功しました:", decrypted.decode('utf-8', errors='ignore'))
-            elif decrypted.startswith(b"HTTP/1.0 404"):
-                if self.verbose:
-                    print("[HTTPSClient] (TLS) ファイルが見つかりません:", decrypted.decode('utf-8', errors='ignore'))
-            # 他のHTTPレスポンス解析も必要なら追加
+            if not self.transfer_done:  # 転送完了していない場合のみ処理
+                if decrypted.startswith(b"HTTP/1.0 200 OK"):
+                    # Content-Lengthを探す (まだ設定されていない場合のみ)
+                    if self.content_length is None and b"Content-Length:" in decrypted:
+                        header_end = decrypted.find(b"\r\n\r\n")
+                        if header_end != -1:
+                            headers = decrypted[:header_end].decode('utf-8', errors='ignore')
+                            for line in headers.split('\r\n'):
+                                if line.startswith('Content-Length:'):
+                                    self.content_length = int(line.split(':')[1].strip())
+                                    if self.verbose:
+                                        print(f"[HTTPSClient] Content-Length: {self.content_length}")
+                            # ヘッダ以降のデータ部分を処理
+                            body = decrypted[header_end + 4:]
+                            self.bytes_received += len(body)
+                    else:
+                        # ヘッダがない場合は全体を本文として扱う
+                        self.bytes_received += len(decrypted)
+                    
+                    if self.content_length is not None and self.bytes_received >= self.content_length:
+                        self.transfer_done = True
+                        if self.verbose:
+                            print(f"[HTTPSClient] ファイル転送が完了しました。(受信: {self.bytes_received} bytes)")
+                        # 転送完了時にTCPコネクションを閉じる
+                        # Close the TCP connection using terminate_TCP_connection
+                        self.node.terminate_TCP_connection((connection_key[0], connection_key[1]))
+                        if self.verbose:
+                            print("[HTTPSClient] TCPコネクションを閉じました。")
+                    
+                    if self.verbose:
+                        print("[HTTPSClient] (TLS) ファイルの取得に成功しました。進捗: {}/{}".format(
+                            self.bytes_received, self.content_length if self.content_length else "不明"))
+                elif decrypted.startswith(b"HTTP/1.0 404"):
+                    if self.verbose: 
+                        print("[HTTPSClient] (TLS) ファイルが見つかりません:", decrypted.decode('utf-8', errors='ignore'))
+                    self.transfer_done = True  # 404の場合は転送完了とする
+                    # 404エラー時もコネクションを閉じる
+                    self.node.close_tcp_connection(connection_key[0], connection_key[1])
+                    if self.verbose:
+                        print("[HTTPSClient] TCPコネクションを閉じました。")
+                # 他のHTTPレスポンス解析も必要なら追加
 
     def send_https_request(self, request: str):
         """
@@ -1249,9 +1293,12 @@ class HTTPSClient(HTTPClient):
         # 親クラス(HTTPClient)の仕組み: connect() → on_connection_established() → ...
         if self.state == "CONNECTED" and self._https_connection_key:
             # すでにTLS完了ならすぐ送信
-            if self.tls_client.is_established(self._https_connection_key):
+            if self.tls_client.is_established(self._https_connection_key) and not self.request_sent:
                 req = f"GET /{filename} HTTP/1.0\r\n\r\n"
                 self.send_https_request(req)
+                self.request_sent = True
+                if self.verbose:
+                    print("[HTTPSClient] HTTPSリクエストを送信しました。")
             else:
                 if self.verbose:
                     print("[HTTPSClient] TLS未完了のため、get_fileは保留します。")
@@ -1328,6 +1375,11 @@ class HTTPSServer(HTTPServer):
                         transfer_info['transfer_done'] = True
                         if self.verbose:
                             print("[HTTPSServer] Transfer complete")
+                        # 転送完了時にTCPコネクションを閉じる
+                        # Close the TCP connection using terminate_TCP_connection
+                        self.node.terminate_TCP_connection((connection_key[0], connection_key[1]))
+                        if self.verbose:
+                            print("[HTTPSServer] TCPコネクションを閉じました。")
             return
 
         # ハンドシェイク完了 → HTTPS本体
