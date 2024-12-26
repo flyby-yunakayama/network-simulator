@@ -1097,12 +1097,15 @@ class TLSServer:
 
         if state == "WAIT_CLIENT_HELLO":
             if data.startswith(b"ClientHello"):
-                ...
+                if self.verbose:
+                    print(f"[TLSServer] Received ClientHello, sending ServerHello")
                 self.handshake_state[connection_key] = "WAIT_CLIENT_KEYEXCHANGE"
                 self._send_tls_message(connection_key, b"ServerHello")
 
         elif state == "WAIT_CLIENT_KEYEXCHANGE":
             if data.startswith(b"ClientKeyExchange"):
+                if self.verbose:
+                    print(f"[TLSServer] Received ClientKeyExchange, sending ServerFinished")
                 # ServerFinished を送る
                 self._send_tls_message(connection_key, b"ServerFinished")
                 # 次の状態は WAIT_CLIENT_FINISHED
@@ -1111,8 +1114,11 @@ class TLSServer:
         elif state == "WAIT_CLIENT_FINISHED":
             # ClientFinished が来るのを待つ
             if data.startswith(b"ClientFinished"):
-                # ハンドシェイク完了
+                if self.verbose:
+                    print(f"[TLSServer] Received ClientFinished, handshake complete")
+                # ハンドシェイク完了：WAIT_CLIENT_FINISHED → ESTABLISHED
                 self.handshake_state[connection_key] = "ESTABLISHED"
+                # 共通鍵を設定（実際のTLSでは鍵交換で生成）
                 self.shared_keys[connection_key] = b"MySharedKey"
                 if self.verbose:
                     print(f"[TLSServer] TLS Handshake finished for {connection_key}")
