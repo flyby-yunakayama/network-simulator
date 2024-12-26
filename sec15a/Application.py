@@ -1001,6 +1001,9 @@ class TLSClient:
         TCP送信。実際には node.send_app_data() を呼ぶだけ。
         """
         dst_ip, dst_port = connection_key
+        if self.verbose:
+            print(f"[TLSClient] Sending TLS message {msg[:30]}... to {dst_ip}:{dst_port}")
+            print(f"[TLSClient] Current handshake state for {connection_key}: {self.get_state(connection_key)}")
         # 送信
         self.node.send_app_data(
             dst_ip,
@@ -1070,7 +1073,13 @@ class TLSServer:
 
         src_ip = packet.header["source_ip"]
         src_port = packet.header["source_port"]
+        dst_port = packet.header["destination_port"]
         connection_key = (src_ip, src_port)
+        
+        if self.verbose:
+            print(f"[TLSServer] Received packet from {src_ip}:{src_port} to port {dst_port}")
+            print(f"[TLSServer] Payload: {data[:50]}...")
+            print(f"[TLSServer] Current handshake state for {connection_key}: {self.get_state(connection_key)}")
 
         state = self.get_state(connection_key)
         if state.startswith("WAIT"):
