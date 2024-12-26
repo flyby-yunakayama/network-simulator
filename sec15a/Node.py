@@ -872,7 +872,9 @@ class Node:
                 self.tcp_connections[connection_key]["sequence_number"] += 1
 
     def send_app_data(self, dst_ip, data, protocol="TCP", **kwargs):
+        print("send app data")
         if protocol == "TCP":
+            print("send tcp data")
             destination_port = kwargs.get('destination_port')
             if not destination_port:
                 raise ValueError("TCP connection requires a destination_port")
@@ -884,6 +886,9 @@ class Node:
                     print(f"No connection info found for {connection_key}. Cannot send data.")
                 return
 
+            print("###################################")
+            print(connection_key, conn_info)
+            print("###################################")
             traffic_info = conn_info.get('transfer_info')
             if not traffic_info:
                 # traffic_infoがセットされていない場合も対応
@@ -1100,7 +1105,6 @@ class Node:
         original_data_id = str(uuid.uuid4())
         total_size = len(data) if data else 0
         offset = 0
-        print(data)
 
         while offset < total_size or (offset == 0 and total_size == 0):
             max_payload_size = self.mtu - header_size
@@ -1151,7 +1155,6 @@ class Node:
                 )
 
             packet.payload = fragment_data
-            print(packet)
             self._send_packet(packet)
 
             if not data:
