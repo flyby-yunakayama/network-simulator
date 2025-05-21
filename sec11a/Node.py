@@ -623,13 +623,14 @@ class Node:
                 if connection_key not in self.windows:
                     self.windows[connection_key] = {}  # connection_keyごとの辞書を初期化
 
-                if len(self.windows[connection_key]) < self.window_size:  # ウィンドウサイズ未満の場合
-                    # 送信するデータを取得
+                while len(self.windows[connection_key]) < self.window_size:
                     remaining_data = self.tcp_connections[connection_key]['data']
+                    if not remaining_data:
+                        return  # no data left to send
+
                     payload_size = traffic_info['payload_size']
                     data_to_send = remaining_data[:payload_size]
 
-                    # パラメータ設定
                     data_packet_kwargs = {
                         "source_port": packet.header["destination_port"],
                         "destination_port": packet.header["source_port"],
@@ -638,7 +639,6 @@ class Node:
                         "flags": "PSH"
                     }
 
-                    # パケットを送信
                     self._send_tcp_packet(
                         destination_ip=packet.header["source_ip"],
                         destination_mac=packet.header["source_mac"],
@@ -646,12 +646,11 @@ class Node:
                         **data_packet_kwargs
                     )
 
-                    # シーケンス番号と送信済みデータを更新
                     self.tcp_connections[connection_key]['data'] = remaining_data[payload_size:]
-                    self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)  # 更新後のシーケンス番号を保存
+                    self.tcp_connections[connection_key]['sequence_number'] += len(data_to_send)
 
-                    # 再帰的に呼び出し
-                    self.send_tcp_data_packet(packet, attempt)
+                    if not self.tcp_connections[connection_key]['data']:
+                        break
 
     def _send_tcp_packet(self, destination_ip, destination_mac, data, **kwargs):
         """
