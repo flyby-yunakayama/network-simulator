@@ -31,3 +31,6 @@
    ```
 
 各シナリオではノードの追加やリンクの帯域幅設定、パケット転送の様子を確認できます。複雑な動作を試したい場合は `scenario14a.py` なども参考にしてください。
+
+## ライセンス
+本リポジトリの内容は [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/) の下で提供されます。
