@@ -1,0 +1,82 @@
+name: AIエージェント作業
+about: 章または基盤の垂直スライスを、仕様から教材まで追跡可能に進める
+title: "[SEC-XX] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        作業前に `AGENTS.md` と対象章の仕様を読んでください。実ネットワーク機能は追加しません。
+
+  - type: input
+    id: chapter
+    attributes:
+      label: 章IDまたは基盤ID
+      description: 例：SEC-04、FOUNDATION-CI
+      placeholder: SEC-XX
+    validations:
+      required: true
+
+  - type: textarea
+    id: learner_outcome
+    attributes:
+      label: 学習者に生じる変化
+      description: この作業後に、学習者が何を観測・説明・実装・評価できるか。
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 対象範囲
+      description: 変更する仕様ID、コード、テスト、Notebook、原稿、出典を具体的に記載。
+      placeholder: |
+        - SECXX-FR-01
+        - src/...
+        - tests/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受入条件
+      description: Given / When / Then、期待する指標、成果物の整合性を記載。
+    validations:
+      required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: 安全境界
+      description: インメモリで完結する方法、禁止する実装、架空データを記載。
+      value: |
+        - 実ネットワーク、OS設定、外部プロセスへ触れない
+        - 攻撃はPythonオブジェクトの状態遷移として実装する
+        - 架空のアドレスとデータだけを使う
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 必要な出典
+      description: source ID、または調査すべき一次資料。AI回答自体は出典にしない。
+
+  - type: checkboxes
+    id: deliverables
+    attributes:
+      label: 完了対象
+      options:
+        - label: catalog / spec
+        - label: code / tests
+        - label: notebook
+        - label: manuscript
+        - label: references / traceability
+        - label: CI validation
+
+  - type: textarea
+    id: exclusions
+    attributes:
+      label: 今回扱わないこと
+      description: スコープ拡大を防ぐため、意図的な除外と後続課題を記載。

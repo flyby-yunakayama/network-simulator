@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "course_id": "CONECOLAB-SEC",
+  "title": "Pythonで攻防しながら学ぶネットワークセキュリティ",
+  "language": "ja-JP",
+  "chapters": [
+    {
+      "id": "SEC-00",
+      "title": "ネットワークセキュリティの全体像",
+      "status": "planned",
+      "learning_outcomes": ["資産・脅威・脆弱性・リスクを区別する", "安全な学習境界を説明する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-01",
+      "title": "セキュリティ対応シミュレータを作る",
+      "status": "planned",
+      "learning_outcomes": ["攻撃者・防御者・センサーをモデル化する", "再現可能なイベント列を作る"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-02",
+      "title": "通信を観測する",
+      "status": "planned",
+      "learning_outcomes": ["パケットログとフローログを区別する", "正常系のベースラインを作る"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-03",
+      "title": "MACフラッディング",
+      "status": "planned",
+      "learning_outcomes": ["MACテーブル枯渇を説明する", "ポートセキュリティの効果と副作用を測る"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-04",
+      "title": "ARPスプーフィングと中間者攻撃",
+      "status": "prototype",
+      "learning_outcomes": ["ARPキャッシュが偽装される条件を説明する", "競合検知と静的バインディング防御を比較する"],
+      "artifacts": {
+        "spec": "specs/SEC-04-arp-spoofing.md",
+        "manuscript": "manuscript/SEC-04-arp-spoofing.md",
+        "notebook": "notebooks/04_ARPスプーフィング.ipynb",
+        "scenario": "src/conecolab_security/arp_lab.py",
+        "tests": [
+          "tests/test_arp_lab.py",
+          "tests/test_safety_boundary.py"
+        ]
+      }
+    },
+    {
+      "id": "SEC-05",
+      "title": "DHCPへの攻撃",
+      "status": "planned",
+      "learning_outcomes": ["DHCP枯渇と不正DHCPを区別する", "信頼境界とレート制限を設計する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-06",
+      "title": "DNS偽装",
+      "status": "planned",
+      "learning_outcomes": ["偽応答が採用される条件を説明する", "応答検証とキャッシュ管理を比較する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-07",
+      "title": "IPスプーフィングとフラグメンテーション",
+      "status": "planned",
+      "learning_outcomes": ["送信元IP偽装の制約を説明する", "異常フラグメントの処理方針を比較する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-08",
+      "title": "TCPへの攻撃",
+      "status": "planned",
+      "learning_outcomes": ["半開き接続の資源消費を観測する", "SYN Cookieとタイムアウト調整を比較する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-09",
+      "title": "DoSとレート制限",
+      "status": "planned",
+      "learning_outcomes": ["枯渇する資源を特定する", "遮断率と正常通信への影響を同時に測る"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-10",
+      "title": "ファイアウォール",
+      "status": "planned",
+      "learning_outcomes": ["ステートレスとステートフルを比較する", "ルール順序と既定動作を検証する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-11",
+      "title": "IDS・IPS",
+      "status": "planned",
+      "learning_outcomes": ["シグネチャと異常検知を比較する", "誤検知と見逃しを指標で評価する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-12",
+      "title": "認証とリプレイ攻撃",
+      "status": "planned",
+      "learning_outcomes": ["リプレイが成立する条件を説明する", "Nonceと有効期限による防御を実装する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-13",
+      "title": "完全性とメッセージ認証",
+      "status": "planned",
+      "learning_outcomes": ["ハッシュ・HMAC・署名を使い分ける", "改ざん検出の失敗条件を説明する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-14",
+      "title": "PKI・証明書・TLS",
+      "status": "planned",
+      "learning_outcomes": ["暗号化と相手認証を区別する", "証明書検証を省略した場合の影響を観測する"],
+      "artifacts": {}
+    },
+    {
+      "id": "SEC-15",
+      "title": "総合演習：小規模企業ネットワークを守る",
+      "status": "planned",
+      "learning_outcomes": ["複数の防御策を組み合わせる", "ログからインシデントの時系列を再構成する"],
+      "artifacts": {}
+    }
+  ]
+}

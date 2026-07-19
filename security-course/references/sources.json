@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "last_reviewed": "2026-07-19",
+  "sources": [
+    {
+      "id": "RFC-0826",
+      "title": "An Ethernet Address Resolution Protocol",
+      "publisher": "RFC Editor",
+      "url": "https://www.rfc-editor.org/info/rfc826",
+      "type": "standard",
+      "accessed": "2026-07-19",
+      "chapters": [
+        "SEC-04"
+      ],
+      "notes": "ARPの目的、アドレス対応を問い合わせる基本形式の一次資料。教材モデルの全挙動を正当化するものではない。"
+    },
+    {
+      "id": "RFC-5227",
+      "title": "IPv4 Address Conflict Detection",
+      "publisher": "RFC Editor",
+      "url": "https://www.rfc-editor.org/info/rfc5227",
+      "type": "standard",
+      "accessed": "2026-07-19",
+      "chapters": [
+        "SEC-04"
+      ],
+      "notes": "ARPを用いたIPv4アドレス競合検知と、正当な競合・主張を考える背景。"
+    },
+    {
+      "id": "MITRE-T1557-002",
+      "title": "Adversary-in-the-Middle: ARP Cache Poisoning",
+      "publisher": "MITRE ATT&CK",
+      "url": "https://attack.mitre.org/techniques/T1557/002/",
+      "type": "threat-framework",
+      "accessed": "2026-07-19",
+      "chapters": [
+        "SEC-04"
+      ],
+      "notes": "ARP Cache Poisoningを中間者位置の獲得と結び付ける脅威分類。具体的な実行手順には使用しない。"
+    },
+    {
+      "id": "MITRE-DET0387",
+      "title": "Detection Strategy DET0387",
+      "publisher": "MITRE ATT&CK",
+      "url": "https://attack.mitre.org/detectionstrategies/DET0387/",
+      "type": "detection-guidance",
+      "accessed": "2026-07-19",
+      "chapters": [
+        "SEC-04"
+      ],
+      "notes": "ARPのIP–MAC主張の不一致を監視する検知観点。教材の単純検知器の性能保証ではない。"
+    },
+    {
+      "id": "NIST-SP-800-115",
+      "title": "Technical Guide to Information Security Testing and Assessment",
+      "publisher": "National Institute of Standards and Technology",
+      "url": "https://csrc.nist.gov/pubs/sp/800/115/final",
+      "type": "government-guidance",
+      "accessed": "2026-07-19",
+      "chapters": [
+        "ALL"
+      ],
+      "notes": "セキュリティテストの計画、実施、結果分析、緩和策、報告に関する一般的枠組み。"
+    },
+    {
+      "id": "PREVIOUS-NETWORK-SIMULATOR",
+      "title": "network-simulator",
+      "publisher": "Yu Nakayama",
+      "url": "https://github.com/flyby-yunakayama/network-simulator",
+      "type": "project-source",
+      "accessed": "2026-07-19",
+      "chapters": [
+        "ALL"
+      ],
+      "notes": "前作の正常系教材、章構成、NetworkEventScheduler・Node・Switch等との接続元。再利用時は具体的なコミットと元ファイルも記録する。"
+    }
+  ]
+}
